@@ -27,13 +27,9 @@ def main() -> None:
     app = Application.builder().token(config.bot_token).build()
     register_handlers(app, config, db)
 
-    scheduler = setup_scheduler(app.bot, config, db)
+    scheduler = asyncio.get_event_loop().run_until_complete(setup_scheduler(app.bot, config, db))
     scheduler.start()
-    logger.info(
-        "Scheduler started: daily report at %02d:%02d UTC",
-        config.report_hour_utc,
-        config.report_minute,
-    )
+    app.bot_data["scheduler"] = scheduler
 
     logger.info("Bot starting...")
     app.run_polling(drop_pending_updates=True)

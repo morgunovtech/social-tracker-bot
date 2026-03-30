@@ -185,6 +185,45 @@ async def build_week_report(db: Database) -> str:
     return "\n".join(lines)
 
 
+async def build_history_all(db: Database, days: int) -> str:
+    """Combined history table for all platforms."""
+    from datetime import datetime as _dt
+    since = (date.today() - timedelta(days=days))
+
+    # Collect per-platform rows indexed by date string
+    data: dict[str, dict[str, int]] = {}  # date_str -> {platform: count}
+    all_dates: set[str] = set()
+
+    for platform in PLATFORMS:
+        rows = await db.get_history(platform, days)
+        for row in rows:
+            try:
+                d = _dt.fromisoformat(row["collected_at"]).strftime("%d.%m")
+            except (ValueError, TypeError):
+                d = str(row["collected_at"])[:5]
+            all_dates.add(d)
+            data.setdefault(d, {})[platform] = row["count"]
+
+    if not all_dates:
+        return f"Нет данных за последние {days} дней."
+
+    sorted_dates = sorted(all_dates, key=lambda s: (s[3:], s[:2]))  # sort by MM, DD
+
+    lines = [f"📊 Все платформы — {days} дней", ""]
+    lines.append("```")
+    lines.append(f"{'Дата':<7} {'TG':>7} {'YT':>7} {'LI':>7}")
+    lines.append("-" * 30)
+
+    for d in sorted_dates:
+        tg = _fmt(data[d]["telegram"]) if "telegram" in data[d] else "—"
+        yt = _fmt(data[d]["youtube"]) if "youtube" in data[d] else "—"
+        li = _fmt(data[d]["linkedin"]) if "linkedin" in data[d] else "—"
+        lines.append(f"{d:<7} {tg:>7} {yt:>7} {li:>7}")
+
+    lines.append("```")
+    return "\n".join(lines)
+
+
 async def build_history_table(db: Database, platform: str, days: int) -> str:
     label = PLATFORM_LABELS.get(platform, platform)
     rows = await db.get_history(platform, days)

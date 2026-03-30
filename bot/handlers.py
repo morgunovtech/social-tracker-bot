@@ -7,8 +7,8 @@ from telegram.ext import CallbackQueryHandler, CommandHandler, ContextTypes
 
 from bot.config import Config
 from bot.db import Database
-from bot.reporter import PLATFORMS, build_history_table, build_report, build_week_report
-from bot.scheduler import collect_and_report
+from bot.reporter import PLATFORMS, build_history_all, build_history_table, build_report, build_week_report
+from bot.scheduler import collect_and_report, get_report_time, reschedule
 
 logger = logging.getLogger(__name__)
 
@@ -28,14 +28,17 @@ def _main_menu() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("✏️ LinkedIn", callback_data="linkedin_prompt"),
+            InlineKeyboardButton("⚙️ Настройки", callback_data="settings"),
         ],
     ])
 
 
 def _history_platforms() -> InlineKeyboardMarkup:
     buttons = [
-        InlineKeyboardButton(label.capitalize(), callback_data=f"history:{p}")
-        for p, label in [("telegram", "Telegram"), ("youtube", "YouTube"), ("linkedin", "LinkedIn")]
+        InlineKeyboardButton("Все", callback_data="history:all"),
+        InlineKeyboardButton("Telegram", callback_data="history:telegram"),
+        InlineKeyboardButton("YouTube", callback_data="history:youtube"),
+        InlineKeyboardButton("LinkedIn", callback_data="history:linkedin"),
     ]
     return InlineKeyboardMarkup([buttons, [InlineKeyboardButton("← Назад", callback_data="menu")]])
 
@@ -86,7 +89,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/now — собрать данные прямо сейчас\n"
         "/week — недельный дайджест\n"
         "/linkedin <число> — ввести LinkedIn вручную\n"
-        "/history <platform> <days> — история\n",
+        "/history [platform] [days] — история\n"
+        "/settime HH:MM — изменить время ежедневного отчёта (UTC)\n",
         reply_markup=_main_menu(),
     )
 
@@ -149,22 +153,57 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not _is_admin(update, config):
         await _deny(update)
         return
-    # With args: /history telegram 30
     if context.args and len(context.args) == 2:
         platform = context.args[0].lower()
-        if platform not in PLATFORMS:
-            await update.message.reply_text(f"Неизвестная платформа. Доступны: {', '.join(PLATFORMS)}")
-            return
         try:
             days = int(context.args[1])
         except ValueError:
             await update.message.reply_text("Ошибка: количество дней должно быть числом.")
             return
-        table = await build_history_table(db, platform, days)
+        if platform == "all":
+            table = await build_history_all(db, days)
+        elif platform in PLATFORMS:
+            table = await build_history_table(db, platform, days)
+        else:
+            await update.message.reply_text(f"Неизвестная платформа. Доступны: all, {', '.join(PLATFORMS)}")
+            return
         await update.message.reply_text(table, parse_mode="Markdown", reply_markup=_main_menu())
     else:
-        # No args: show platform picker
         await update.message.reply_text("Выберите платформу:", reply_markup=_history_platforms())
+
+
+async def cmd_settime(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config: Config = context.bot_data["config"]
+    db: Database = context.bot_data["db"]
+    scheduler = context.bot_data["scheduler"]
+
+    if not _is_admin(update, config):
+        await _deny(update)
+        return
+
+    if not context.args or len(context.args) != 1:
+        hour, minute = await get_report_time(db, config)
+        await update.message.reply_text(
+            f"Текущее время отчёта: {hour:02d}:{minute:02d} UTC\n\n"
+            "Использование: /settime HH:MM\nПример: /settime 09:00"
+        )
+        return
+
+    try:
+        h_str, m_str = context.args[0].split(":")
+        hour, minute = int(h_str), int(m_str)
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError
+    except (ValueError, AttributeError):
+        await update.message.reply_text("Неверный формат. Используйте HH:MM, например: /settime 09:00")
+        return
+
+    await db.set_setting("report_time", f"{hour:02d}:{minute:02d}")
+    reschedule(scheduler, context.bot, config, db, hour, minute)
+    await update.message.reply_text(
+        f"✅ Время отчёта изменено: {hour:02d}:{minute:02d} UTC",
+        reply_markup=_main_menu(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +216,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     config: Config = context.bot_data["config"]
     db: Database = context.bot_data["db"]
+    scheduler = context.bot_data["scheduler"]
 
     if not _is_admin(update, config):
         await _deny(update)
@@ -200,6 +240,14 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         report = await build_week_report(db)
         await query.edit_message_text(report, reply_markup=_main_menu())
 
+    elif data == "settings":
+        hour, minute = await get_report_time(db, config)
+        await query.edit_message_text(
+            f"⚙️ Настройки\n\nВремя отчёта: {hour:02d}:{minute:02d} UTC\n\n"
+            "Чтобы изменить — отправьте:\n/settime HH:MM",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("← Назад", callback_data="menu")]]),
+        )
+
     elif data == "linkedin_prompt":
         await query.edit_message_text(
             "Отправьте команду с числом подписчиков:\n\n/linkedin 4520",
@@ -212,18 +260,19 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     elif data.startswith("history:"):
         parts = data.split(":")
         if len(parts) == 2:
-            # Platform selected — show period picker
             platform = parts[1]
-            label = platform.capitalize()
+            label = "Все платформы" if platform == "all" else platform.capitalize()
             await query.edit_message_text(
                 f"Платформа: {label}\nВыберите период:",
                 reply_markup=_history_periods(platform),
             )
         elif len(parts) == 3:
-            # Period selected — show table
             platform, days_str = parts[1], parts[2]
             days = int(days_str)
-            table = await build_history_table(db, platform, days)
+            if platform == "all":
+                table = await build_history_all(db, days)
+            else:
+                table = await build_history_table(db, platform, days)
             await query.edit_message_text(
                 table,
                 parse_mode="Markdown",
@@ -246,4 +295,5 @@ def register_handlers(app, config: Config, db: Database) -> None:
     app.add_handler(CommandHandler("week", cmd_week))
     app.add_handler(CommandHandler("linkedin", cmd_linkedin))
     app.add_handler(CommandHandler("history", cmd_history))
+    app.add_handler(CommandHandler("settime", cmd_settime))
     app.add_handler(CallbackQueryHandler(on_callback))

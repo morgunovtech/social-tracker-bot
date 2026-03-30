@@ -23,6 +23,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_date
 ON followers (platform, DATE(collected_at));
 """
 
+_CREATE_SETTINGS = """
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+"""
+
 
 class Database:
     def __init__(self, db_path: str) -> None:
@@ -33,8 +40,23 @@ class Database:
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(_CREATE_TABLE)
             await db.execute(_CREATE_UNIQUE_INDEX)
+            await db.execute(_CREATE_SETTINGS)
             await db.commit()
         logger.info("Database initialized at %s", self._db_path)
+
+    async def get_setting(self, key: str, default: str | None = None) -> str | None:
+        async with aiosqlite.connect(self._db_path) as db:
+            cursor = await db.execute("SELECT value FROM settings WHERE key = ?", (key,))
+            row = await cursor.fetchone()
+            return row[0] if row else default
+
+    async def set_setting(self, key: str, value: str) -> None:
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
+            await db.commit()
 
     async def upsert(self, platform: str, count: int, source: str = "api") -> None:
         async with aiosqlite.connect(self._db_path) as db:
