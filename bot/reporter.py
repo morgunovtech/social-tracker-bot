@@ -50,7 +50,10 @@ async def build_report(
         latest = await db.get_latest(platform)
 
         if latest is None:
-            if errors.get(platform):
+            # LinkedIn without data — show placeholder without warning
+            if platform == "linkedin":
+                lines.append(f"{label}: — (не введено, используйте /linkedin)")
+            elif errors.get(platform):
                 lines.append(f"{label}: ⚠️ нет данных")
             continue
 
@@ -87,7 +90,7 @@ async def build_report(
             except (ValueError, TypeError):
                 line += " (вручную)"
 
-        if errors.get(platform):
+        if errors.get(platform) and platform != "linkedin":
             line += " ⚠️"
 
         lines.append(line)
