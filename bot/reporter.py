@@ -60,15 +60,12 @@ async def build_report(
         collected_at_str = latest["collected_at"]
         total_current += count
 
-        # Day delta
         day_row = await db.get_by_date(platform, yesterday)
         day_count = day_row["count"] if day_row else None
 
-        # Week delta
         week_row = await db.get_by_date(platform, week_ago)
         week_count = week_row["count"] if week_row else None
 
-        # Build line
         parts = [f"{label}: {_fmt(count)}"]
 
         day_delta = _delta_str(count, day_count)
@@ -83,7 +80,6 @@ async def build_report(
         if len(parts) > 1:
             line += " (" + ", ".join(parts[1:]) + ")"
 
-        # Manual LinkedIn marker
         if platform == "linkedin" and source == "manual":
             try:
                 collected_dt = datetime.fromisoformat(collected_at_str)
@@ -91,13 +87,11 @@ async def build_report(
             except (ValueError, TypeError):
                 line += " (вручную)"
 
-        # Error marker
         if errors.get(platform):
             line += " ⚠️"
 
         lines.append(line)
 
-        # Accumulate totals
         if day_count is not None and total_yesterday is not None:
             total_yesterday += day_count
         else:
@@ -112,7 +106,6 @@ async def build_report(
         lines.append("Нет данных. Используйте /now для первого сбора.")
         return "\n".join(lines)
 
-    # Total line
     lines.append("")
     total_parts = [f"📈 Всего: {_fmt(total_current)}"]
 
@@ -128,6 +121,62 @@ async def build_report(
     if len(total_parts) > 1:
         total_line += " (" + ", ".join(total_parts[1:]) + ")"
 
+    lines.append(total_line)
+
+    return "\n".join(lines)
+
+
+async def build_week_report(db: Database) -> str:
+    today = date.today()
+    # This week: Mon–today
+    week_start = today - timedelta(days=today.weekday())
+    # Last week: Mon–Sun
+    last_week_start = week_start - timedelta(days=7)
+    last_week_end = week_start - timedelta(days=1)
+
+    lines = [f"📅 Неделя {week_start.strftime('%d.%m')} — {today.strftime('%d.%m.%Y')}", ""]
+
+    total_now = 0
+    total_prev = 0
+    has_data = False
+
+    for platform in PLATFORMS:
+        label = PLATFORM_LABELS[platform]
+
+        latest = await db.get_latest(platform)
+        if latest is None:
+            continue
+
+        has_data = True
+        count_now = latest["count"]
+        total_now += count_now
+
+        # Best value from last week (last available day)
+        prev_row = None
+        for d in range(6, -1, -1):
+            prev_row = await db.get_by_date(platform, last_week_end - timedelta(days=d - 6))
+            if prev_row:
+                break
+
+        count_prev = prev_row["count"] if prev_row else None
+        if count_prev is not None:
+            total_prev += count_prev
+
+        delta = _delta_str(count_now, count_prev)
+        prev_str = f" (было {_fmt(count_prev)})" if count_prev else ""
+        line = f"{label}: {_fmt(count_now)}{prev_str}"
+        if delta:
+            line += f"  {delta}"
+        lines.append(line)
+
+    if not has_data:
+        return "Нет данных для недельного отчёта."
+
+    lines.append("")
+    total_delta = _delta_str(total_now, total_prev if total_prev else None)
+    total_line = f"📈 Всего: {_fmt(total_now)}"
+    if total_delta:
+        total_line += f"  {total_delta} за неделю"
     lines.append(total_line)
 
     return "\n".join(lines)

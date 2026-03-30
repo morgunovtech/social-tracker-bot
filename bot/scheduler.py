@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 import aiohttp
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -17,31 +18,34 @@ from bot.reporter import build_report
 logger = logging.getLogger(__name__)
 
 
-async def collect_and_report(bot: Bot, config: Config, db: Database) -> str:
+def _is_monday() -> bool:
+    return datetime.utcnow().weekday() == 0  # Monday
+
+
+async def collect_and_report(bot: Bot, config: Config, db: Database, force_linkedin: bool = False) -> str:
     errors: dict[str, bool] = {}
 
     async with aiohttp.ClientSession() as session:
-        # Telegram
+        # Telegram — every day
         tg_count = await collect_telegram(bot, config.telegram_channel_id)
         if tg_count is not None:
             await db.upsert("telegram", tg_count)
         else:
             errors["telegram"] = True
 
-        # YouTube
+        # YouTube — every day
         yt_count = await collect_youtube(session, config.youtube_api_key, config.youtube_channel_id)
         if yt_count is not None:
             await db.upsert("youtube", yt_count)
         else:
             errors["youtube"] = True
 
-        # LinkedIn
-        li_count = await collect_linkedin(session, config.rapidapi_key, config.linkedin_profile_url)
-        if li_count is not None:
-            await db.upsert("linkedin", li_count)
-        else:
-            # Only mark error if keys are configured
-            if config.rapidapi_key and config.linkedin_profile_url:
+        # LinkedIn — only on Mondays (5 req/month limit) or when forced via /now
+        if force_linkedin or _is_monday():
+            li_count = await collect_linkedin(session, config.rapidapi_key, config.linkedin_profile_url)
+            if li_count is not None:
+                await db.upsert("linkedin", li_count)
+            elif config.rapidapi_key and config.linkedin_profile_url:
                 errors["linkedin"] = True
 
     report = await build_report(db, errors=errors)
@@ -49,7 +53,7 @@ async def collect_and_report(bot: Bot, config: Config, db: Database) -> str:
 
 
 async def _scheduled_job(bot: Bot, config: Config, db: Database) -> None:
-    logger.info("Running scheduled data collection")
+    logger.info("Running scheduled data collection (Monday LinkedIn: %s)", _is_monday())
     try:
         report = await collect_and_report(bot, config, db)
         await bot.send_message(chat_id=config.admin_chat_id, text=report)

@@ -1,24 +1,13 @@
 from __future__ import annotations
 
 import logging
-import re
 
 import aiohttp
-from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
-_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "en-US,en;q=0.9",
-}
-
-# Matches strings like "4,520 followers" or "4520 followers"
-_FOLLOWERS_RE = re.compile(r"([\d,]+)\s+followers", re.IGNORECASE)
+_RAPIDAPI_URL = "https://linkedin-data-scraper1.p.rapidapi.com/get_user_exact_connections.php"
+_FOLLOWER_FIELDS = ("followers", "follower_count", "followersCount", "connections", "connectionsCount")
 
 
 async def collect_linkedin(
@@ -26,39 +15,44 @@ async def collect_linkedin(
     rapidapi_key: str | None,
     profile_url: str | None,
 ) -> int | None:
-    if not profile_url:
-        logger.warning("LinkedIn collection skipped: missing LINKEDIN_PROFILE_URL")
+    if not rapidapi_key or not profile_url:
+        logger.warning("LinkedIn collection skipped: missing RAPIDAPI_KEY or LINKEDIN_PROFILE_URL")
         return None
+
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "x-rapidapi-host": "linkedin-data-scraper1.p.rapidapi.com",
+        "x-rapidapi-key": rapidapi_key,
+    }
+    data = {"username_or_url": profile_url}
 
     try:
-        async with session.get(profile_url, headers=_HEADERS, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+        async with session.post(
+            _RAPIDAPI_URL,
+            headers=headers,
+            data=data,
+            timeout=aiohttp.ClientTimeout(total=15),
+        ) as resp:
             if resp.status != 200:
-                logger.error("LinkedIn page returned status %d", resp.status)
+                logger.error("LinkedIn Data Scraper API returned status %d", resp.status)
                 return None
 
-            html = await resp.text()
+            payload = await resp.json(content_type=None)
+            logger.info("LinkedIn API raw response keys: %s", list(payload.keys()) if isinstance(payload, dict) else type(payload))
 
-        soup = BeautifulSoup(html, "html.parser")
+            if isinstance(payload, dict):
+                for field in _FOLLOWER_FIELDS:
+                    value = payload.get(field)
+                    if value is not None:
+                        try:
+                            count = int(str(value).replace(",", "").replace("+", "").strip())
+                            logger.info("LinkedIn followers: %d (field: %s)", count, field)
+                            return count
+                        except (ValueError, TypeError):
+                            continue
 
-        # Try meta tag first (most reliable)
-        for meta in soup.find_all("meta"):
-            content = meta.get("content", "")
-            match = _FOLLOWERS_RE.search(content)
-            if match:
-                count = int(match.group(1).replace(",", ""))
-                logger.info("LinkedIn followers (meta): %d", count)
-                return count
-
-        # Fallback: search all text
-        text = soup.get_text(" ", strip=True)
-        match = _FOLLOWERS_RE.search(text)
-        if match:
-            count = int(match.group(1).replace(",", ""))
-            logger.info("LinkedIn followers (text): %d", count)
-            return count
-
-        logger.error("LinkedIn: followers count not found in page")
-        return None
+            logger.error("LinkedIn API: no follower field found in response: %s", payload)
+            return None
 
     except Exception:
         logger.exception("Failed to collect LinkedIn followers")
