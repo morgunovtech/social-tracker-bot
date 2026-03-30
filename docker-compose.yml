@@ -1,0 +1,8 @@
+services:
+  tracker-bot:
+    build: .
+    container_name: social-tracker-bot
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
