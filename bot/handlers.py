@@ -4,7 +4,13 @@ import logging
 from datetime import datetime
 
 import aiohttp
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    Update,
+)
 from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
@@ -16,6 +22,18 @@ from telegram.ext import (
 
 # ConversationHandler states
 LI_AWAITING_NUMBER = 1
+
+# Persistent reply-keyboard label. Tapping this sends the same text back,
+# which our MessageHandler maps to /start.
+MENU_BUTTON_TEXT = "📊 Меню"
+
+
+def _persistent_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton(MENU_BUTTON_TEXT)]],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
 
 from bot.config import Config
 from bot.db import Database
@@ -120,9 +138,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Привет! Этот бот только для администратора.")
         return
     await update.message.reply_text(
-        "Привет! Я отслеживаю подписчиков в Telegram, YouTube и LinkedIn.",
-        reply_markup=_main_menu(),
+        "Привет! Я отслеживаю подписчиков в Telegram, YouTube и LinkedIn.\n"
+        "Кнопка «📊 Меню» внизу экрана всегда вызывает это меню.",
+        reply_markup=_persistent_keyboard(),
     )
+    await update.message.reply_text("Меню:", reply_markup=_main_menu())
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -573,4 +593,5 @@ def register_handlers(app, config: Config, db: Database) -> None:
     app.add_handler(CommandHandler("setquiet", cmd_setquiet))
     app.add_handler(CommandHandler("setcookie", cmd_setcookie))
     app.add_handler(CommandHandler("cookieage", cmd_cookieage))
+    app.add_handler(MessageHandler(filters.Regex(rf"^{MENU_BUTTON_TEXT}$"), cmd_start))
     app.add_handler(CallbackQueryHandler(on_callback))
