@@ -11,6 +11,9 @@ from telegram import Bot
 
 UTC = pytz.utc
 
+# Warn user when cookie has been in use longer than this (LinkedIn lifetime ~12 months)
+COOKIE_AGING_DAYS = 330
+
 from bot.collectors.linkedin import collect_linkedin
 from bot.collectors.telegram import collect_telegram
 from bot.collectors.youtube import collect_youtube
@@ -70,6 +73,22 @@ def normalize_dow(value: str) -> str:
     return ",".join(parts)
 
 
+async def get_active_cookie(db: Database, config: Config) -> str | None:
+    """Cookie precedence: DB (set via /setcookie) > env (LINKEDIN_LI_AT)."""
+    return (await db.get_setting("linkedin_li_at")) or config.linkedin_li_at
+
+
+async def get_cookie_age_days(db: Database) -> int | None:
+    """Days since the active cookie was set via /setcookie (None if from env or unset)."""
+    set_at = await db.get_setting("linkedin_li_at_set_at")
+    if not set_at:
+        return None
+    try:
+        return (datetime.utcnow() - datetime.fromisoformat(set_at)).days
+    except (ValueError, TypeError):
+        return None
+
+
 async def collect_and_report(
     bot: Bot, config: Config, db: Database, force_linkedin: bool = True
 ) -> tuple[str, bool]:
@@ -78,7 +97,7 @@ async def collect_and_report(
     Returns (report_text, has_meaningful_change).
     LinkedIn is collected by default; pass force_linkedin=False to skip.
     """
-    errors: dict[str, bool] = {}
+    errors: dict[str, bool | int] = {}
 
     async with aiohttp.ClientSession() as session:
         tg_count = await collect_telegram(bot, config.telegram_channel_id)
@@ -94,18 +113,24 @@ async def collect_and_report(
             errors["youtube"] = True
 
         if force_linkedin:
+            li_at = await get_active_cookie(db, config)
             li_count, li_source = await collect_linkedin(
                 session,
                 config.rapidapi_key,
                 config.linkedin_profile_url,
-                li_at=config.linkedin_li_at,
+                li_at=li_at,
             )
             if li_count is not None and li_source is not None:
                 await db.upsert("linkedin", li_count, source=li_source)
             elif li_source == "cookie_expired":
                 errors["linkedin_cookie_expired"] = True
-            elif (config.linkedin_li_at or config.rapidapi_key) and config.linkedin_profile_url:
+            elif (li_at or config.rapidapi_key) and config.linkedin_profile_url:
                 errors["linkedin"] = True
+
+            # Proactive aging warning (only meaningful when cookie was set via /setcookie)
+            age = await get_cookie_age_days(db)
+            if age is not None and age >= COOKIE_AGING_DAYS:
+                errors["linkedin_cookie_aging"] = age
 
     return await build_report(db, errors=errors, linkedin_stale_days=config.linkedin_stale_days)
 

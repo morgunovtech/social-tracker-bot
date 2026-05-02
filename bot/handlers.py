@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
+import aiohttp
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     CallbackQueryHandler,
@@ -18,8 +20,12 @@ LI_AWAITING_NUMBER = 1
 from bot.config import Config
 from bot.db import Database
 from bot.reporter import PLATFORMS, build_history_all, build_history_table, build_report, build_week_report
+from bot.collectors.linkedin import collect_linkedin
 from bot.scheduler import (
+    COOKIE_AGING_DAYS,
     collect_and_report,
+    get_active_cookie,
+    get_cookie_age_days,
     get_report_schedule,
     is_quiet_mode,
     normalize_dow,
@@ -129,7 +135,9 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/history [platform] [days] — история\n"
         "/settime HH:MM — изменить время отчёта (UTC)\n"
         "/setday <дни> — изменить день недели (sat / mon-fri / mon,thu / daily)\n"
-        "/setquiet on|off — пропускать пуш, если за неделю ничего не изменилось\n",
+        "/setquiet on|off — пропускать пуш, если за неделю ничего не изменилось\n"
+        "/setcookie <li_at> — обновить LinkedIn cookie (с проверкой)\n"
+        "/cookieage — возраст текущего LinkedIn cookie\n",
         reply_markup=_main_menu(),
     )
 
@@ -283,6 +291,92 @@ async def cmd_setday(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"✅ День отчёта: {_dow_pretty(normalized)} в {hour:02d}:{minute:02d} UTC",
         reply_markup=_main_menu(),
     )
+
+
+async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config: Config = context.bot_data["config"]
+    db: Database = context.bot_data["db"]
+
+    if not _is_admin(update, config):
+        await _deny(update)
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "Использование: /setcookie <значение li_at>\n\n"
+            "Где взять: linkedin.com → DevTools → Application → Cookies → `li_at` → Value\n"
+            "Текущий возраст: /cookieage"
+        )
+        return
+
+    cookie = " ".join(context.args).strip()
+    if len(cookie) < 50:
+        await update.message.reply_text("❌ Это не похоже на cookie (слишком короткое).")
+        return
+
+    if not config.linkedin_profile_url:
+        await update.message.reply_text("❌ Не задан LINKEDIN_PROFILE_URL — нечего проверять.")
+        return
+
+    await update.message.reply_text("⏳ Проверяю cookie...")
+
+    async with aiohttp.ClientSession() as session:
+        count, source = await collect_linkedin(
+            session,
+            rapidapi_key=None,
+            profile_url=config.linkedin_profile_url,
+            li_at=cookie,
+        )
+
+    if count is None:
+        await update.message.reply_text(
+            "❌ Cookie не работает. Проверь, что скопировал значение целиком (без × или других левых символов)."
+        )
+        return
+
+    await db.set_setting("linkedin_li_at", cookie)
+    await db.set_setting("linkedin_li_at_set_at", datetime.utcnow().isoformat())
+    await db.upsert("linkedin", count, source="cookie")
+
+    await update.message.reply_text(
+        f"✅ Cookie сохранён. Тест-фетч: {count:,} подписчиков.\n"
+        f"Примерный срок жизни — ~12 месяцев. Бот предупредит за месяц до конца.",
+        reply_markup=_main_menu(),
+    )
+
+
+async def cmd_cookieage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config: Config = context.bot_data["config"]
+    db: Database = context.bot_data["db"]
+
+    if not _is_admin(update, config):
+        await _deny(update)
+        return
+
+    age = await get_cookie_age_days(db)
+    has_db_cookie = bool(await db.get_setting("linkedin_li_at"))
+    has_env_cookie = bool(config.linkedin_li_at)
+
+    if age is not None:
+        days_left = max(0, COOKIE_AGING_DAYS - age)
+        status = "⚠️ пора обновить" if age >= COOKIE_AGING_DAYS else f"осталось ~{days_left} дней до напоминания"
+        await update.message.reply_text(
+            f"🍪 LinkedIn cookie\n\n"
+            f"Установлен через /setcookie {age} дней назад\n"
+            f"Статус: {status}\n\n"
+            f"Обновить: /setcookie <значение>"
+        )
+    elif has_db_cookie:
+        await update.message.reply_text(
+            "🍪 Cookie из БД, но без даты установки. Перезапиши через /setcookie чтобы трекать возраст."
+        )
+    elif has_env_cookie:
+        await update.message.reply_text(
+            "🍪 Cookie сейчас прокинут через переменную окружения LINKEDIN_LI_AT.\n"
+            "Возраст не отслеживается. Чтобы перевести на управление через бота — отправь /setcookie <значение>."
+        )
+    else:
+        await update.message.reply_text("🍪 Cookie не настроен. Отправь /setcookie <значение>.")
 
 
 async def cmd_setquiet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -477,4 +571,6 @@ def register_handlers(app, config: Config, db: Database) -> None:
     app.add_handler(CommandHandler("settime", cmd_settime))
     app.add_handler(CommandHandler("setday", cmd_setday))
     app.add_handler(CommandHandler("setquiet", cmd_setquiet))
+    app.add_handler(CommandHandler("setcookie", cmd_setcookie))
+    app.add_handler(CommandHandler("cookieage", cmd_cookieage))
     app.add_handler(CallbackQueryHandler(on_callback))

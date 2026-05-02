@@ -82,7 +82,7 @@ async def _platform_snapshot(
 
 async def build_report(
     db: Database,
-    errors: dict[str, bool] | None = None,
+    errors: dict[str, bool | int] | None = None,
     linkedin_stale_days: int = 7,
 ) -> tuple[str, bool]:
     """Build the textual report and return (text, has_meaningful_change)."""
@@ -94,7 +94,11 @@ async def build_report(
     lines.append("")
 
     if errors.get("linkedin_cookie_expired"):
-        lines.append("⚠️ LinkedIn cookie истёк — обнови LINKEDIN_LI_AT в .env")
+        lines.append("⚠️ LinkedIn cookie истёк — обнови через /setcookie")
+        lines.append("")
+    elif errors.get("linkedin_cookie_aging"):
+        age = errors["linkedin_cookie_aging"]
+        lines.append(f"⏰ LinkedIn cookie живёт уже {age} дней — пора обновить (/setcookie)")
         lines.append("")
 
     total_current = 0
