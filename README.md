@@ -1,82 +1,85 @@
 # Social Media Follower Tracker Bot
 
-Telegram-бот для ежедневного отслеживания подписчиков в Telegram, YouTube и LinkedIn.
+Telegram-бот для отслеживания подписчиков в Telegram, YouTube и LinkedIn.
 
 ## Возможности
 
-- Автоматический сбор данных каждый день в 09:00 (Ташкент, UTC+5)
-- Отчёт с дельтой за день и неделю
-- Ручной ввод данных LinkedIn через команду
-- История по каждой платформе
-- Хранение данных в SQLite
+- Ежедневный сбор данных (хранится для трендов и графиков)
+- Пуш-отчёт по настраиваемому дню недели (по умолчанию суббота 13:00 Ташкент)
+- LinkedIn fetch автоматически через cookie `li_at` (RapidAPI как fallback)
+- Inline-ввод LinkedIn через кнопку, без `/linkedin <число>`
+- Sparkline за 14 дней, дельты день / неделя / месяц
+- Milestone-алерт при пересечении круглых чисел (1k, 5k, 10k…)
+- Лидер недели по % роста
+- «Тихий режим»: пропустить пуш, если за неделю ничего не изменилось
 
 ## Получение токенов
 
 ### Telegram Bot
-1. Напишите [@BotFather](https://t.me/BotFather) в Telegram
-2. Создайте бота командой `/newbot`
-3. Скопируйте токен → `BOT_TOKEN`
-4. Добавьте бота **администратором** в канал @raschet7
-5. Узнайте свой chat ID через [@userinfobot](https://t.me/userinfobot) → `ADMIN_CHAT_ID`
+1. Напишите [@BotFather](https://t.me/BotFather) → `/newbot`
+2. Скопируйте токен → `BOT_TOKEN`
+3. Добавьте бота **администратором** в канал
+4. Узнайте свой chat ID через [@userinfobot](https://t.me/userinfobot) → `ADMIN_CHAT_ID`
 
 ### YouTube Data API
-1. Откройте [Google Cloud Console](https://console.cloud.google.com/)
-2. Создайте проект → включите YouTube Data API v3
-3. Создайте API Key → `YOUTUBE_API_KEY`
-4. ID канала можно найти на странице канала → `YOUTUBE_CHANNEL_ID`
+1. [Google Cloud Console](https://console.cloud.google.com/) → новый проект → включите YouTube Data API v3
+2. Создайте API Key → `YOUTUBE_API_KEY`
+3. Найдите ID канала → `YOUTUBE_CHANNEL_ID`
 
-### LinkedIn (RapidAPI)
-1. Зарегистрируйтесь на [RapidAPI](https://rapidapi.com/)
-2. Подпишитесь на [Fresh LinkedIn Profile Data](https://rapidapi.com/freshdata-freshdata-default/api/fresh-linkedin-profile-data)
-3. Скопируйте API Key → `RAPIDAPI_KEY`
-4. Укажите URL профиля → `LINKEDIN_PROFILE_URL`
+### LinkedIn (cookie-based, рекомендуется)
+1. Зайдите в [linkedin.com](https://www.linkedin.com/) в браузере под своим аккаунтом
+2. DevTools → Application → Cookies → `linkedin.com` → скопируйте значение `li_at` → `LINKEDIN_LI_AT`
+3. Укажите URL профиля → `LINKEDIN_PROFILE_URL`
+4. Cookie живёт ~1 год; если истёк — бот пришлёт предупреждение в очередном отчёте
+
+### LinkedIn (RapidAPI, fallback)
+Используется автоматически, если `LINKEDIN_LI_AT` не задан или cookie сломан.
+1. [RapidAPI](https://rapidapi.com/) → подпишитесь на LinkedIn data scraper
+2. Скопируйте API Key → `RAPIDAPI_KEY`
 
 ## Настройка
 
-1. Скопируйте файл окружения:
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Заполните `.env` реальными значениями.
-
-## Запуск
-
 ```bash
+cp .env.example .env
+# заполните .env
 docker-compose up -d
 ```
 
-Логи:
-```bash
-docker-compose logs -f
-```
+Логи: `docker-compose logs -f`. Остановка: `docker-compose down`.
 
-Остановка:
-```bash
-docker-compose down
-```
-
-## Команды бота
+## Команды
 
 | Команда | Описание |
 |---------|----------|
-| `/start` | Приветствие + список команд |
-| `/stats` | Текущая сводка из БД |
-| `/now` | Принудительный сбор данных + отчёт |
-| `/linkedin <число>` | Ручной ввод подписчиков LinkedIn |
-| `/history <platform> <days>` | История за N дней |
-| `/help` | Список команд |
+| `/start` | Приветствие + меню |
+| `/stats` | Текущая сводка |
+| `/now` | Принудительный сбор + отчёт |
+| `/week` | Недельный дайджест |
+| `/linkedin <число>` | Ввод LinkedIn вручную |
+| `/history [platform] [days]` | История |
+| `/settime HH:MM` | Время отчёта (UTC) |
+| `/setday <дни>` | День(и) отчёта: `sat`, `mon,thu`, `mon-fri`, `daily` |
+| `/setquiet on\|off` | Тихий режим (пропускать неинтересные отчёты) |
 
-Команды `/stats`, `/now`, `/linkedin`, `/history` доступны только администратору.
+Все команды доступны только администратору (`ADMIN_CHAT_ID`).
+
+## Расписание
+
+- Бот **собирает данные ежедневно** в `REPORT_HOUR_UTC:REPORT_MINUTE` (для трендов).
+- **Пушит отчёт** только в дни, выбранные через `/setday` (или `REPORT_DOW`).
+- Дефолт: `sat` 08:00 UTC = суббота 13:00 Ташкент.
 
 ## Формат отчёта
 
 ```
-📊 Подписчики — 30.03.2026
+📊 Подписчики — 02.05.2026
 
-Telegram: 1,102 (▲ +3 за день, ▲ +18 за неделю)
-YouTube: 847 (▲ +1 за день, ▲ +12 за неделю)
-LinkedIn: 4,520 (▲ +5 за день, ▲ +22 за неделю)
+Telegram: 1,010  ▁▃▄▅▆█ (▲ +7 день, ▲ +20 неделя, ▲ +60 месяц)
+YouTube: 850  ▁▂▃█ (▲ +30 неделя, ▲ +50 месяц)
+LinkedIn: 4,520  ▁▅▇█ (▲ +5 день, ▲ +30 неделя, ▲ +120 месяц)
 
-📈 Всего: 6,469 (▲ +9 за день, ▲ +52 за неделю)
+🎯 Telegram перешагнул 1,000!
+🏆 Лидер недели: YouTube +3.7%
+
+📈 Всего: 6,380 (▲ +80 неделя, ▲ +230 месяц)
 ```

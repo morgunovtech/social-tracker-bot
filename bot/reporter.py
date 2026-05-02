@@ -11,6 +11,11 @@ PLATFORM_LABELS = {
     "linkedin": "LinkedIn",
 }
 
+# Crossed when count moves up through one of these.
+MILESTONES = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000]
+
+_BLOCKS = "▁▂▃▄▅▆▇█"
+
 
 def _fmt(n: int) -> str:
     return f"{n:,}"
@@ -27,32 +32,89 @@ def _delta_str(current: int, previous: int | None) -> str:
     return "→ 0"
 
 
+def _sparkline(values: list[int]) -> str:
+    """Render a unicode sparkline. Empty if fewer than 2 points."""
+    if len(values) < 2:
+        return ""
+    lo, hi = min(values), max(values)
+    if lo == hi:
+        return _BLOCKS[0] * len(values)
+    span = hi - lo
+    return "".join(_BLOCKS[int((v - lo) * 7 / span)] for v in values)
+
+
+def _crossed_milestone(prev: int | None, current: int) -> int | None:
+    """Highest milestone strictly between prev (exclusive) and current (inclusive)."""
+    if prev is None or current <= prev:
+        return None
+    crossed = [m for m in MILESTONES if prev < m <= current]
+    return max(crossed) if crossed else None
+
+
+async def _platform_snapshot(
+    db: Database, platform: str, today: date
+) -> dict:
+    """Fetch all comparison points for a platform in one place."""
+    yesterday = today - timedelta(days=1)
+    week_ago = today - timedelta(days=7)
+    month_ago = today - timedelta(days=30)
+
+    latest = await db.get_latest(platform)
+    if latest is None:
+        return {"latest": None}
+
+    day_row = await db.get_by_date(platform, yesterday)
+    week_row = await db.get_by_date(platform, week_ago)
+    month_row = await db.get_by_date(platform, month_ago)
+
+    # Sparkline: last 14 days, take all available points
+    history = await db.get_history(platform, 14)
+    spark_values = [r["count"] for r in history[-14:]]
+
+    return {
+        "latest": latest,
+        "day": day_row["count"] if day_row else None,
+        "week": week_row["count"] if week_row else None,
+        "month": month_row["count"] if month_row else None,
+        "spark_values": spark_values,
+    }
+
+
 async def build_report(
     db: Database,
     errors: dict[str, bool] | None = None,
-) -> str:
+    linkedin_stale_days: int = 7,
+) -> tuple[str, bool]:
+    """Build the textual report and return (text, has_meaningful_change)."""
     today = date.today()
-    yesterday = today - timedelta(days=1)
-    week_ago = today - timedelta(days=7)
     errors = errors or {}
 
     lines: list[str] = []
     lines.append(f"📊 Подписчики — {today.strftime('%d.%m.%Y')}")
     lines.append("")
 
+    if errors.get("linkedin_cookie_expired"):
+        lines.append("⚠️ LinkedIn cookie истёк — обнови LINKEDIN_LI_AT в .env")
+        lines.append("")
+
     total_current = 0
     total_yesterday: int | None = 0
     total_week_ago: int | None = 0
+    total_month_ago: int | None = 0
     has_any_data = False
+    has_change = False
+
+    week_growth: dict[str, float] = {}
+    milestones_hit: list[tuple[str, int]] = []  # (platform_label, milestone)
 
     for platform in PLATFORMS:
         label = PLATFORM_LABELS[platform]
-        latest = await db.get_latest(platform)
+        snap = await _platform_snapshot(db, platform, today)
+        latest = snap["latest"]
 
         if latest is None:
-            # LinkedIn without data — show placeholder without warning
             if platform == "linkedin":
-                lines.append(f"{label}: — (не введено, используйте /linkedin)")
+                lines.append(f"{label}: — (не введено)")
             elif errors.get(platform):
                 lines.append(f"{label}: ⚠️ нет данных")
             continue
@@ -63,32 +125,56 @@ async def build_report(
         collected_at_str = latest["collected_at"]
         total_current += count
 
-        day_row = await db.get_by_date(platform, yesterday)
-        day_count = day_row["count"] if day_row else None
+        day_count = snap["day"]
+        week_count = snap["week"]
+        month_count = snap["month"]
 
-        week_row = await db.get_by_date(platform, week_ago)
-        week_count = week_row["count"] if week_row else None
+        if day_count is not None and count != day_count:
+            has_change = True
+        if week_count is not None and count != week_count:
+            has_change = True
 
-        parts = [f"{label}: {_fmt(count)}"]
+        # Milestone: detected vs week_ago (one-week scope) so weekly reports surface fresh crossings.
+        crossed = _crossed_milestone(week_count, count)
+        if crossed is not None:
+            milestones_hit.append((label, crossed))
 
-        day_delta = _delta_str(count, day_count)
-        if day_delta:
-            parts.append(f"{day_delta} за день")
+        # Week growth percentage for leader detection
+        if week_count is not None and week_count > 0:
+            week_growth[label] = (count - week_count) / week_count * 100
 
-        week_delta = _delta_str(count, week_count)
-        if week_delta:
-            parts.append(f"{week_delta} за неделю")
+        # Build the line
+        head = f"{label}: {_fmt(count)}"
+        spark = _sparkline(snap["spark_values"])
+        if spark:
+            head += f"  {spark}"
 
-        line = parts[0]
-        if len(parts) > 1:
-            line += " (" + ", ".join(parts[1:]) + ")"
+        deltas: list[str] = []
+        for delta_raw, name in (
+            (_delta_str(count, day_count), "день"),
+            (_delta_str(count, week_count), "неделя"),
+            (_delta_str(count, month_count), "месяц"),
+        ):
+            if delta_raw:
+                deltas.append(f"{delta_raw} {name}")
 
-        if platform == "linkedin" and source == "manual":
+        line = head
+        if deltas:
+            line += " (" + ", ".join(deltas) + ")"
+
+        if platform == "linkedin":
             try:
                 collected_dt = datetime.fromisoformat(collected_at_str)
-                line += f" (вручную, {collected_dt.strftime('%d.%m')})"
+                age_days = (datetime.utcnow() - collected_dt).days
             except (ValueError, TypeError):
-                line += " (вручную)"
+                collected_dt = None
+                age_days = 0
+
+            if source == "manual":
+                stale = age_days >= linkedin_stale_days
+                date_str = collected_dt.strftime("%d.%m") if collected_dt else "?"
+                marker = "⚠️ устарело" if stale else "вручную"
+                line += f"  ({marker}, {date_str})"
 
         if errors.get(platform) and platform != "linkedin":
             line += " ⚠️"
@@ -99,42 +185,53 @@ async def build_report(
             total_yesterday += day_count
         else:
             total_yesterday = None
-
         if week_count is not None and total_week_ago is not None:
             total_week_ago += week_count
         else:
             total_week_ago = None
+        if month_count is not None and total_month_ago is not None:
+            total_month_ago += month_count
+        else:
+            total_month_ago = None
 
     if not has_any_data:
         lines.append("Нет данных. Используйте /now для первого сбора.")
-        return "\n".join(lines)
+        return "\n".join(lines), False
 
+    # Highlights block
+    highlights: list[str] = []
+    for label, milestone in milestones_hit:
+        highlights.append(f"🎯 {label} перешагнул {_fmt(milestone)}!")
+    if week_growth:
+        leader_name, leader_pct = max(week_growth.items(), key=lambda kv: kv[1])
+        if leader_pct > 0:
+            highlights.append(f"🏆 Лидер недели: {leader_name} +{leader_pct:.1f}%")
+    if highlights:
+        lines.append("")
+        lines.extend(highlights)
+
+    # Total
     lines.append("")
     total_parts = [f"📈 Всего: {_fmt(total_current)}"]
-
-    total_day_delta = _delta_str(total_current, total_yesterday)
-    if total_day_delta:
-        total_parts.append(f"{total_day_delta} за день")
-
-    total_week_delta = _delta_str(total_current, total_week_ago)
-    if total_week_delta:
-        total_parts.append(f"{total_week_delta} за неделю")
+    for delta_raw, name in (
+        (_delta_str(total_current, total_yesterday), "день"),
+        (_delta_str(total_current, total_week_ago), "неделя"),
+        (_delta_str(total_current, total_month_ago), "месяц"),
+    ):
+        if delta_raw:
+            total_parts.append(f"{delta_raw} {name}")
 
     total_line = total_parts[0]
     if len(total_parts) > 1:
         total_line += " (" + ", ".join(total_parts[1:]) + ")"
-
     lines.append(total_line)
 
-    return "\n".join(lines)
+    return "\n".join(lines), has_change
 
 
 async def build_week_report(db: Database) -> str:
     today = date.today()
-    # This week: Mon–today
     week_start = today - timedelta(days=today.weekday())
-    # Last week: Mon–Sun
-    last_week_start = week_start - timedelta(days=7)
     last_week_end = week_start - timedelta(days=1)
 
     lines = [f"📅 Неделя {week_start.strftime('%d.%m')} — {today.strftime('%d.%m.%Y')}", ""]
@@ -154,10 +251,11 @@ async def build_week_report(db: Database) -> str:
         count_now = latest["count"]
         total_now += count_now
 
-        # Best value from last week (last available day)
+        # Walk back from Sunday of last week up to 7 days,
+        # taking the most recent available data point inside last week.
         prev_row = None
-        for d in range(6, -1, -1):
-            prev_row = await db.get_by_date(platform, last_week_end - timedelta(days=d - 6))
+        for offset in range(7):
+            prev_row = await db.get_by_date(platform, last_week_end - timedelta(days=offset))
             if prev_row:
                 break
 
@@ -187,27 +285,22 @@ async def build_week_report(db: Database) -> str:
 
 async def build_history_all(db: Database, days: int) -> str:
     """Combined history table for all platforms."""
-    from datetime import datetime as _dt
-    since = (date.today() - timedelta(days=days))
-
-    # Collect per-platform rows indexed by date string
-    data: dict[str, dict[str, int]] = {}  # date_str -> {platform: count}
-    all_dates: set[str] = set()
+    # Collect per-platform rows indexed by date object
+    data: dict[date, dict[str, int]] = {}
 
     for platform in PLATFORMS:
         rows = await db.get_history(platform, days)
         for row in rows:
             try:
-                d = _dt.fromisoformat(row["collected_at"]).strftime("%d.%m")
+                d = datetime.fromisoformat(row["collected_at"]).date()
             except (ValueError, TypeError):
-                d = str(row["collected_at"])[:5]
-            all_dates.add(d)
+                continue
             data.setdefault(d, {})[platform] = row["count"]
 
-    if not all_dates:
+    if not data:
         return f"Нет данных за последние {days} дней."
 
-    sorted_dates = sorted(all_dates, key=lambda s: (s[3:], s[:2]))  # sort by MM, DD
+    sorted_dates = sorted(data.keys())
 
     lines = [f"📊 Все платформы — {days} дней", ""]
     lines.append("```")
@@ -215,10 +308,11 @@ async def build_history_all(db: Database, days: int) -> str:
     lines.append("-" * 30)
 
     for d in sorted_dates:
-        tg = _fmt(data[d]["telegram"]) if "telegram" in data[d] else "—"
-        yt = _fmt(data[d]["youtube"]) if "youtube" in data[d] else "—"
-        li = _fmt(data[d]["linkedin"]) if "linkedin" in data[d] else "—"
-        lines.append(f"{d:<7} {tg:>7} {yt:>7} {li:>7}")
+        row = data[d]
+        tg = _fmt(row["telegram"]) if "telegram" in row else "—"
+        yt = _fmt(row["youtube"]) if "youtube" in row else "—"
+        li = _fmt(row["linkedin"]) if "linkedin" in row else "—"
+        lines.append(f"{d.strftime('%d.%m'):<7} {tg:>7} {yt:>7} {li:>7}")
 
     lines.append("```")
     return "\n".join(lines)
