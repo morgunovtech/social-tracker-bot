@@ -132,7 +132,50 @@ async def collect_and_report(
             if age is not None and age >= COOKIE_AGING_DAYS:
                 errors["linkedin_cookie_aging"] = age
 
+        # Push finalized counts to the website (reuses the open session).
+        await _push_subscribers(session, config, db)
+
     return await build_report(db, errors=errors, linkedin_stale_days=config.linkedin_stale_days)
+
+
+async def _push_subscribers(
+    session: aiohttp.ClientSession, config: Config, db: Database
+) -> None:
+    """Push finalized subscriber counts to the website's ingest endpoint.
+
+    Fire-and-forget: any failure is logged, never raised, so the report flow is
+    unaffected. Reads the authoritative latest count per platform from the DB,
+    so a transient collection miss on one platform still pushes the last good
+    numbers. Skips entirely until all three platforms have data.
+    """
+    if not config.site_ingest_url or not config.site_ingest_token:
+        return
+
+    counts: dict[str, int] = {}
+    for platform in ("telegram", "youtube", "linkedin"):
+        latest = await db.get_latest(platform)
+        if latest is not None:
+            counts[platform] = latest["count"]
+
+    if len(counts) < 3:
+        logger.info("Site push skipped — not all platforms have data yet: %s", sorted(counts))
+        return
+
+    payload = {**counts, "updatedAt": datetime.utcnow().isoformat() + "Z"}
+    try:
+        async with session.post(
+            config.site_ingest_url,
+            json=payload,
+            headers={"Authorization": f"Bearer {config.site_ingest_token}"},
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as resp:
+            if resp.status == 200:
+                logger.info("Pushed subscriber counts to site: %s", counts)
+            else:
+                body = (await resp.text())[:200]
+                logger.warning("Site push failed: HTTP %s — %s", resp.status, body)
+    except Exception:
+        logger.exception("Site push errored")
 
 
 async def _scheduled_job(bot: Bot, config: Config, db: Database) -> None:

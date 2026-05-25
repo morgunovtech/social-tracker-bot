@@ -41,6 +41,10 @@ class Config:
     # Database
     db_path: str
 
+    # Site push — sends finalized counts to about-me-page's ingest endpoint.
+    site_ingest_url: str | None
+    site_ingest_token: str | None
+
     @classmethod
     def from_env(cls) -> Config:
         return cls(
@@ -58,4 +62,8 @@ class Config:
             report_dow=os.getenv("REPORT_DOW", "sat").lower(),
             quiet_if_no_change=os.getenv("QUIET_IF_NO_CHANGE", "0") == "1",
             db_path=os.getenv("DB_PATH", "data/followers.db"),
+            site_ingest_url=os.getenv(
+                "SITE_INGEST_URL", "https://s.morgunov.tech/api/ingest/subscribers"
+            ),
+            site_ingest_token=os.getenv("SOCIALBOT_INGEST_TOKEN"),
         )
