@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import statistics
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 import aiohttp
-import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from telegram import Bot
+from zoneinfo import ZoneInfo
 
-UTC = pytz.utc
+UTC = ZoneInfo("UTC")
 
 # Warn user when cookie has been in use longer than this (LinkedIn lifetime ~12 months)
 COOKIE_AGING_DAYS = 330
@@ -20,6 +21,12 @@ COOKIE_AGING_DAYS = 330
 # A same-day drop is alert-worthy when it exceeds either bound.
 DROP_ALERT_MIN_ABS = 20
 DROP_ALERT_MIN_PCT = 1.0
+
+# A same-day gain is flagged as a possible bot influx when it is both
+# large in absolute terms and a multiple of the typical daily gain.
+SPIKE_ALERT_MIN_ABS = 30
+SPIKE_ALERT_FACTOR = 5
+SPIKE_ALERT_MIN_PCT = 3.0  # fallback when there is too little history
 
 # Failed platforms are re-collected up to this many times, an hour apart.
 COLLECT_MAX_ATTEMPTS = 3
@@ -52,6 +59,7 @@ class CollectOutcome:
     errors: dict[str, bool | int] = field(default_factory=dict)
     collected: dict[str, tuple[int, str]] = field(default_factory=dict)  # platform -> (count, source)
     drops: dict[str, tuple[int, int]] = field(default_factory=dict)  # platform -> (prev, new)
+    spikes: dict[str, tuple[int, int]] = field(default_factory=dict)  # platform -> (prev, new)
     milestones: list[tuple[str, int]] = field(default_factory=list)  # (platform, milestone)
 
 VALID_DOW = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
@@ -132,10 +140,26 @@ async def collect_and_report(
     outcome = CollectOutcome(report="", has_change=False)
     errors = outcome.errors
 
+    async def is_spike(platform: str, prev: int, gain: int) -> bool:
+        """Abnormal influx (possible bot wave): gain far above the typical daily gain."""
+        if gain < SPIKE_ALERT_MIN_ABS:
+            return False
+        rows = await db.get_history(platform, 14)
+        counts = [r["count"] for r in rows]
+        deltas = [b - a for a, b in zip(counts, counts[1:])]
+        if len(deltas) >= 3:
+            baseline = max(statistics.median(deltas), 1)
+            return gain >= SPIKE_ALERT_FACTOR * baseline
+        return prev > 0 and gain / prev * 100 >= SPIKE_ALERT_MIN_PCT
+
     async def record(platform: str, count: int, source: str = "api") -> None:
-        """Persist a count and detect drops / milestone crossings vs the stored value."""
+        """Persist a count and detect drops / spikes / milestone crossings vs the stored value."""
         prev_row = await db.get_latest(platform)
         prev = prev_row["count"] if prev_row else None
+        if prev is not None:
+            # Spike check reads history, so it runs before today's upsert.
+            if count > prev and await is_spike(platform, prev, count - prev):
+                outcome.spikes[platform] = (prev, count)
         await db.upsert(platform, count, source=source)
         outcome.collected[platform] = (count, source)
         if prev is None:
@@ -274,6 +298,13 @@ async def _build_alerts(db: Database, outcome: CollectOutcome) -> list[str]:
     for platform, (prev, new) in outcome.drops.items():
         label = PLATFORM_LABELS[platform]
         lines.append(f"🟠 {label}: −{_fmt(prev - new)} подписчиков за день ({_fmt(prev)} → {_fmt(new)})")
+
+    for platform, (prev, new) in outcome.spikes.items():
+        label = PLATFORM_LABELS[platform]
+        lines.append(
+            f"🚨 {label}: +{_fmt(new - prev)} за день ({_fmt(prev)} → {_fmt(new)}) — "
+            f"аномально резкий рост, возможен наплыв ботов"
+        )
 
     for platform, milestone in outcome.milestones:
         label = PLATFORM_LABELS[platform]
