@@ -14,11 +14,11 @@ UTC = pytz.utc
 # Warn user when cookie has been in use longer than this (LinkedIn lifetime ~12 months)
 COOKIE_AGING_DAYS = 330
 
-from bot.collectors.linkedin import collect_linkedin
+from bot.collectors.linkedin import collect_linkedin, plausible_count
 from bot.collectors.telegram import collect_telegram
 from bot.collectors.youtube import collect_youtube
 from bot.config import Config
-from bot.db import Database
+from bot.db import Database, parse_utc, utcnow
 from bot.reporter import build_report
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ def _today_matches_dow(dow_expr: str, now_utc: datetime | None = None) -> bool:
     """Return True if today (UTC) matches the cron day-of-week expression."""
     if dow_expr == "*":
         return True
-    today_idx = (now_utc or datetime.utcnow()).weekday()  # 0=Mon..6=Sun
+    today_idx = (now_utc or utcnow()).weekday()  # 0=Mon..6=Sun
     today_short = _DOW_ORDER[today_idx]
 
     if "-" in dow_expr and "," not in dow_expr:
@@ -84,7 +84,7 @@ async def get_cookie_age_days(db: Database) -> int | None:
     if not set_at:
         return None
     try:
-        return (datetime.utcnow() - datetime.fromisoformat(set_at)).days
+        return (utcnow() - parse_utc(set_at)).days
     except (ValueError, TypeError):
         return None
 
@@ -121,7 +121,18 @@ async def collect_and_report(
                 li_at=li_at,
             )
             if li_count is not None and li_source is not None:
-                await db.upsert("linkedin", li_count, source=li_source)
+                prev = await db.get_latest("linkedin")
+                prev_count = prev["count"] if prev else None
+                if plausible_count(prev_count, li_count):
+                    await db.upsert("linkedin", li_count, source=li_source)
+                else:
+                    logger.warning(
+                        "LinkedIn count %d rejected as implausible (previous: %s) — "
+                        "likely parsed someone else's counter; reset baseline via /linkedin <N>",
+                        li_count,
+                        prev_count,
+                    )
+                    errors["linkedin"] = True
             elif li_source == "cookie_expired":
                 errors["linkedin_cookie_expired"] = True
             elif (li_at or config.rapidapi_key) and config.linkedin_profile_url:
@@ -161,7 +172,7 @@ async def _push_subscribers(
         logger.info("Site push skipped — not all platforms have data yet: %s", sorted(counts))
         return
 
-    payload = {**counts, "updatedAt": datetime.utcnow().isoformat() + "Z"}
+    payload = {**counts, "updatedAt": utcnow().isoformat().replace("+00:00", "Z")}
     try:
         async with session.post(
             config.site_ingest_url,

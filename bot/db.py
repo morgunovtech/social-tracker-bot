@@ -2,11 +2,21 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import aiosqlite
 
 logger = logging.getLogger(__name__)
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def parse_utc(ts: str) -> datetime:
+    """Parse an ISO/SQLite timestamp; naive values are assumed to be UTC."""
+    dt = datetime.fromisoformat(ts)
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS followers (
@@ -94,7 +104,7 @@ class Database:
             return dict(row) if row else None
 
     async def get_history(self, platform: str, days: int) -> list[dict]:
-        since = (datetime.utcnow() - timedelta(days=days)).date()
+        since = (utcnow() - timedelta(days=days)).date()
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(

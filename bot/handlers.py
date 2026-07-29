@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+import re
 
 import aiohttp
 from telegram import (
@@ -11,6 +11,7 @@ from telegram import (
     ReplyKeyboardMarkup,
     Update,
 )
+from telegram.error import BadRequest
 from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
@@ -20,23 +21,8 @@ from telegram.ext import (
     filters,
 )
 
-# ConversationHandler states
-LI_AWAITING_NUMBER = 1
-
-# Persistent reply-keyboard label. Tapping this sends the same text back,
-# which our MessageHandler maps to /start.
-MENU_BUTTON_TEXT = "📊 Меню"
-
-
-def _persistent_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        [[KeyboardButton(MENU_BUTTON_TEXT)]],
-        resize_keyboard=True,
-        is_persistent=True,
-    )
-
 from bot.config import Config
-from bot.db import Database
+from bot.db import Database, utcnow
 from bot.reporter import PLATFORMS, build_history_all, build_history_table, build_report, build_week_report
 from bot.collectors.linkedin import collect_linkedin
 from bot.scheduler import (
@@ -51,6 +37,37 @@ from bot.scheduler import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ConversationHandler states
+LI_AWAITING_NUMBER = 1
+
+# End a dangling LinkedIn-input conversation after this many seconds of silence.
+LI_CONV_TIMEOUT = 120
+
+# Persistent reply-keyboard label. Tapping this sends the same text back,
+# which our MessageHandler maps to /start.
+MENU_BUTTON_TEXT = "📊 Меню"
+
+
+def _persistent_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton(MENU_BUTTON_TEXT)]],
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
+async def _safe_edit(query, text: str, **kwargs) -> None:
+    """edit_message_text that ignores Telegram's 'Message is not modified'.
+
+    Repeated taps on the same inline button produce identical content; without
+    this the second tap raises BadRequest and looks like a dead button.
+    """
+    try:
+        await query.edit_message_text(text, **kwargs)
+    except BadRequest as e:
+        if "message is not modified" not in str(e).lower():
+            raise
 
 # ---------------------------------------------------------------------------
 # Keyboards
@@ -146,6 +163,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config: Config = context.bot_data["config"]
+    if not _is_admin(update, config):
+        await _deny(update)
+        return
     await update.message.reply_text(
         "Команды:\n\n"
         "/stats — текущая сводка\n"
@@ -355,12 +376,20 @@ async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     await db.set_setting("linkedin_li_at", cookie)
-    await db.set_setting("linkedin_li_at_set_at", datetime.utcnow().isoformat())
+    await db.set_setting("linkedin_li_at_set_at", utcnow().isoformat())
     await db.upsert("linkedin", count, source="cookie")
 
-    await update.message.reply_text(
+    # Don't leave the secret sitting in chat history.
+    deleted = True
+    try:
+        await update.message.delete()
+    except Exception:
+        deleted = False
+
+    note = "" if deleted else "\n⚠️ Удали сообщение с cookie из чата вручную."
+    await update.effective_chat.send_message(
         f"✅ Cookie сохранён. Тест-фетч: {count:,} подписчиков.\n"
-        f"Примерный срок жизни — ~12 месяцев. Бот предупредит за месяц до конца.",
+        f"Примерный срок жизни — ~12 месяцев. Бот предупредит за месяц до конца.{note}",
         reply_markup=_main_menu(),
     )
 
@@ -443,25 +472,26 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     data = query.data
 
     if data == "menu":
-        await query.edit_message_text("Выберите действие:", reply_markup=_main_menu())
+        await _safe_edit(query, "Выберите действие:", reply_markup=_main_menu())
 
     elif data == "stats":
         report, _ = await build_report(db, linkedin_stale_days=config.linkedin_stale_days)
-        await query.edit_message_text(report, reply_markup=_main_menu())
+        await _safe_edit(query, report, reply_markup=_main_menu())
 
     elif data == "now":
-        await query.edit_message_text("⏳ Собираю данные...")
+        await _safe_edit(query, "⏳ Собираю данные...")
         report, _ = await collect_and_report(context.bot, config, db, force_linkedin=True)
-        await query.edit_message_text(report, reply_markup=_main_menu())
+        await _safe_edit(query, report, reply_markup=_main_menu())
 
     elif data == "week":
         report = await build_week_report(db)
-        await query.edit_message_text(report, reply_markup=_main_menu())
+        await _safe_edit(query, report, reply_markup=_main_menu())
 
     elif data == "settings":
         dow, hour, minute = await get_report_schedule(db, config)
         quiet = await is_quiet_mode(db, config)
-        await query.edit_message_text(
+        await _safe_edit(
+            query,
             f"⚙️ Настройки\n\n"
             f"Расписание: {_dow_pretty(dow)} в {hour:02d}:{minute:02d} UTC\n"
             f"Изменить: /settime HH:MM, /setday sat\n",
@@ -473,7 +503,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         new_value = not current
         await db.set_setting("quiet_if_no_change", "1" if new_value else "0")
         dow, hour, minute = await get_report_schedule(db, config)
-        await query.edit_message_text(
+        await _safe_edit(
+            query,
             f"⚙️ Настройки\n\n"
             f"Расписание: {_dow_pretty(dow)} в {hour:02d}:{minute:02d} UTC\n"
             f"Изменить: /settime HH:MM, /setday sat\n",
@@ -481,14 +512,15 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
 
     elif data == "history":
-        await query.edit_message_text("Выберите платформу:", reply_markup=_history_platforms())
+        await _safe_edit(query, "Выберите платформу:", reply_markup=_history_platforms())
 
     elif data.startswith("history:"):
         parts = data.split(":")
         if len(parts) == 2:
             platform = parts[1]
             label = "Все платформы" if platform == "all" else platform.capitalize()
-            await query.edit_message_text(
+            await _safe_edit(
+                query,
                 f"Платформа: {label}\nВыберите период:",
                 reply_markup=_history_periods(platform),
             )
@@ -499,7 +531,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 table = await build_history_all(db, days)
             else:
                 table = await build_history_table(db, platform, days)
-            await query.edit_message_text(
+            await _safe_edit(
+                query,
                 table,
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("← Назад", callback_data=f"history:{platform}")]]),
@@ -518,7 +551,8 @@ async def li_conv_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text(
+    await _safe_edit(
+        query,
         "Введи число подписчиков LinkedIn одним сообщением.",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("Отмена", callback_data="li_cancel")],
@@ -554,9 +588,15 @@ async def li_conv_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def li_conv_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text("Отменено.", reply_markup=_main_menu())
+        await _safe_edit(update.callback_query, "Отменено.", reply_markup=_main_menu())
     elif update.message:
         await update.message.reply_text("Отменено.", reply_markup=_main_menu())
+    return ConversationHandler.END
+
+
+async def li_conv_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Menu button pressed mid-conversation — abandon the input and show the menu."""
+    await cmd_start(update, context)
     return ConversationHandler.END
 
 
@@ -572,11 +612,15 @@ def register_handlers(app, config: Config, db: Database) -> None:
         entry_points=[CallbackQueryHandler(li_conv_start, pattern="^linkedin_prompt$")],
         states={
             LI_AWAITING_NUMBER: [
+                # Menu button must win over the number parser, or a dangling
+                # conversation swallows it with "Это не число".
+                MessageHandler(filters.Regex(rf"^{re.escape(MENU_BUTTON_TEXT)}$"), li_conv_menu),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, li_conv_number),
                 CallbackQueryHandler(li_conv_cancel, pattern="^li_cancel$"),
             ],
         },
         fallbacks=[CommandHandler("cancel", li_conv_cancel)],
+        conversation_timeout=LI_CONV_TIMEOUT,
     )
     # Conversation must be registered before the catch-all CallbackQueryHandler
     app.add_handler(li_conv)
@@ -593,5 +637,5 @@ def register_handlers(app, config: Config, db: Database) -> None:
     app.add_handler(CommandHandler("setquiet", cmd_setquiet))
     app.add_handler(CommandHandler("setcookie", cmd_setcookie))
     app.add_handler(CommandHandler("cookieage", cmd_cookieage))
-    app.add_handler(MessageHandler(filters.Regex(rf"^{MENU_BUTTON_TEXT}$"), cmd_start))
+    app.add_handler(MessageHandler(filters.Regex(rf"^{re.escape(MENU_BUTTON_TEXT)}$"), cmd_start))
     app.add_handler(CallbackQueryHandler(on_callback))

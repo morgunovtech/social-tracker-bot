@@ -42,6 +42,18 @@ class LinkedInAuthError(Exception):
     """Raised when the li_at cookie is rejected or expired."""
 
 
+def plausible_count(prev: Optional[int], new: int) -> bool:
+    """Guard against scraping someone else's counter off the page.
+
+    Profile pages embed follower counts of suggested/viewed profiles too, so a
+    parsed value that jumps wildly vs the last stored one is treated as suspect.
+    Small baselines (<100) are exempt — relative jumps are normal there.
+    """
+    if prev is None or prev < 100:
+        return True
+    return prev * 0.5 <= new <= prev * 1.5
+
+
 def _parse_follower_count(html: str) -> Optional[int]:
     """Extract follower count from LinkedIn HTML using multiple strategies."""
     # JSON-embedded counters (most reliable when authenticated)

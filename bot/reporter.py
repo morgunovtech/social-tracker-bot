@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
-from bot.db import Database
+from bot.db import Database, parse_utc, utcnow
 
 PLATFORMS = ["telegram", "youtube", "linkedin"]
 PLATFORM_LABELS = {
@@ -86,7 +86,8 @@ async def build_report(
     linkedin_stale_days: int = 7,
 ) -> tuple[str, bool]:
     """Build the textual report and return (text, has_meaningful_change)."""
-    today = date.today()
+    # DB timestamps are UTC, so "today" must be the UTC date too.
+    today = utcnow().date()
     errors = errors or {}
 
     lines: list[str] = []
@@ -168,8 +169,8 @@ async def build_report(
 
         if platform == "linkedin":
             try:
-                collected_dt = datetime.fromisoformat(collected_at_str)
-                age_days = (datetime.utcnow() - collected_dt).days
+                collected_dt = parse_utc(collected_at_str)
+                age_days = (utcnow() - collected_dt).days
             except (ValueError, TypeError):
                 collected_dt = None
                 age_days = 0
@@ -180,7 +181,7 @@ async def build_report(
                 marker = "⚠️ устарело" if stale else "вручную"
                 line += f"  ({marker}, {date_str})"
 
-        if errors.get(platform) and platform != "linkedin":
+        if errors.get(platform):
             line += " ⚠️"
 
         lines.append(line)
@@ -234,7 +235,7 @@ async def build_report(
 
 
 async def build_week_report(db: Database) -> str:
-    today = date.today()
+    today = utcnow().date()
     week_start = today - timedelta(days=today.weekday())
     last_week_end = week_start - timedelta(days=1)
 
