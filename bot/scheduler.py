@@ -166,7 +166,6 @@ async def collect_and_report(
             li_at = await get_active_cookie(db, config)
             li_count, li_source = await collect_linkedin(
                 session,
-                config.rapidapi_key,
                 config.linkedin_profile_url,
                 li_at=li_at,
             )
@@ -185,7 +184,7 @@ async def collect_and_report(
                     errors["linkedin"] = True
             elif li_source == "cookie_expired":
                 errors["linkedin_cookie_expired"] = True
-            elif (li_at or config.rapidapi_key) and config.linkedin_profile_url:
+            elif li_at and config.linkedin_profile_url:
                 errors["linkedin"] = True
 
             # Proactive aging warning (only meaningful when cookie was set via /setcookie)

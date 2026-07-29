@@ -368,7 +368,6 @@ async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     async with aiohttp.ClientSession() as session:
         count, source = await collect_linkedin(
             session,
-            rapidapi_key=None,
             profile_url=config.linkedin_profile_url,
             li_at=cookie,
         )

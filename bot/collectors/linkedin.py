@@ -9,10 +9,6 @@ from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
-# RapidAPI fallback
-_RAPIDAPI_URL = "https://linkedin-data-scraper1.p.rapidapi.com/get_user_exact_connections.php"
-_FOLLOWER_FIELDS = ("followers", "follower_count", "followersCount", "connections", "connectionsCount")
-
 # Cookie-based fetch
 _USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -128,83 +124,30 @@ async def _fetch_via_cookie(
         return None
 
 
-async def _fetch_via_rapidapi(
-    session: aiohttp.ClientSession,
-    rapidapi_key: str,
-    profile_url: str,
-) -> Optional[int]:
-    headers = {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "x-rapidapi-host": "linkedin-data-scraper1.p.rapidapi.com",
-        "x-rapidapi-key": rapidapi_key,
-    }
-    data = {"username_or_url": profile_url}
-
-    try:
-        async with session.post(
-            _RAPIDAPI_URL,
-            headers=headers,
-            data=data,
-            timeout=aiohttp.ClientTimeout(total=15),
-        ) as resp:
-            if resp.status != 200:
-                logger.error("LinkedIn RapidAPI returned status %d", resp.status)
-                return None
-
-            payload = await resp.json(content_type=None)
-
-            if isinstance(payload, dict):
-                for field in _FOLLOWER_FIELDS:
-                    value = payload.get(field)
-                    if value is not None:
-                        try:
-                            count = int(str(value).replace(",", "").replace("+", "").strip())
-                            logger.info("LinkedIn followers (rapidapi): %d (field: %s)", count, field)
-                            return count
-                        except (ValueError, TypeError):
-                            continue
-
-            logger.error("LinkedIn RapidAPI: no follower field in response")
-            return None
-
-    except Exception:
-        logger.exception("LinkedIn RapidAPI fetch failed")
-        return None
-
-
 async def collect_linkedin(
     session: aiohttp.ClientSession,
-    rapidapi_key: Optional[str],
     profile_url: Optional[str],
     li_at: Optional[str] = None,
 ) -> tuple[Optional[int], Optional[str]]:
-    """Collect LinkedIn follower count.
+    """Collect LinkedIn follower count via the li_at cookie.
 
-    Returns (count, source) where source is one of: 'cookie', 'rapidapi', None.
-    Tries the cookie path first if li_at is provided, then falls back to RapidAPI.
+    Returns (count, source) where source is 'cookie' or None.
     Returns (None, 'cookie_expired') as a special signal when the cookie is rejected.
     """
     if not profile_url:
         logger.warning("LinkedIn skipped: LINKEDIN_PROFILE_URL not set")
         return None, None
 
-    if li_at:
-        try:
-            count = await _fetch_via_cookie(session, profile_url, li_at)
-            if count is not None:
-                return count, "cookie"
-            logger.warning("LinkedIn cookie returned no count, trying RapidAPI fallback")
-        except LinkedInAuthError as e:
-            logger.error("LinkedIn auth error: %s", e)
-            # Don't try RapidAPI — surface the cookie problem clearly
-            return None, "cookie_expired"
+    if not li_at:
+        logger.warning("LinkedIn skipped: no cookie (set via /setcookie or LINKEDIN_LI_AT)")
+        return None, None
 
-    if rapidapi_key:
-        count = await _fetch_via_rapidapi(session, rapidapi_key, profile_url)
-        if count is not None:
-            return count, "rapidapi"
+    try:
+        count = await _fetch_via_cookie(session, profile_url, li_at)
+    except LinkedInAuthError as e:
+        logger.error("LinkedIn auth error: %s", e)
+        return None, "cookie_expired"
 
-    if not li_at and not rapidapi_key:
-        logger.warning("LinkedIn skipped: no LINKEDIN_LI_AT or RAPIDAPI_KEY")
-
+    if count is not None:
+        return count, "cookie"
     return None, None

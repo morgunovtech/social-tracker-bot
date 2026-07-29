@@ -27,7 +27,6 @@ class Config:
     youtube_channel_id: str
 
     # LinkedIn
-    rapidapi_key: str | None  # RapidAPI fallback
     linkedin_profile_url: str | None
     linkedin_li_at: str | None  # 'li_at' cookie from logged-in browser session
     linkedin_stale_days: int  # mark manual entry as stale after N days
@@ -57,7 +56,6 @@ class Config:
             telegram_channel_id=_require("TELEGRAM_CHANNEL_ID"),
             youtube_api_key=_require("YOUTUBE_API_KEY"),
             youtube_channel_id=_require("YOUTUBE_CHANNEL_ID"),
-            rapidapi_key=os.getenv("RAPIDAPI_KEY"),
             linkedin_profile_url=os.getenv("LINKEDIN_PROFILE_URL"),
             linkedin_li_at=os.getenv("LINKEDIN_LI_AT"),
             linkedin_stale_days=int(os.getenv("LINKEDIN_STALE_DAYS", "7")),
