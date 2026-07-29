@@ -45,6 +45,10 @@ class Config:
     site_ingest_url: str | None
     site_ingest_token: str | None
 
+    # Dead man's switch: pinged after each successful daily collect
+    # (e.g. https://hc-ping.com/<uuid> from healthchecks.io).
+    healthcheck_url: str | None
+
     @classmethod
     def from_env(cls) -> Config:
         return cls(
@@ -66,4 +70,5 @@ class Config:
                 "SITE_INGEST_URL", "https://s.morgunov.tech/api/ingest/subscribers"
             ),
             site_ingest_token=os.getenv("SOCIALBOT_INGEST_TOKEN"),
+            healthcheck_url=os.getenv("HEALTHCHECK_URL"),
         )

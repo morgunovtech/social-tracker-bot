@@ -27,6 +27,7 @@ from bot.reporter import PLATFORMS, build_history_all, build_history_table, buil
 from bot.collectors.linkedin import collect_linkedin
 from bot.scheduler import (
     COOKIE_AGING_DAYS,
+    _build_chart_png,
     collect_and_report,
     get_active_cookie,
     get_cookie_age_days,
@@ -200,8 +201,8 @@ async def cmd_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await _deny(update)
         return
     await update.message.reply_text("⏳ Собираю данные...")
-    report, _ = await collect_and_report(context.bot, config, db, force_linkedin=True)
-    await update.message.reply_text(report, reply_markup=_main_menu())
+    outcome = await collect_and_report(context.bot, config, db, force_linkedin=True)
+    await update.message.reply_text(outcome.report, reply_markup=_main_menu())
 
 
 async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -212,6 +213,9 @@ async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     report = await build_week_report(db)
     await update.message.reply_text(report, reply_markup=_main_menu())
+    chart = await _build_chart_png(db)
+    if chart:
+        await update.message.reply_photo(chart, caption="📉 Динамика за 30 дней")
 
 
 async def cmd_linkedin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -377,6 +381,7 @@ async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     await db.set_setting("linkedin_li_at", cookie)
     await db.set_setting("linkedin_li_at_set_at", utcnow().isoformat())
+    await db.set_setting("cookie_expired_alerted", "0")  # fresh cookie — re-arm the alert
     await db.upsert("linkedin", count, source="cookie")
 
     # Don't leave the secret sitting in chat history.
@@ -480,8 +485,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     elif data == "now":
         await _safe_edit(query, "⏳ Собираю данные...")
-        report, _ = await collect_and_report(context.bot, config, db, force_linkedin=True)
-        await _safe_edit(query, report, reply_markup=_main_menu())
+        outcome = await collect_and_report(context.bot, config, db, force_linkedin=True)
+        await _safe_edit(query, outcome.report, reply_markup=_main_menu())
 
     elif data == "week":
         report = await build_week_report(db)

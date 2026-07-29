@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import date, datetime, timedelta
 
 from bot.db import Database, parse_utc, utcnow
@@ -111,6 +112,8 @@ async def build_report(
 
     week_growth: dict[str, float] = {}
     milestones_hit: list[tuple[str, int]] = []  # (platform_label, milestone)
+    forecasts: list[str] = []
+    accel_notes: list[str] = []
 
     for platform in PLATFORMS:
         label = PLATFORM_LABELS[platform]
@@ -147,6 +150,29 @@ async def build_report(
         # Week growth percentage for leader detection
         if week_count is not None and week_count > 0:
             week_growth[label] = (count - week_count) / week_count * 100
+
+        # Forecast: at the current weekly rate, when is the next milestone?
+        if week_count is not None:
+            rate = count - week_count
+            next_m = next((m for m in MILESTONES if m > count), None)
+            if rate > 0 and next_m is not None:
+                weeks_left = math.ceil((next_m - count) / rate)
+                if weeks_left <= 26:  # beyond half a year the estimate is noise
+                    forecasts.append(
+                        f"🔮 {label}: {_fmt(next_m)} через ~{weeks_left} нед (+{_fmt(rate)}/нед)"
+                    )
+            # Acceleration vs the average weekly rate over the prior ~3 weeks
+            if month_count is not None:
+                prev_avg = (week_count - month_count) / 3.3  # 23 days ≈ 3.3 weeks
+                if prev_avg >= 3:  # too small a base gives meaningless ratios
+                    if rate >= 2 * prev_avg:
+                        accel_notes.append(
+                            f"⚡ {label}: рост ×{rate / prev_avg:.1f} к среднему за месяц"
+                        )
+                    elif rate <= 0.5 * prev_avg:
+                        accel_notes.append(
+                            f"🐌 {label}: рост замедлился (+{_fmt(rate)}/нед против ~{prev_avg:.0f})"
+                        )
 
         # Build the line
         head = f"{label}: {_fmt(count)}"
@@ -211,6 +237,8 @@ async def build_report(
         leader_name, leader_pct = max(week_growth.items(), key=lambda kv: kv[1])
         if leader_pct > 0:
             highlights.append(f"🏆 Лидер недели: {leader_name} +{leader_pct:.1f}%")
+    highlights.extend(accel_notes)
+    highlights.extend(forecasts)
     if highlights:
         lines.append("")
         lines.extend(highlights)
@@ -284,6 +312,78 @@ async def build_week_report(db: Database) -> str:
     if total_delta:
         total_line += f"  {total_delta} за неделю"
     lines.append(total_line)
+
+    return "\n".join(lines)
+
+
+_MONTH_NAMES = [
+    "январь", "февраль", "март", "апрель", "май", "июнь",
+    "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь",
+]
+
+
+async def build_month_report(db: Database) -> str | None:
+    """Digest for the month that just ended (intended for the 1st of the month).
+
+    Compares the latest counts against the first available data point of the
+    previous month. Returns None when there is nothing to report.
+    """
+    today = utcnow().date()
+    prev_month_last = today.replace(day=1) - timedelta(days=1)
+    prev_month_first = prev_month_last.replace(day=1)
+
+    lines = [f"🗓 Итоги месяца — {_MONTH_NAMES[prev_month_last.month - 1]} {prev_month_last.year}", ""]
+
+    growth_pct: dict[str, float] = {}
+    total_now = 0
+    total_base = 0
+    has_data = False
+
+    for platform in PLATFORMS:
+        label = PLATFORM_LABELS[platform]
+        latest = await db.get_latest(platform)
+        if latest is None:
+            continue
+
+        # Baseline: first data point within the first week of the previous month.
+        base_row = None
+        for offset in range(7):
+            base_row = await db.get_by_date(platform, prev_month_first + timedelta(days=offset))
+            if base_row:
+                break
+
+        has_data = True
+        count_now = latest["count"]
+        total_now += count_now
+
+        if base_row is None:
+            lines.append(f"{label}: {_fmt(count_now)} (нет данных на начало месяца)")
+            continue
+
+        base = base_row["count"]
+        total_base += base
+        diff = count_now - base
+        pct = diff / base * 100 if base > 0 else 0.0
+        if base > 0:
+            growth_pct[label] = pct
+        sign = "+" if diff >= 0 else ""
+        lines.append(f"{label}: {_fmt(count_now)} ({sign}{_fmt(diff)}, {sign}{pct:.1f}%)")
+
+    if not has_data:
+        return None
+
+    if len(growth_pct) >= 2:
+        best = max(growth_pct.items(), key=lambda kv: kv[1])
+        worst = min(growth_pct.items(), key=lambda kv: kv[1])
+        lines.append("")
+        lines.append(f"🏆 Лучшая платформа: {best[0]} ({best[1]:+.1f}%)")
+        lines.append(f"🐌 Слабее всех: {worst[0]} ({worst[1]:+.1f}%)")
+
+    if total_base > 0:
+        total_diff = total_now - total_base
+        sign = "+" if total_diff >= 0 else ""
+        lines.append("")
+        lines.append(f"📈 Всего: {_fmt(total_now)} ({sign}{_fmt(total_diff)} за месяц)")
 
     return "\n".join(lines)
 
