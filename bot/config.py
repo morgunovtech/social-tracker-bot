@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
@@ -39,6 +40,13 @@ def normalize_dow(value: str) -> str:
     if not parts or any(p not in DOW_ORDER for p in parts):
         raise ValueError(f"Invalid day-of-week: {value}")
     return ",".join(parts)
+
+
+def _url(name: str) -> str | None:
+    """The first http(s) URL in the variable. Tolerates a whole pasted line
+    such as `&& curl -fsS https://…`, the way TofsDevOps shows a heartbeat."""
+    match = re.search(r"https?://[^\s'\"]+", os.getenv(name) or "")
+    return match.group(0) if match else None
 
 
 def _report_dow() -> str:
@@ -117,7 +125,7 @@ class Config:
             db_path=os.getenv("DB_PATH", "data/followers.db"),
             site_ingest_url=os.getenv("SITE_INGEST_URL") or None,
             site_ingest_token=os.getenv("SOCIALBOT_INGEST_TOKEN"),
-            healthcheck_url=os.getenv("HEALTHCHECK_URL"),
+            healthcheck_url=_url("HEALTHCHECK_URL"),
             app_commit=(os.getenv("APP_COMMIT") or os.getenv("RAILWAY_GIT_COMMIT_SHA") or "").strip()[:12],
             repo_slug=_repo_slug(),
             github_token=os.getenv("GITHUB_TOKEN") or None,
