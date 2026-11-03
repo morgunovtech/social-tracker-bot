@@ -22,3 +22,10 @@ updates:
     directory: /
     schedule:
       interval: monthly
+  # The mail-worker is deployed by hand (npx wrangler deploy): a merged bump
+  # reaches Cloudflare with the next deploy, not by itself.
+  - package-ecosystem: npm
+    directory: /mail-worker
+    schedule:
+      interval: monthly
+    labels: ["dependencies"]
