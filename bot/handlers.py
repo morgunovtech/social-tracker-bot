@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
+import tempfile
 
 import aiohttp
 from telegram import (
@@ -11,7 +13,7 @@ from telegram import (
     ReplyKeyboardMarkup,
     Update,
 )
-from telegram.error import BadRequest
+from telegram.error import BadRequest, Conflict
 from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
@@ -46,6 +48,9 @@ LI_CONV_TIMEOUT = 120
 
 # Longest /history period: keeps the table under Telegram's 4096-char message limit.
 HISTORY_MAX_DAYS = 90
+
+# Bot API getFile refuses files above 20 MB.
+RESTORE_MAX_BYTES = 20 * 1024 * 1024
 
 # Persistent reply-keyboard label. Tapping this sends the same text back,
 # which our MessageHandler maps to /start.
@@ -148,6 +153,24 @@ async def _deny(update: Update) -> None:
         await update.message.reply_text("⛔ Доступ запрещён.")
 
 
+async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log every unhandled error; tell the admin when their own action failed."""
+    if isinstance(context.error, Conflict):
+        # A second instance is still polling: Railway overlaps deploys for a few seconds.
+        logger.warning("Polling conflict (another instance running): %s", context.error)
+        return
+    logger.error("Unhandled error", exc_info=context.error)
+    config: Config = context.bot_data["config"]
+    if isinstance(update, Update) and _is_admin(update, config):
+        try:
+            await context.bot.send_message(
+                chat_id=config.admin_chat_id,
+                text=f"⚠️ Не получилось: {type(context.error).__name__}. Подробности в логах.",
+            )
+        except Exception:
+            logger.exception("Error notice send failed")
+
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -181,7 +204,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/setday <дни> — изменить день недели (sat / mon-fri / mon,thu / daily)\n"
         "/setquiet on|off — пропускать пуш, если за неделю ничего не изменилось\n"
         "/setcookie <li_at> — обновить LinkedIn cookie (с проверкой)\n"
-        "/cookieage — возраст текущего LinkedIn cookie\n",
+        "/cookieage — возраст текущего LinkedIn cookie\n"
+        "/restore — вернуть историю из бэкапа (ответом на сообщение с файлом)\n",
         reply_markup=_main_menu(),
     )
 
@@ -485,6 +509,54 @@ async def cmd_setquiet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
+async def cmd_restore(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Merge a weekly backup back in: reply /restore to the backup message,
+    or send the .db file with the caption /restore."""
+    config: Config = context.bot_data["config"]
+    db: Database = context.bot_data["db"]
+
+    if not _is_admin(update, config):
+        await _deny(update)
+        return
+
+    message = update.message
+    replied = message.reply_to_message
+    document = message.document or (replied.document if replied else None)
+    if document is None:
+        await message.reply_text(
+            "Чтобы восстановить историю, ответь командой /restore на сообщение с бэкапом "
+            "(📦 Еженедельный бэкап БД) или пришли файл .db с подписью /restore.\n\n"
+            "Данные из бэкапа добавятся к текущим: уже собранное не перезапишется."
+        )
+        return
+    if document.file_size and document.file_size > RESTORE_MAX_BYTES:
+        await message.reply_text("❌ Файл больше 20 МБ — Telegram не даст боту его скачать.")
+        return
+
+    await message.reply_text("⏳ Восстанавливаю...")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "backup.db")
+        tg_file = await document.get_file()
+        await tg_file.download_to_drive(path)
+        try:
+            result = await db.restore_from(path)
+        except ValueError as e:
+            await message.reply_text(f"❌ Не похоже на бэкап этого бота: {e}.")
+            return
+
+    # The backup may carry another report time: apply it to the running job.
+    scheduler = context.bot_data.get("scheduler")
+    if scheduler is not None:
+        dow, hour, minute = await get_report_schedule(db, config)
+        reschedule(scheduler, dow, hour, minute)
+
+    period = f"{result['first']} — {result['last']}" if result["first"] else "пусто"
+    await message.reply_text(
+        f"✅ Восстановлено: +{result['added']:,} записей (всего {result['total']:,}, {period}).",
+        reply_markup=_main_menu(),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Callback query handler
 # ---------------------------------------------------------------------------
@@ -669,5 +741,9 @@ def register_handlers(app, config: Config, db: Database) -> None:
     app.add_handler(CommandHandler("setquiet", cmd_setquiet))
     app.add_handler(CommandHandler("setcookie", cmd_setcookie))
     app.add_handler(CommandHandler("cookieage", cmd_cookieage))
+    app.add_handler(CommandHandler("restore", cmd_restore))
+    # A file sent with the caption /restore: CommandHandler only reads message text.
+    app.add_handler(MessageHandler(filters.Document.ALL & filters.CaptionRegex(r"^/restore\b"), cmd_restore))
     app.add_handler(MessageHandler(filters.Regex(rf"^{re.escape(MENU_BUTTON_TEXT)}$"), cmd_start))
     app.add_handler(CallbackQueryHandler(on_callback))
+    app.add_error_handler(on_error)

@@ -1,8 +1,15 @@
+import shutil
+from datetime import UTC, datetime
+from types import SimpleNamespace
+
 import pytest
-from conftest import COOKIE, STRANGER_ID
+from conftest import ADMIN_ID, COOKIE, STRANGER_ID
+from telegram import Chat, Message, Update, User
+from telegram.error import Conflict
 from telegram.ext import ConversationHandler
 
 from bot import handlers
+from bot.db import Database
 from bot.scheduler import CollectOutcome, setup_scheduler
 
 
@@ -194,3 +201,78 @@ async def test_cookieage(make_update, make_context, db):
     update = make_update()
     await handlers.cmd_cookieage(update, make_context())
     assert "дней назад" in update.message.replies[0]
+
+
+# --- restore -----------------------------------------------------------------
+
+def _document(source_path: str, size: int = 1024):
+    async def download_to_drive(path):
+        shutil.copy(source_path, path)
+
+    async def get_file():
+        return SimpleNamespace(download_to_drive=download_to_drive)
+
+    return SimpleNamespace(file_size=size, get_file=get_file)
+
+
+async def test_restore_without_a_file_explains_how(make_update, make_context):
+    update = make_update(text="/restore")
+    await handlers.cmd_restore(update, make_context())
+    assert "ответь командой /restore" in update.message.replies[0]
+
+
+async def test_restore_as_reply_to_the_backup(make_update, make_context, db, sched, tmp_path):
+    backup = Database(str(tmp_path / "backup.db"))
+    await backup.init()
+    await backup.upsert("youtube", 128)
+    await backup.set_setting("report_time", "09:15")
+
+    update = make_update(text="/restore")
+    update.message.reply_to_message = SimpleNamespace(document=_document(backup._db_path))
+    await handlers.cmd_restore(update, make_context(scheduler=sched))
+
+    assert update.message.replies[-1].startswith("✅ Восстановлено: +1 записей")
+    assert (await db.get_latest("youtube"))["count"] == 128
+    assert str(sched.get_job("scheduled_report").trigger.fields[5]) == "9"   # backup's report time applied
+
+
+async def test_restore_rejects_a_foreign_file(make_update, make_context, tmp_path):
+    junk = tmp_path / "junk.db"
+    junk.write_text("not a database " * 100)
+    update = make_update()
+    update.message.document = _document(str(junk))
+    await handlers.cmd_restore(update, make_context())
+    assert update.message.replies[-1].startswith("❌ Не похоже на бэкап")
+
+
+async def test_restore_refuses_files_telegram_cannot_serve(make_update, make_context, tmp_path):
+    update = make_update()
+    update.message.document = _document(str(tmp_path / "x.db"), size=handlers.RESTORE_MAX_BYTES + 1)
+    await handlers.cmd_restore(update, make_context())
+    assert "20 МБ" in update.message.replies[0]
+
+
+# --- errors ------------------------------------------------------------------
+
+def _real_update(user_id: int) -> Update:
+    user = User(user_id, "someone", is_bot=False)
+    chat = Chat(user_id, Chat.PRIVATE)
+    return Update(1, message=Message(1, datetime.now(UTC), chat, from_user=user, text="/now"))
+
+
+async def test_errors_reach_the_admin_only(make_context, bot):
+    context = make_context()
+    context.error = RuntimeError("boom")
+    await handlers.on_error(_real_update(ADMIN_ID), context)
+    assert bot.messages == ["⚠️ Не получилось: RuntimeError. Подробности в логах."]
+
+    await handlers.on_error(_real_update(STRANGER_ID), context)
+    await handlers.on_error(None, context)                         # job/polling errors: log only
+    assert len(bot.messages) == 1
+
+
+async def test_polling_conflict_during_deploy_is_quiet(make_context, bot):
+    context = make_context()
+    context.error = Conflict("terminated by other getUpdates request")
+    await handlers.on_error(None, context)
+    assert bot.messages == []

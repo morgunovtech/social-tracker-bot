@@ -22,6 +22,7 @@ _BOT_COMMANDS = [
     BotCommand("settime", "Время отчёта"),
     BotCommand("setday", "День(и) отчёта"),
     BotCommand("setquiet", "Тихий режим"),
+    BotCommand("restore", "Восстановить из бэкапа"),
     BotCommand("help", "Справка"),
 ]
 
@@ -29,6 +30,8 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
+# httpx logs every request URL at INFO, and Bot API URLs contain the bot token.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 

@@ -60,6 +60,8 @@ class FakeBot:
 class FakeMessage:
     def __init__(self, text: str = ""):
         self.text = text
+        self.document = None
+        self.reply_to_message = None
         self.replies: list[str] = []
         self.photos: list[bytes] = []
         self.deleted = False

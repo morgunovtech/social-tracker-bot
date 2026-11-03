@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sqlite3
 from datetime import UTC, date, datetime, timedelta
 
 import aiosqlite
@@ -44,6 +45,25 @@ CREATE TABLE IF NOT EXISTS settings (
 _SECRET_SETTINGS = ("linkedin_li_at",)
 
 
+def _check_backup(path: str) -> None:
+    """Raise ValueError unless path is an intact SQLite file with this bot's tables."""
+    try:
+        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
+            if conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise ValueError("файл повреждён")
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(followers)")}
+            tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    except sqlite3.DatabaseError as e:
+        raise ValueError("это не файл базы SQLite") from e
+    if not {"platform", "count", "source", "collected_at"} <= columns or "settings" not in tables:
+        raise ValueError("в файле нет таблиц бота")
+
+
+async def _scalar(db: aiosqlite.Connection, sql: str):
+    row = await (await db.execute(sql)).fetchone()
+    return row[0]
+
+
 class Database:
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
@@ -74,6 +94,47 @@ class Database:
             await db.commit()
             # Rebuild the file so deleted values don't linger in free pages.
             await db.execute("VACUUM")
+
+    async def restore_from(self, backup_path: str) -> dict:
+        """Merge a backup file into the live DB; the live DB wins every conflict.
+
+        Follower rows are added only for (platform, day) pairs the live DB lacks,
+        so data collected since the backup is kept. Settings are added only when
+        missing; the cookie and its timestamp travel as a pair, so a live cookie
+        is never replaced by an older one. Raises ValueError for a file that is
+        not an intact backup of this bot.
+        """
+        _check_backup(backup_path)
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute("ATTACH DATABASE ? AS backup", (backup_path,))
+            try:
+                before = await _scalar(db, "SELECT COUNT(*) FROM followers")
+                await db.execute(
+                    """
+                    INSERT OR IGNORE INTO followers (platform, count, source, collected_at)
+                    SELECT platform, count, source, collected_at FROM backup.followers
+                    """
+                )
+                cookie_keys = ("linkedin_li_at", "linkedin_li_at_set_at")
+                has_cookie = await _scalar(db, "SELECT COUNT(*) FROM settings WHERE key = 'linkedin_li_at'")
+                skip = cookie_keys if has_cookie else ()
+                await db.execute(
+                    f"""
+                    INSERT OR IGNORE INTO settings (key, value)
+                    SELECT key, value FROM backup.settings
+                    WHERE key NOT IN ({",".join("?" * len(skip)) or "''"})
+                    """,
+                    skip,
+                )
+                await db.commit()
+                after = await _scalar(db, "SELECT COUNT(*) FROM followers")
+                first, last = await (
+                    await db.execute("SELECT MIN(DATE(collected_at)), MAX(DATE(collected_at)) FROM followers")
+                ).fetchone()
+            finally:
+                await db.rollback()  # no-op after commit; DETACH fails inside a transaction
+                await db.execute("DETACH DATABASE backup")
+        return {"added": after - before, "total": after, "first": first, "last": last}
 
     async def get_setting(self, key: str, default: str | None = None) -> str | None:
         async with aiosqlite.connect(self._db_path) as db:
