@@ -4,6 +4,7 @@ import json
 import logging
 
 from telegram import Bot, User
+from telegram.error import BadRequest, Forbidden, TelegramError
 
 from bot.platforms.base import ADMINS, IMAGE, TEXT, Context, Platform, Snapshot
 
@@ -25,24 +26,43 @@ def _user_name(user: User) -> str:
 
 
 async def fetch_channel(bot: Bot, channel_id: str) -> dict[str, str] | None:
-    """Public channel fields plus its admin list (readable because the bot is an admin)."""
+    """Public channel fields, plus its admin list when Telegram lets the bot read it.
+
+    A public channel's title and follower count are readable by anyone, the
+    admin list only by its admins: without that right Telegram answers
+    "Member list is inaccessible". The list is then left out and admin_access
+    says so — losing the access later (a hijacker demoting the bot) is a
+    change the profile monitor reports.
+    """
     try:
         chat = await bot.get_chat(chat_id=channel_id)
-        members = await bot.get_chat_administrators(chat_id=channel_id)
     except Exception:
         logger.exception("Failed to fetch Telegram channel profile")
         return None
-    admins = sorted(
-        ({"id": m.user.id, "name": _user_name(m.user), "status": str(m.status)} for m in members),
-        key=lambda a: a["id"],
-    )
-    return {
+    fields = {
         "title": chat.title or "",
         "username": chat.username or "",
         "description": chat.description or "",
         "photo": chat.photo.big_file_unique_id if chat.photo else "",
-        "admins": json.dumps(admins, ensure_ascii=False),
     }
+    try:
+        members = await bot.get_chat_administrators(chat_id=channel_id)
+    except (BadRequest, Forbidden) as e:
+        # Logged at info: a standing configuration, checked every 30 minutes.
+        logger.info("Telegram admin list of %s is not readable (is the bot a channel admin?): %s", channel_id, e)
+        fields["admin_access"] = "нет"
+        return fields
+    except TelegramError:
+        # A network hiccup: the list is unknown this time, not changed.
+        logger.warning("Telegram admin list fetch failed", exc_info=True)
+        return fields
+    admins = sorted(
+        ({"id": m.user.id, "name": _user_name(m.user), "status": str(m.status)} for m in members),
+        key=lambda a: a["id"],
+    )
+    fields["admin_access"] = "есть"
+    fields["admins"] = json.dumps(admins, ensure_ascii=False)
+    return fields
 
 
 class Telegram(Platform):
@@ -56,6 +76,7 @@ class Telegram(Platform):
         "username": ("@username канала", TEXT),
         "description": ("описание канала", TEXT),
         "photo": ("аватарка канала", IMAGE),
+        "admin_access": ("доступ бота к списку админов", TEXT),
         "admins": ("админы канала", ADMINS),
     }
 

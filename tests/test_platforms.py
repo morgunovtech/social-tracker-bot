@@ -6,7 +6,9 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestServer
 from conftest import COOKIE
+from telegram.error import BadRequest, TimedOut
 
+from bot.monitors import profile
 from bot.platforms import telegram, youtube
 from bot.platforms.linkedin import _parse_follower_count, collect_linkedin, plausible_count
 
@@ -156,8 +158,9 @@ async def test_youtube_profile(monkeypatch):
 # --- Telegram ----------------------------------------------------------------
 
 class ChannelBot:
-    def __init__(self, fail=False):
+    def __init__(self, fail=False, admins_error=None):
         self.fail = fail
+        self.admins_error = admins_error
 
     async def get_chat(self, chat_id):
         if self.fail:
@@ -167,6 +170,8 @@ class ChannelBot:
         )
 
     async def get_chat_administrators(self, chat_id):
+        if self.admins_error:
+            raise self.admins_error
         return [
             SimpleNamespace(user=SimpleNamespace(id=5, full_name="Bot", username=None), status="administrator"),
             SimpleNamespace(user=SimpleNamespace(id=1, full_name="Owner", username="own"), status="creator"),
@@ -180,5 +185,22 @@ async def test_telegram_channel_profile():
         {"id": 1, "name": "Owner (@own)", "status": "creator"},
         {"id": 5, "name": "Bot", "status": "administrator"},
     ]
+    assert fields["admin_access"] == "есть"
     assert set(fields) == set(telegram.Telegram.profile_fields)
     assert await telegram.fetch_channel(ChannelBot(fail=True), "@chan") is None
+
+
+async def test_telegram_profile_without_admin_rights_keeps_the_other_fields():
+    # What Telegram answers when the bot can't read the channel's admin list.
+    bot = ChannelBot(admins_error=BadRequest("Member list is inaccessible"))
+    fields = await telegram.fetch_channel(bot, "@chan")
+    assert fields["title"] == "Канал" and fields["admin_access"] == "нет" and "admins" not in fields
+
+    flaky = await telegram.fetch_channel(ChannelBot(admins_error=TimedOut()), "@chan")
+    assert "admins" not in flaky and "admin_access" not in flaky   # unknown this time, not changed
+
+
+def test_losing_admin_access_is_a_reported_change():
+    with_access = {"title": "Канал", "admin_access": "есть", "admins": "[]"}
+    (line,) = profile.diff(telegram.Telegram(), with_access, {"title": "Канал", "admin_access": "нет"})
+    assert line == "🟠 Telegram: доступ бота к списку админов — «есть» → «нет»"
