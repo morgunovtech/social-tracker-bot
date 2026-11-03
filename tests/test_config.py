@@ -64,3 +64,20 @@ def test_platforms_are_optional(monkeypatch):
     monkeypatch.setenv("YOUTUBE_API_KEY", "key")       # channel id is still set by conftest
     monkeypatch.setenv("LINKEDIN_PROFILE_URL", "https://www.linkedin.com/in/x/")
     assert Config.from_env().enabled_platforms == ["youtube", "linkedin"]
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("https://hc-ping.com/abc", "https://hc-ping.com/abc"),
+        # The whole line as TofsDevOps shows it under ⏰ Контроль задач:
+        ("&& curl -fsS https://tofs.example/api/heartbeat/s3cr3t/socialtracker",
+         "https://tofs.example/api/heartbeat/s3cr3t/socialtracker"),
+        ("'https://hc-ping.com/abc'", "https://hc-ping.com/abc"),
+        ("", None),
+        ("not a url", None),
+    ],
+)
+def test_healthcheck_url_is_extracted(monkeypatch, raw, expected):
+    monkeypatch.setenv("HEALTHCHECK_URL", raw)
+    assert Config.from_env().healthcheck_url == expected
