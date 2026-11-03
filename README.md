@@ -51,6 +51,18 @@ The container starts as root only to hand the data directory to the unprivileged
 | `/setcookie <li_at>`, `/cookieage` | Set the LinkedIn cookie, check its age |
 | `/restore` | Reply it to a backup message (or send a `.db` captioned `/restore`) to merge the history back |
 
+## Updates
+
+The bot keeps itself up to date without touching its own container:
+
+1. **Dependabot** opens one grouped PR per week with every Python update (Saturday), plus monthly PRs for the base image and the Actions.
+2. **CI** tests each one: ruff, pytest on 3.12–3.14, `pip-audit`, and a build of the production image that must start as `appuser`.
+3. **Minor and patch updates merge themselves** once CI is green (`.github/workflows/dependabot-automerge.yml`); major ones wait for you. Branch protection on `main` requires the three CI checks, otherwise auto-merge would not wait for them.
+4. **Railway redeploys** from `main`.
+5. **The bot tells you** what the pipeline can't: «🔄 Бот обновился: aiohttp 3.14.3 → 3.14.4» after a deploy; within an hour, if the newest commit failed to deploy and it's stuck on an older build; and on Sundays, known vulnerabilities (OSV) in its packages and Dependabot PRs waiting for a human. Silent when there's nothing to do.
+
+`UPDATE_WATCH=0` turns the notices off. On Railway the commit and the repository come from its own variables; elsewhere set `GITHUB_REPOSITORY` and build with `--build-arg APP_COMMIT=$(git rev-parse HEAD)`.
+
 ## Development
 
 ```bash

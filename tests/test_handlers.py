@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 from conftest import ADMIN_ID, COOKIE, STRANGER_ID
 from telegram import Chat, Message, Update, User
-from telegram.error import Conflict
+from telegram.error import Conflict, NetworkError
 from telegram.ext import ConversationHandler
 
 from bot import handlers
@@ -276,3 +276,10 @@ async def test_polling_conflict_during_deploy_is_quiet(make_context, bot):
     context.error = Conflict("terminated by other getUpdates request")
     await handlers.on_error(None, context)
     assert bot.messages == []
+
+
+async def test_polling_network_error_is_quiet(make_context, bot, caplog):
+    context = make_context()
+    context.error = NetworkError("httpx.ConnectError")
+    await handlers.on_error(None, context)
+    assert bot.messages == [] and "retrying" in caplog.text and "Traceback" not in caplog.text
