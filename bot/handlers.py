@@ -29,7 +29,6 @@ from bot.scheduler import (
     COOKIE_AGING_DAYS,
     _build_chart_png,
     collect_and_report,
-    get_active_cookie,
     get_cookie_age_days,
     get_report_schedule,
     is_quiet_mode,
