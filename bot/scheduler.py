@@ -38,6 +38,8 @@ DAILY_MISFIRE_GRACE_S = 3600
 CATCH_UP_DELAY = timedelta(seconds=30)
 LAST_DAILY_RUN_KEY = "last_daily_run"
 
+CHART_CAPTION = "📉 Подписчики за 30 дней"
+
 logger = logging.getLogger(__name__)
 
 
@@ -135,7 +137,7 @@ async def build_stats(
     if await monitors.is_on(db, config, "hygiene"):
         line = await hygiene.report_line(db, config)
         if line:
-            report += f"\n{line}"
+            report += f"\n\n{line}"
     return report, has_change
 
 
@@ -244,7 +246,11 @@ async def _send_backup(bot: Bot, config: Config, db: Database) -> None:
             chat_id=config.admin_chat_id,
             document=data,
             filename=f"followers-{today}.db",
-            caption="📦 Еженедельный бэкап БД (без LinkedIn cookie — после восстановления /setcookie)",
+            caption=(
+                "📦 Еженедельный бэкап базы. Чтобы вернуть из него историю, ответь на это сообщение "
+                "командой /restore. LinkedIn cookie в копию не входит: после восстановления пришли его "
+                "заново через /setcookie."
+            ),
         )
         logger.info("DB backup sent (%d bytes)", len(data))
     except Exception:
@@ -329,7 +335,7 @@ async def _scheduled_job(
                     await bot.send_photo(
                         chat_id=config.admin_chat_id,
                         photo=chart,
-                        caption="📉 Динамика за 30 дней",
+                        caption=CHART_CAPTION,
                     )
                 logger.info("Scheduled report sent to admin")
         except Exception:

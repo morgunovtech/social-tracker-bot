@@ -195,7 +195,7 @@ def test_score_and_recommendations():
     assert "SMS" in recs[0] and "400 дн." in recs[1]          # the 2FA advice outweighs the password age
 
     assert hygiene.score(YOUTUBE, {}, today) == 0
-    assert hygiene.recommendations(YOUTUBE, {}, today) == ["YouTube: пройди чек-лист — /security"]
+    assert hygiene.recommendations(YOUTUBE, {}, today) == ["YouTube: отметь пункты чек-листа — это пара минут"]
 
 
 async def test_overall_averages_enabled_platforms(config, db):
@@ -207,20 +207,21 @@ async def test_overall_averages_enabled_platforms(config, db):
     assert len(recs) == 2
 
 
-async def test_render_shows_checklist_and_events(config, db):
-    await hygiene.set_answer(db, "telegram", "2fa", "off")
-    await db.add_event("e1", "Google", "new_login", "🚨 Google: новый вход в аккаунт\n«Security alert»")
-    text = await hygiene.render(db, config)
-    assert text.startswith("🛡 Безопасность — ")
-    assert "⚠️ Облачный пароль (2FA): нет" in text
-    assert "YouTube (Google-аккаунт канала) — не заполнено" in text
-    assert "🚨 Google: новый вход в аккаунт" in text and "«Security alert»" not in text
-    assert "Пароли бот не спрашивает" in text
+async def test_overall_puts_the_most_valuable_advice_first(config, db):
+    today = utcnow().date().isoformat()
+    telegram = {"2fa": "on", "backup": "yes", "sessions": "yes", "unique": "no", "pwd": today}
+    youtube = {"2fa": "app", "backup": "yes", "recovery": "yes", "unique": "yes", "pwd": today}
+    for platform, marks in (("telegram", telegram), ("youtube", youtube), ("linkedin", {"2fa": "off"})):
+        for key, value in marks.items():
+            await hygiene.set_answer(db, platform, key, value)
+    _, recs = await hygiene.overall(db, config)
+    assert recs[0].startswith("LinkedIn: включи 2FA")               # 4 points beat Telegram, listed earlier
+    assert recs[-1].startswith("LinkedIn: отметь, когда пароль менялся")
 
 
 async def test_nudge_first_invites_then_waits_a_month(config, db, monkeypatch):
     first = await hygiene.nudge(db, config)
-    assert first and "Пройди короткий чек-лист" in first
+    assert first and "Пройди короткий чек-лист" in first and first.endswith("/security")
     assert await hygiene.nudge(db, config) is None
 
     await hygiene.set_answer(db, "telegram", "2fa", "off")

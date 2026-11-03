@@ -1,20 +1,17 @@
 from __future__ import annotations
 
+import asyncio
+import functools
 import logging
 import os
-import platform
 import re
 import tempfile
+from collections.abc import Awaitable, Callable
 from datetime import timedelta
 
 import aiohttp
-from telegram import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    KeyboardButton,
-    ReplyKeyboardMarkup,
-    Update,
-)
+from telegram import Update
+from telegram.constants import ParseMode
 from telegram.error import BadRequest, Conflict, NetworkError
 from telegram.ext import (
     ApplicationHandlerStop,
@@ -27,17 +24,16 @@ from telegram.ext import (
     filters,
 )
 
-from bot import monitors, platforms
-from bot.config import Config, normalize_dow
+from bot import monitors, ui
+from bot.config import DOW_ORDER, Config, normalize_dow
 from bot.db import Database, utcnow
-from bot.monitors import hygiene
-from bot.platforms import BY_ID, LABELS, PLATFORM_IDS, PLATFORMS
-from bot.platforms.base import Platform
-from bot.platforms.linkedin import COOKIE_AGING_DAYS, collect_linkedin, get_cookie_age_days, plausible_count
-from bot.reporter import build_history_all, build_history_table, build_week_report
+from bot.monitors import NO_PREVIEW, hygiene
+from bot.platforms import BY_ID, PLATFORM_IDS
+from bot.platforms.linkedin import collect_linkedin, plausible_count
+from bot.reporter import _fmt
 from bot.scheduler import (
+    CHART_CAPTION,
     _build_chart_png,
-    build_stats,
     collect_and_report,
     get_report_schedule,
     is_quiet_mode,
@@ -63,17 +59,26 @@ RESTORE_MAX_BYTES = 20 * 1024 * 1024
 # older ones (a long outage) are dropped rather than replayed.
 PENDING_MAX_AGE = timedelta(minutes=10)
 
-# Persistent reply-keyboard label. Tapping this sends the same text back,
-# which our MessageHandler maps to /start.
-MENU_BUTTON_TEXT = "📊 Меню"
+# The persistent menu button, including the labels of older versions.
+_MENU_BUTTON = filters.Regex(
+    "^(?:" + "|".join(re.escape(t) for t in (ui.MENU_BUTTON_TEXT, *ui.LEGACY_MENU_BUTTON_TEXTS)) + ")$"
+)
 
 
-def _persistent_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        [[KeyboardButton(MENU_BUTTON_TEXT)]],
-        resize_keyboard=True,
-        is_persistent=True,
-    )
+def _deps(context: ContextTypes.DEFAULT_TYPE) -> tuple[Config, Database]:
+    return context.bot_data["config"], context.bot_data["db"]
+
+
+# ---------------------------------------------------------------------------
+# Showing screens
+# ---------------------------------------------------------------------------
+
+def _markup(screen: ui.Screen) -> dict:
+    return {"reply_markup": screen.keyboard, "parse_mode": ParseMode.HTML, "link_preview_options": NO_PREVIEW}
+
+
+async def _reply(update: Update, screen: ui.Screen):
+    return await update.message.reply_text(screen.text, **_markup(screen))
 
 
 async def _safe_edit(query, text: str, **kwargs) -> None:
@@ -88,130 +93,10 @@ async def _safe_edit(query, text: str, **kwargs) -> None:
         if "message is not modified" not in str(e).lower():
             raise
 
-# ---------------------------------------------------------------------------
-# Keyboards
-# ---------------------------------------------------------------------------
 
-def _main_menu() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("📊 Статистика", callback_data="stats"),
-            InlineKeyboardButton("🛡 Безопасность", callback_data="sec"),
-        ],
-        [
-            InlineKeyboardButton("▶️ Собрать сейчас", callback_data="now"),
-            InlineKeyboardButton("📈 История", callback_data="history"),
-        ],
-        [
-            InlineKeyboardButton("📅 Неделя", callback_data="week"),
-            InlineKeyboardButton("🧩 Модули", callback_data="mod"),
-        ],
-        [
-            InlineKeyboardButton("✏️ LinkedIn", callback_data="linkedin_prompt"),
-            InlineKeyboardButton("⚙️ Настройки", callback_data="settings"),
-        ],
-    ])
-
-
-def _rows(buttons: list[InlineKeyboardButton], per_row: int = 2) -> list[list[InlineKeyboardButton]]:
-    return [buttons[i : i + per_row] for i in range(0, len(buttons), per_row)]
-
-
-def _security_keyboard(config: Config) -> InlineKeyboardMarkup:
-    edits = [InlineKeyboardButton(f"✏️ {p.label}", callback_data=f"sec:edit:{p.id}") for p in platforms.enabled(config)]
-    return InlineKeyboardMarkup(_rows(edits) + [[InlineKeyboardButton("← Назад", callback_data="menu")]])
-
-
-async def _checklist_screen(db: Database, platform: Platform) -> tuple[str, InlineKeyboardMarkup]:
-    """One account's checklist: numbered items in the text, a row of answers per item."""
-    ans = await hygiene.answers(db, platform)
-    lines = [f"✏️ {platform.label} — {platform.account}", "", "Отметь, как сейчас. Пароль вводить не нужно.", ""]
-    rows: list[list[InlineKeyboardButton]] = []
-    checklist = hygiene.items(platform)
-    for n, item in enumerate(checklist, 1):
-        current = next((c for c in item.choices if c.value == ans.get(item.key)), None)
-        lines.append(f"{n}. {item.label}: {current.button if current else '—'}")
-        rows.append([
-            InlineKeyboardButton(
-                f"{n} · {'✅ ' if c is current else ''}{c.button}",
-                callback_data=f"sec:set:{platform.id}:{item.key}:{c.value}",
-            )
-            for c in item.choices
-        ])
-    n = len(checklist) + 1
-    age = hygiene.password_age(ans, utcnow().date())
-    when = "—" if age is None else "сегодня" if age == 0 else f"{age} дн. назад"
-    lines.append(f"{n}. Последняя смена пароля: {when}")
-    ages = [
-        InlineKeyboardButton(f"{n} · {label}", callback_data=f"sec:pwd:{platform.id}:{days}")
-        for label, days in hygiene.PASSWORD_AGES.items()
-    ]
-    rows += _rows(ages)
-    rows.append([InlineKeyboardButton("← К безопасности", callback_data="sec")])
-    return "\n".join(lines), InlineKeyboardMarkup(rows)
-
-
-async def _modules_screen(db: Database, config: Config) -> tuple[str, InlineKeyboardMarkup]:
-    lines = ["🧩 Модули", "", "Платформы (подключаются в .env):"]
-    for p in PLATFORMS:
-        lines.append(f"✅ {p.label} — {p.target(config)}" if p.enabled(config) else f"⚪ {p.label} — не подключено")
-    lines += ["", "Мониторинги:"]
-    toggles: list[InlineKeyboardButton] = []
-    for m in monitors.MONITORS:
-        if not m.requires(config):
-            lines.append(f"⚪ {m.label} — нужно: {m.needs}")
-            continue
-        on = await monitors.is_switched_on(db, m.id)
-        lines.append(f"{'✅' if on else '⏸'} {m.label} — {m.description}")
-        toggles.append(InlineKeyboardButton(f"{m.label}: {'вкл' if on else 'выкл'}", callback_data=f"mod:{m.id}"))
-    keyboard = _rows(toggles) + [[InlineKeyboardButton("← Назад", callback_data="menu")]]
-    return "\n".join(lines), InlineKeyboardMarkup(keyboard)
-
-
-def _history_platforms() -> InlineKeyboardMarkup:
-    buttons = [InlineKeyboardButton("Все", callback_data="history:all")] + [
-        InlineKeyboardButton(p.label, callback_data=f"history:{p.id}") for p in PLATFORMS
-    ]
-    return InlineKeyboardMarkup([buttons, [InlineKeyboardButton("← Назад", callback_data="menu")]])
-
-
-def _history_periods(platform: str) -> InlineKeyboardMarkup:
-    periods = [
-        InlineKeyboardButton(f"{d} дней", callback_data=f"history:{platform}:{d}")
-        for d in [7, 14, 30]
-    ]
-    return InlineKeyboardMarkup([periods, [InlineKeyboardButton("← Назад", callback_data="history")]])
-
-
-def _settings_keyboard(quiet: bool) -> InlineKeyboardMarkup:
-    quiet_label = "🔕 Тихий режим: ВКЛ" if quiet else "🔔 Тихий режим: выкл"
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton(quiet_label, callback_data="quiet:toggle")],
-        [InlineKeyboardButton("← Назад", callback_data="menu")],
-    ])
-
-
-def _settings_text(dow: str, hour: int, minute: int, config: Config) -> str:
-    build = f"сборка {config.app_commit[:7]} · " if config.app_commit else ""
-    return (
-        "⚙️ Настройки\n\n"
-        f"Расписание: {_dow_pretty(dow)} в {hour:02d}:{minute:02d} UTC\n"
-        "Изменить: /settime HH:MM, /setday sat\n\n"
-        f"Версия: {build}Python {platform.python_version()}"
-    )
-
-
-def _dow_pretty(dow: str) -> str:
-    if dow == "*":
-        return "каждый день"
-    names = {
-        "mon": "Пн", "tue": "Вт", "wed": "Ср", "thu": "Чт",
-        "fri": "Пт", "sat": "Сб", "sun": "Вс",
-    }
-    if "-" in dow and "," not in dow:
-        a, _, b = dow.partition("-")
-        return f"{names.get(a, a)}–{names.get(b, b)}"
-    return ", ".join(names.get(p, p) for p in dow.split(","))
+async def _show(query, screen: ui.Screen) -> None:
+    """Replace the menu message the button sits on: the chat doesn't fill up with menus."""
+    await _safe_edit(query, screen.text, **_markup(screen))
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +127,17 @@ async def _deny(update: Update) -> None:
         await update.message.reply_text("⛔ Доступ запрещён.")
 
 
+def _admin_only(handler):
+    @functools.wraps(handler)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if not _is_admin(update, context.bot_data["config"]):
+            await _deny(update)
+            return None
+        return await handler(update, context)
+
+    return wrapper
+
+
 async def drop_stale_messages(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Runs before every handler. A message queued during a deploy restart is
     handled; one older than PENDING_MAX_AGE is dropped, so a /now from hours
@@ -268,10 +164,65 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         try:
             await context.bot.send_message(
                 chat_id=config.admin_chat_id,
-                text=f"⚠️ Не получилось: {type(context.error).__name__}. Подробности в логах.",
+                text=(
+                    f"⚠️ Что-то пошло не так ({type(context.error).__name__}). "
+                    "Попробуй ещё раз; подробности — в логах бота."
+                ),
             )
         except Exception:
             logger.exception("Error notice send failed")
+
+
+# ---------------------------------------------------------------------------
+# Shared actions
+# ---------------------------------------------------------------------------
+
+def _collect_lock(context: ContextTypes.DEFAULT_TYPE) -> asyncio.Lock:
+    return context.bot_data.setdefault("collect_lock", asyncio.Lock())
+
+
+async def _collect_now(
+    context: ContextTypes.DEFAULT_TYPE, show: Callable[[ui.Screen], Awaitable[None]]
+) -> bool:
+    """Collect, showing the progress and then the fresh home screen; False
+    while another collection runs (a double tap must not collect twice)."""
+    config, db = _deps(context)
+    lock = _collect_lock(context)
+    if lock.locked():
+        return False
+    async with lock:
+        await show(ui.loading())
+        try:
+            outcome = await collect_and_report(context.bot, config, db)
+        except Exception:
+            logger.exception("Manual collection failed")
+            await show((await ui.home(db, config)).noted(
+                "⚠️ Собрать данные не получилось — подробности в логах. Ниже последние сохранённые."
+            ))
+            return True
+        await show(await ui.home(db, config, report=outcome.report))
+        await send_alerts(context.bot, config, db, outcome)
+    return True
+
+
+async def _set_report_time(context: ContextTypes.DEFAULT_TYPE, hour: int, minute: int) -> None:
+    config, db = _deps(context)
+    await db.set_setting("report_time", f"{hour:02d}:{minute:02d}")
+    scheduler = context.bot_data.get("scheduler")
+    if scheduler is not None:
+        dow, _, _ = await get_report_schedule(db, config)
+        reschedule(scheduler, dow, hour, minute)
+
+
+def _parse_count(text: str) -> int | None:
+    """A follower count as people type it: «4520», «4 520», «4,520», «4.520»."""
+    digits = re.sub(r"[\s,.  ]", "", text.strip())
+    return int(digits) if digits.isdigit() else None
+
+
+async def _save_linkedin(db: Database, config: Config, count: int) -> ui.Screen:
+    await db.upsert("linkedin", count, source="manual")
+    return (await ui.home(db, config)).noted(f"✅ LinkedIn: {_fmt(count)} — сохранено")
 
 
 # ---------------------------------------------------------------------------
@@ -279,233 +230,170 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
 # ---------------------------------------------------------------------------
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    config: Config = context.bot_data["config"]
+    config, db = _deps(context)
     if not _is_admin(update, config):
-        await update.message.reply_text("Привет! Этот бот только для администратора.")
+        await update.message.reply_text("Это личный бот: он отвечает только своему владельцу.")
         return
-    await update.message.reply_text(
-        "Привет! Я слежу за подписчиками и безопасностью твоих аккаунтов: падения и накрутка, "
-        "смена названия, ссылок и админов, письма о новых входах и смене пароля.\n"
-        "Кнопка «📊 Меню» внизу экрана всегда вызывает это меню.",
-        reply_markup=_persistent_keyboard(),
-    )
-    await update.message.reply_text("Меню:", reply_markup=_main_menu())
+    # Two messages: a message carries either the persistent keyboard or inline buttons.
+    await update.message.reply_text(ui.WELCOME, reply_markup=ui.persistent_keyboard())
+    await _reply(update, await ui.home(db, config))
 
 
+@_admin_only
+async def cmd_home(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """The menu button and /stats: just the home screen, no greeting."""
+    config, db = _deps(context)
+    await _reply(update, await ui.home(db, config))
+
+
+@_admin_only
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    config: Config = context.bot_data["config"]
-    if not _is_admin(update, config):
-        await _deny(update)
-        return
-    await update.message.reply_text(
-        "Команды:\n\n"
-        "/stats — текущая сводка\n"
-        "/now — собрать данные прямо сейчас\n"
-        "/week — недельный дайджест\n"
-        "/security — балл безопасности и чек-лист: 2FA, резервные коды, пароли\n"
-        "/modules — что подключено, включить или выключить мониторинги\n"
-        "/linkedin <число> — ввести LinkedIn вручную\n"
-        "/history [platform] [days] — история\n"
-        "/settime HH:MM — изменить время отчёта (UTC)\n"
-        "/setday <дни> — изменить день недели (sat / mon-fri / mon,thu / daily)\n"
-        "/setquiet on|off — пропускать пуш, если за неделю ничего не изменилось\n"
-        "/setcookie <li_at> — обновить LinkedIn cookie (с проверкой)\n"
-        "/cookieage — возраст текущего LinkedIn cookie\n"
-        "/restore — вернуть историю из бэкапа (ответом на сообщение с файлом)\n",
-        reply_markup=_main_menu(),
-    )
+    await _reply(update, ui.help_screen())
 
 
-async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    config: Config = context.bot_data["config"]
-    db: Database = context.bot_data["db"]
-    if not _is_admin(update, config):
-        await _deny(update)
-        return
-    report, _ = await build_stats(db, config)
-    await update.message.reply_text(report, reply_markup=_main_menu())
-
-
+@_admin_only
 async def cmd_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    config: Config = context.bot_data["config"]
-    db: Database = context.bot_data["db"]
-    if not _is_admin(update, config):
-        await _deny(update)
-        return
-    await update.message.reply_text("⏳ Собираю данные...")
-    outcome = await collect_and_report(context.bot, config, db)
-    await update.message.reply_text(outcome.report, reply_markup=_main_menu())
-    await send_alerts(context.bot, config, db, outcome)
+    sent = None
+
+    async def show(screen: ui.Screen) -> None:
+        nonlocal sent
+        if sent is None:
+            sent = await _reply(update, screen)
+        else:
+            await sent.edit_text(screen.text, **_markup(screen))
+
+    if not await _collect_now(context, show):
+        await update.message.reply_text("⏳ Уже собираю данные — результат появится в сообщении выше.")
 
 
+@_admin_only
 async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    config: Config = context.bot_data["config"]
-    db: Database = context.bot_data["db"]
-    if not _is_admin(update, config):
-        await _deny(update)
-        return
-    report = await build_week_report(db)
-    await update.message.reply_text(report, reply_markup=_main_menu())
+    _, db = _deps(context)
+    await _reply(update, await ui.dynamics(db))
     chart = await _build_chart_png(db)
     if chart:
-        await update.message.reply_photo(chart, caption="📉 Динамика за 30 дней")
+        await update.message.reply_photo(chart, caption=CHART_CAPTION)
 
 
+@_admin_only
 async def cmd_security(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    config: Config = context.bot_data["config"]
-    db: Database = context.bot_data["db"]
-    if not _is_admin(update, config):
-        await _deny(update)
-        return
-    await update.message.reply_text(await hygiene.render(db, config), reply_markup=_security_keyboard(config))
+    config, db = _deps(context)
+    await _reply(update, await ui.security(db, config))
 
 
+@_admin_only
+async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config, db = _deps(context)
+    await _reply(update, await ui.settings(db, config))
+
+
+@_admin_only
 async def cmd_modules(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    config: Config = context.bot_data["config"]
-    db: Database = context.bot_data["db"]
-    if not _is_admin(update, config):
-        await _deny(update)
-        return
-    text, keyboard = await _modules_screen(db, config)
-    await update.message.reply_text(text, reply_markup=keyboard)
+    config, db = _deps(context)
+    await _reply(update, await ui.monitors_screen(db, config))
 
 
+@_admin_only
 async def cmd_linkedin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    config: Config = context.bot_data["config"]
-    db: Database = context.bot_data["db"]
-    if not _is_admin(update, config):
-        await _deny(update)
-        return
+    config, db = _deps(context)
     if not context.args or len(context.args) != 1:
-        await update.message.reply_text("Использование: /linkedin <число>\nПример: /linkedin 4520")
+        await update.message.reply_text("Пришли число вместе с командой, например: /linkedin 4520")
         return
-    try:
-        count = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("Ошибка: укажите целое число.")
+    count = _parse_count(context.args[0])
+    if count is None:
+        await update.message.reply_text("Нужно целое число без знака, например: /linkedin 4520")
         return
-    await db.upsert("linkedin", count, source="manual")
-    await update.message.reply_text(
-        f"✅ LinkedIn обновлён: {count:,} подписчиков (вручную)",
-        reply_markup=_main_menu(),
-    )
+    await _reply(update, await _save_linkedin(db, config, count))
 
 
+@_admin_only
 async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    config: Config = context.bot_data["config"]
-    db: Database = context.bot_data["db"]
-    if not _is_admin(update, config):
-        await _deny(update)
+    """/history [platform] [days]: the day-by-day table, all platforms for 7 days by default."""
+    config, db = _deps(context)
+    args = context.args or []
+    if len(args) > 2:
+        await update.message.reply_text("Формат: /history [платформа] [дни], например: /history telegram 30")
         return
-    if context.args and len(context.args) == 2:
-        platform = context.args[0].lower()
+    platform = args[0].lower() if args else "all"
+    if platform != "all" and platform not in PLATFORM_IDS:
+        await update.message.reply_text(f"Неизвестная платформа. Доступны: all, {', '.join(PLATFORM_IDS)}")
+        return
+    days = 7
+    if len(args) == 2:
         try:
-            days = int(context.args[1])
+            days = int(args[1])
         except ValueError:
-            await update.message.reply_text("Ошибка: количество дней должно быть числом.")
+            await update.message.reply_text("Количество дней должно быть числом, например: /history all 30")
             return
         if not 1 <= days <= HISTORY_MAX_DAYS:
-            await update.message.reply_text(f"Ошибка: количество дней — от 1 до {HISTORY_MAX_DAYS}.")
+            await update.message.reply_text(f"Количество дней — от 1 до {HISTORY_MAX_DAYS}.")
             return
-        if platform == "all":
-            table = await build_history_all(db, days)
-        elif platform in PLATFORM_IDS:
-            table = await build_history_table(db, platform, days)
-        else:
-            await update.message.reply_text(f"Неизвестная платформа. Доступны: all, {', '.join(PLATFORM_IDS)}")
-            return
-        await update.message.reply_text(table, parse_mode="Markdown", reply_markup=_main_menu())
-    else:
-        await update.message.reply_text("Выберите платформу:", reply_markup=_history_platforms())
+    await _reply(update, await ui.table(db, config, platform, days))
 
 
+@_admin_only
 async def cmd_settime(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    config: Config = context.bot_data["config"]
-    db: Database = context.bot_data["db"]
-    scheduler = context.bot_data["scheduler"]
-
-    if not _is_admin(update, config):
-        await _deny(update)
+    config, db = _deps(context)
+    if not context.args:
+        await _reply(update, await ui.report_time(db, config))
         return
-
-    if not context.args or len(context.args) != 1:
-        dow, hour, minute = await get_report_schedule(db, config)
-        await update.message.reply_text(
-            f"Текущее расписание: {_dow_pretty(dow)} в {hour:02d}:{minute:02d} UTC\n\n"
-            "Использование: /settime HH:MM\nПример: /settime 08:00"
-        )
-        return
-
     try:
         h_str, m_str = context.args[0].split(":")
         hour, minute = int(h_str), int(m_str)
-        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        if len(context.args) != 1 or not (0 <= hour <= 23 and 0 <= minute <= 59):
             raise ValueError
     except (ValueError, AttributeError):
-        await update.message.reply_text("Неверный формат. Используйте HH:MM, например: /settime 08:00")
+        await update.message.reply_text("Неверный формат. Нужно ЧЧ:ММ по UTC, например: /settime 08:00")
         return
-
-    await db.set_setting("report_time", f"{hour:02d}:{minute:02d}")
-    dow, _, _ = await get_report_schedule(db, config)
-    reschedule(scheduler, dow, hour, minute)
-    await update.message.reply_text(
-        f"✅ Время отчёта изменено: {hour:02d}:{minute:02d} UTC ({_dow_pretty(dow)})",
-        reply_markup=_main_menu(),
-    )
+    await _set_report_time(context, hour, minute)
+    await _reply(update, (await ui.settings(db, config)).noted(f"✅ Отчёт теперь в {hour:02d}:{minute:02d} UTC"))
 
 
+@_admin_only
 async def cmd_setday(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    config: Config = context.bot_data["config"]
-    db: Database = context.bot_data["db"]
-    scheduler = context.bot_data["scheduler"]
-
-    if not _is_admin(update, config):
-        await _deny(update)
+    config, db = _deps(context)
+    if not context.args:
+        await _reply(update, await ui.report_days(db, config))
         return
-
-    if not context.args or len(context.args) != 1:
-        dow, hour, minute = await get_report_schedule(db, config)
-        await update.message.reply_text(
-            f"Текущее расписание: {_dow_pretty(dow)} в {hour:02d}:{minute:02d} UTC\n\n"
-            "Использование: /setday <дни>\n"
-            "Примеры:\n"
-            "  /setday sat — суббота\n"
-            "  /setday mon,thu — понедельник и четверг\n"
-            "  /setday mon-fri — будни\n"
-            "  /setday daily — каждый день"
-        )
-        return
-
     try:
+        if len(context.args) != 1:
+            raise ValueError
         normalized = normalize_dow(context.args[0])
-    except ValueError as e:
+    except ValueError:
         await update.message.reply_text(
-            f"❌ {e}\nДопустимо: mon, tue, wed, thu, fri, sat, sun, daily, mon-fri, mon,thu"
+            f"❌ Не понял дни: «{' '.join(context.args)}».\n"
+            "Примеры: /setday sat, /setday mon,thu, /setday mon-fri, /setday daily"
         )
         return
-
     await db.set_setting("report_dow", normalized)
-    _, hour, minute = await get_report_schedule(db, config)
-    reschedule(scheduler, normalized, hour, minute)
-    await update.message.reply_text(
-        f"✅ День отчёта: {_dow_pretty(normalized)} в {hour:02d}:{minute:02d} UTC",
-        reply_markup=_main_menu(),
-    )
+    scheduler = context.bot_data.get("scheduler")
+    if scheduler is not None:
+        _, hour, minute = await get_report_schedule(db, config)
+        reschedule(scheduler, normalized, hour, minute)
+    await _reply(update, (await ui.settings(db, config)).noted(f"✅ Отчёт: {ui.dow_pretty(normalized)}"))
 
 
-async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    config: Config = context.bot_data["config"]
-    db: Database = context.bot_data["db"]
-
-    if not _is_admin(update, config):
-        await _deny(update)
+@_admin_only
+async def cmd_setquiet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config, db = _deps(context)
+    choice = context.args[0].lower() if context.args else ""
+    if choice not in ("on", "off"):
+        await _reply(update, await ui.settings(db, config))
         return
+    await db.set_setting("quiet_if_no_change", "1" if choice == "on" else "0")
+    note = "✅ Тихий режим включён" if choice == "on" else "✅ Тихий режим выключен"
+    await _reply(update, (await ui.settings(db, config)).noted(note))
+
+
+@_admin_only
+async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config, db = _deps(context)
 
     if not context.args:
         await update.message.reply_text(
-            "Использование: /setcookie <значение li_at>\n\n"
-            "Где взять: linkedin.com → DevTools → Application → Cookies → `li_at` → Value\n"
-            "Текущий возраст: /cookieage"
+            "Пришли cookie вместе с командой: /setcookie <значение li_at>\n\n"
+            "Где взять: linkedin.com → DevTools → Application → Cookies → li_at → Value. "
+            "Сообщение с cookie я сразу удалю."
         )
         return
 
@@ -517,18 +405,18 @@ async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.delete()
     except Exception:
         deleted = False
-    note = "" if deleted else "\n⚠️ Удали сообщение с cookie из чата вручную."
+    note = "" if deleted else "\n⚠️ Удалить сообщение с cookie не получилось — удали его из чата вручную."
 
     cookie = " ".join(context.args).strip()
     if len(cookie) < 50:
-        await chat.send_message(f"❌ Это не похоже на cookie (слишком короткое).{note}")
+        await chat.send_message(f"❌ Это не похоже на cookie: значение слишком короткое.{note}")
         return
 
     if not config.linkedin_profile_url:
-        await chat.send_message(f"❌ Не задан LINKEDIN_PROFILE_URL — нечего проверять.{note}")
+        await chat.send_message(f"❌ Не задан LINKEDIN_PROFILE_URL — не на чем проверить cookie.{note}")
         return
 
-    await chat.send_message("⏳ Проверяю cookie...")
+    await chat.send_message("⏳ Проверяю cookie…")
 
     prev_row = await db.get_latest("linkedin")
     prev = prev_row["count"] if prev_row else None
@@ -548,7 +436,7 @@ async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         )
         await chat.send_message(
             f"❌ Cookie не сохранён: {reason}.\n"
-            f"Проверь, что скопировал значение целиком (без × или других левых символов).{note}"
+            f"Проверь, что значение скопировано целиком, без лишних символов.{note}"
         )
         return
 
@@ -560,97 +448,35 @@ async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     # likely someone else's counter and must not become the new baseline.
     if plausible_count(prev, count):
         await db.upsert("linkedin", count, source="cookie")
-        fetched = f"Тест-фетч: {count:,} подписчиков."
+        fetched = f"Проверка прошла: {_fmt(count)} подписчиков."
     else:
         fetched = (
-            f"Тест-фетч вернул {count:,} — слишком далеко от прошлого {prev:,}, число не записано.\n"
-            "Если оно верное, задай его через /linkedin <число>."
+            f"Проверка вернула {_fmt(count)} — слишком далеко от прошлого {_fmt(prev)}, число не записано. "
+            f"Если оно верное, введи его: /linkedin {count}"
         )
-
-    await chat.send_message(
-        f"✅ Cookie сохранён. {fetched}\n"
-        f"Примерный срок жизни — ~12 месяцев. Бот предупредит за месяц до конца.{note}",
-        reply_markup=_main_menu(),
-    )
+    screen = (await ui.linkedin(db, config)).noted(f"✅ Cookie сохранён. {fetched}{note}")
+    await chat.send_message(screen.text, **_markup(screen))
 
 
+@_admin_only
 async def cmd_cookieage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    config: Config = context.bot_data["config"]
-    db: Database = context.bot_data["db"]
-
-    if not _is_admin(update, config):
-        await _deny(update)
-        return
-
-    age = await get_cookie_age_days(db)
-    has_db_cookie = bool(await db.get_setting("linkedin_li_at"))
-    has_env_cookie = bool(config.linkedin_li_at)
-
-    if age is not None:
-        days_left = max(0, COOKIE_AGING_DAYS - age)
-        status = "⚠️ пора обновить" if age >= COOKIE_AGING_DAYS else f"осталось ~{days_left} дней до напоминания"
-        await update.message.reply_text(
-            f"🍪 LinkedIn cookie\n\n"
-            f"Установлен через /setcookie {age} дней назад\n"
-            f"Статус: {status}\n\n"
-            f"Обновить: /setcookie <значение>"
-        )
-    elif has_db_cookie:
-        await update.message.reply_text(
-            "🍪 Cookie из БД, но без даты установки. Перезапиши через /setcookie чтобы трекать возраст."
-        )
-    elif has_env_cookie:
-        await update.message.reply_text(
-            "🍪 Cookie сейчас прокинут через переменную окружения LINKEDIN_LI_AT.\n"
-            "Возраст не отслеживается. Чтобы перевести на управление через бота — отправь /setcookie <значение>."
-        )
-    else:
-        await update.message.reply_text("🍪 Cookie не настроен. Отправь /setcookie <значение>.")
+    config, db = _deps(context)
+    await _reply(update, await ui.linkedin(db, config))
 
 
-async def cmd_setquiet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    config: Config = context.bot_data["config"]
-    db: Database = context.bot_data["db"]
-
-    if not _is_admin(update, config):
-        await _deny(update)
-        return
-
-    if not context.args or context.args[0].lower() not in ("on", "off"):
-        current = await is_quiet_mode(db, config)
-        state = "ВКЛ" if current else "выкл"
-        await update.message.reply_text(
-            f"Тихий режим: {state}\n\n"
-            "Использование: /setquiet on | off\n"
-            "Если включён — бот не присылает отчёт, когда за неделю ничего не изменилось."
-        )
-        return
-
-    enabled = context.args[0].lower() == "on"
-    await db.set_setting("quiet_if_no_change", "1" if enabled else "0")
-    await update.message.reply_text(
-        f"✅ Тихий режим: {'ВКЛ' if enabled else 'выкл'}",
-        reply_markup=_main_menu(),
-    )
-
-
+@_admin_only
 async def cmd_restore(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Merge a weekly backup back in: reply /restore to the backup message,
     or send the .db file with the caption /restore."""
-    config: Config = context.bot_data["config"]
-    db: Database = context.bot_data["db"]
-
-    if not _is_admin(update, config):
-        await _deny(update)
-        return
+    config, db = _deps(context)
 
     message = update.message
     replied = message.reply_to_message
     document = message.document or (replied.document if replied else None)
     if document is None:
         await message.reply_text(
-            "Чтобы восстановить историю, ответь командой /restore на сообщение с бэкапом "
-            "(📦 Еженедельный бэкап БД) или пришли файл .db с подписью /restore.\n\n"
+            "Чтобы вернуть историю, ответь командой /restore на сообщение с бэкапом "
+            "(«📦 Еженедельный бэкап базы») или пришли файл .db с подписью /restore.\n\n"
             "Данные из бэкапа добавятся к текущим: уже собранное не перезапишется."
         )
         return
@@ -658,7 +484,7 @@ async def cmd_restore(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await message.reply_text("❌ Файл больше 20 МБ — Telegram не даст боту его скачать.")
         return
 
-    await message.reply_text("⏳ Восстанавливаю...")
+    await message.reply_text("⏳ Восстанавливаю…")
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "backup.db")
         tg_file = await document.get_file()
@@ -676,134 +502,238 @@ async def cmd_restore(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         reschedule(scheduler, dow, hour, minute)
 
     period = f"{result['first']} — {result['last']}" if result["first"] else "пусто"
-    await message.reply_text(
-        f"✅ Восстановлено: +{result['added']:,} записей (всего {result['total']:,}, {period}).",
-        reply_markup=_main_menu(),
+    note = (
+        f"✅ Восстановлено, добавлено записей: {_fmt(result['added'])}. "
+        f"Всего: {_fmt(result['total'])} ({period})."
+    )
+    await _reply(update, (await ui.home(db, config)).noted(note))
+
+
+@_admin_only
+async def on_unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text("Такой команды нет. Все команды — в /help.")
+
+
+@_admin_only
+async def on_unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # The persistent keyboard again: the user may have hidden or lost it.
+    await update.message.reply_text(
+        f"Не понимаю это сообщение. Главная — кнопка «{ui.MENU_BUTTON_TEXT}» внизу, все команды — /help.",
+        reply_markup=ui.persistent_keyboard(),
     )
 
 
 # ---------------------------------------------------------------------------
-# Callback query handler
+# Buttons
 # ---------------------------------------------------------------------------
+
+class _Press:
+    """A button press, answered exactly once: with a short confirmation
+    where a route gives one, otherwise silently when the route is done."""
+
+    def __init__(self, query):
+        self.query = query
+        self.answered = False
+
+    async def answer(self, text: str | None = None) -> None:
+        if not self.answered:
+            self.answered = True
+            await _answer(self.query, text)
+
+
+Route = Callable[[_Press, ContextTypes.DEFAULT_TYPE, list[str]], Awaitable[None]]
+
+
+async def _cb_home(press: _Press, context, args: list[str]) -> None:
+    config, db = _deps(context)
+    await _show(press.query, await ui.home(db, config))
+
+
+async def _cb_now(press: _Press, context, args: list[str]) -> None:
+    if _collect_lock(context).locked():
+        await press.answer("Уже собираю данные — подожди несколько секунд")
+        return
+    await press.answer()  # before the collection: it takes seconds
+
+    async def show(screen: ui.Screen) -> None:
+        await _show(press.query, screen)
+
+    await _collect_now(context, show)
+
+
+async def _cb_dynamics(press: _Press, context, args: list[str]) -> None:
+    _, db = _deps(context)
+    await _show(press.query, await ui.dynamics(db))
+
+
+async def _cb_chart(press: _Press, context, args: list[str]) -> None:
+    config, db = _deps(context)
+    chart = await _build_chart_png(db)
+    if chart is None:
+        await press.answer("Для графика пока мало данных: нужно хотя бы два дня")
+        return
+    await press.answer("График — ниже")
+    await context.bot.send_photo(chat_id=config.admin_chat_id, photo=chart, caption=CHART_CAPTION)
+
+
+async def _cb_table(press: _Press, context, args: list[str]) -> None:
+    """tbl[:<platform>[:<days>]]; anything off falls back to all platforms, 7 days."""
+    config, db = _deps(context)
+    platform = args[0] if args and args[0] in ("all", *PLATFORM_IDS) else "all"
+    days = int(args[1]) if len(args) > 1 and args[1].isdigit() else 7
+    if not 1 <= days <= HISTORY_MAX_DAYS:
+        days = 7
+    await _show(press.query, await ui.table(db, config, platform, days))
+
+
+async def _cb_security(press: _Press, context, args: list[str]) -> None:
+    """sec | sec:edit:<platform> | sec:ask:<platform>:<item>
+    | sec:set:<platform>:<item>:<value> | sec:pwd:<platform>:<days ago>.
+
+    Values are checked against the checklist: callback data comes from the client.
+    """
+    config, db = _deps(context)
+    if not args:
+        await _show(press.query, await ui.security(db, config))
+        return
+    if len(args) < 2 or args[1] not in BY_ID:
+        return
+    action, platform, rest = args[0], BY_ID[args[1]], args[2:]
+    if action == "edit" and not rest:
+        screen = await ui.checklist(db, platform)
+    elif action == "ask" and len(rest) == 1 and rest[0] in ui.question_keys(platform):
+        screen = await ui.question(db, platform, rest[0])
+    elif action == "set" and len(rest) == 2:
+        item = next((i for i in hygiene.items(platform) if i.key == rest[0]), None)
+        if item is None or rest[1] not in {c.value for c in item.choices}:
+            return
+        await hygiene.set_answer(db, platform.id, item.key, rest[1])
+        screen = await _after_answer(db, platform, item.key)
+    elif action == "pwd" and len(rest) == 1:
+        if not rest[0].isdigit() or int(rest[0]) not in hygiene.PASSWORD_AGES.values():
+            return
+        changed = utcnow().date() - timedelta(days=int(rest[0]))
+        await hygiene.set_answer(db, platform.id, hygiene.PASSWORD_KEY, changed.isoformat())
+        screen = await _after_answer(db, platform, hygiene.PASSWORD_KEY)
+    else:
+        return
+    if action in ("set", "pwd"):
+        await press.answer("Сохранено")
+    await _show(press.query, screen)
+
+
+async def _after_answer(db: Database, platform, key: str) -> ui.Screen:
+    """The next unanswered question, so a first pass is a run of taps; the list once all are marked."""
+    following = await ui.next_unanswered(db, platform, key)
+    if following is not None:
+        return await ui.question(db, platform, following)
+    return await ui.checklist(db, platform)
+
+
+async def _cb_settings(press: _Press, context, args: list[str]) -> None:
+    """set | set:quiet | set:days[:<preset>] | set:day:<day> | set:time | set:hour:<h>."""
+    config, db = _deps(context)
+    action = args[0] if args else ""
+    value = args[1] if len(args) == 2 else None
+    if not args:
+        screen = await ui.settings(db, config)
+    elif action == "quiet" and len(args) == 1:
+        quiet = not await is_quiet_mode(db, config)
+        await db.set_setting("quiet_if_no_change", "1" if quiet else "0")
+        await press.answer("Тихий режим включён" if quiet else "Тихий режим выключен")
+        screen = await ui.settings(db, config)
+    elif action == "days" and len(args) == 1:
+        screen = await ui.report_days(db, config)
+    elif action == "days" and value is not None:
+        try:
+            await db.set_setting("report_dow", normalize_dow(value))
+        except ValueError:
+            return
+        screen = await ui.report_days(db, config)
+    elif action == "day" and value in DOW_ORDER:
+        dow, _, _ = await get_report_schedule(db, config)
+        days = set(ui.dow_days(dow)) ^ {value}
+        if not days:
+            await press.answer("Нужен хотя бы один день")
+            return
+        await db.set_setting("report_dow", ui.dow_expr(days))
+        screen = await ui.report_days(db, config)
+    elif action == "time" and len(args) == 1:
+        screen = await ui.report_time(db, config)
+    elif action == "hour" and value is not None and value.isdigit() and int(value) <= 23:
+        await _set_report_time(context, int(value), 0)
+        await press.answer(f"Отчёт будет приходить в {int(value):02d}:00 UTC")
+        screen = await ui.settings(db, config)
+    else:
+        return
+    await _show(press.query, screen)
+
+
+async def _cb_monitors(press: _Press, context, args: list[str]) -> None:
+    config, db = _deps(context)
+    if args:
+        if len(args) != 1 or args[0] not in monitors.BY_ID:
+            return
+        on = await monitors.toggle(db, args[0])
+        await press.answer(f"{monitors.BY_ID[args[0]].label}: {'включено' if on else 'выключено'}")
+    await _show(press.query, await ui.monitors_screen(db, config))
+
+
+async def _cb_linkedin(press: _Press, context, args: list[str]) -> None:
+    """li | li:save:<count> (confirmed after the typo check) | li:cancel of a timed-out prompt."""
+    config, db = _deps(context)
+    if not args:
+        screen = await ui.linkedin(db, config)
+    elif len(args) == 2 and args[0] == "save" and args[1].isdigit():
+        screen = await _save_linkedin(db, config, int(args[1]))
+        await press.answer("Сохранено")
+    elif args == ["cancel"]:
+        screen = await ui.home(db, config)
+    else:
+        return
+    await _show(press.query, screen)
+
+
+async def _cb_help(press: _Press, context, args: list[str]) -> None:
+    await _show(press.query, ui.help_screen())
+
+
+_ROUTES: dict[str, Route] = {
+    ui.HOME: _cb_home,
+    ui.NOW: _cb_now,
+    ui.DYNAMICS: _cb_dynamics,
+    ui.CHART: _cb_chart,
+    ui.TABLE: _cb_table,
+    ui.SECURITY: _cb_security,
+    ui.SETTINGS: _cb_settings,
+    ui.MONITORS: _cb_monitors,
+    ui.LINKEDIN: _cb_linkedin,
+    ui.HELP: _cb_help,
+}
+# Screen ids of the menu before the redesign: their buttons stay in the chat history.
+_LEGACY = {"menu": ui.HOME, "stats": ui.HOME, "week": ui.DYNAMICS, "settings": ui.SETTINGS, "history": ui.TABLE}
+
 
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    config: Config = context.bot_data["config"]
-    db: Database = context.bot_data["db"]
+    config, db = _deps(context)
 
     # Check before answering: _deny answers with an alert, and a query can be answered only once.
     if not _is_admin(update, config):
         await _deny(update)
         return
-    await _answer(query)
 
-    data = query.data
-
-    if data == "menu":
-        await _safe_edit(query, "Выберите действие:", reply_markup=_main_menu())
-
-    elif data == "stats":
-        report, _ = await build_stats(db, config)
-        await _safe_edit(query, report, reply_markup=_main_menu())
-
-    elif data == "now":
-        await _safe_edit(query, "⏳ Собираю данные...")
-        outcome = await collect_and_report(context.bot, config, db)
-        await _safe_edit(query, outcome.report, reply_markup=_main_menu())
-        await send_alerts(context.bot, config, db, outcome)
-
-    elif data == "week":
-        report = await build_week_report(db)
-        await _safe_edit(query, report, reply_markup=_main_menu())
-
-    elif data == "settings":
-        dow, hour, minute = await get_report_schedule(db, config)
-        quiet = await is_quiet_mode(db, config)
-        await _safe_edit(
-            query,
-            _settings_text(dow, hour, minute, config),
-            reply_markup=_settings_keyboard(quiet),
-        )
-
-    elif data == "quiet:toggle":
-        current = await is_quiet_mode(db, config)
-        new_value = not current
-        await db.set_setting("quiet_if_no_change", "1" if new_value else "0")
-        dow, hour, minute = await get_report_schedule(db, config)
-        await _safe_edit(
-            query,
-            _settings_text(dow, hour, minute, config),
-            reply_markup=_settings_keyboard(new_value),
-        )
-
-    elif data == "history":
-        await _safe_edit(query, "Выберите платформу:", reply_markup=_history_platforms())
-
-    elif data == "sec":
-        await _safe_edit(query, await hygiene.render(db, config), reply_markup=_security_keyboard(config))
-
-    elif data.startswith("sec:"):
-        await _on_security_callback(query, db, data)
-
-    elif data == "mod":
-        text, keyboard = await _modules_screen(db, config)
-        await _safe_edit(query, text, reply_markup=keyboard)
-
-    elif data.startswith("mod:"):
-        monitor_id = data.removeprefix("mod:")
-        if monitor_id in monitors.BY_ID:
-            await monitors.toggle(db, monitor_id)
-        text, keyboard = await _modules_screen(db, config)
-        await _safe_edit(query, text, reply_markup=keyboard)
-
-    elif data.startswith("history:"):
-        parts = data.split(":")
-        if len(parts) == 2:
-            platform = parts[1]
-            label = "Все платформы" if platform == "all" else LABELS.get(platform, platform)
-            await _safe_edit(
-                query,
-                f"Платформа: {label}\nВыберите период:",
-                reply_markup=_history_periods(platform),
-            )
-        elif len(parts) == 3:
-            platform, days_str = parts[1], parts[2]
-            days = int(days_str)
-            if platform == "all":
-                table = await build_history_all(db, days)
-            else:
-                table = await build_history_table(db, platform, days)
-            await _safe_edit(
-                query,
-                table,
-                parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("← Назад", callback_data=f"history:{platform}")]]),
-            )
-
-
-async def _on_security_callback(query, db: Database, data: str) -> None:
-    """sec:edit:<platform> | sec:set:<platform>:<item>:<value> | sec:pwd:<platform>:<days ago>.
-
-    Values are checked against the checklist: callback data comes from the client.
-    """
-    parts = data.split(":")[1:]
-    if len(parts) < 2 or parts[1] not in BY_ID:
-        return
-    action, platform, rest = parts[0], BY_ID[parts[1]], parts[2:]
-    if action == "set" and len(rest) == 2:
-        item = next((i for i in hygiene.items(platform) if i.key == rest[0]), None)
-        if item is None or rest[1] not in {c.value for c in item.choices}:
-            return
-        await hygiene.set_answer(db, platform.id, item.key, rest[1])
-    elif action == "pwd" and len(rest) == 1:
-        if not rest[0].isdigit() or int(rest[0]) not in hygiene.PASSWORD_AGES.values():
-            return
-        changed = utcnow().date() - timedelta(days=int(rest[0]))
-        await hygiene.set_answer(db, platform.id, "pwd", changed.isoformat())
-    elif action != "edit":
-        return
-    text, keyboard = await _checklist_screen(db, platform)
-    await _safe_edit(query, text, reply_markup=keyboard)
+    press = _Press(query)
+    head, *args = (query.data or "").split(":")
+    route = _ROUTES.get(_LEGACY.get(head, head))
+    try:
+        if route is None:
+            await press.answer("Это меню устарело — вот актуальное")
+            await _show(query, await ui.home(db, config))
+        else:
+            await route(press, context, args)
+    finally:
+        await press.answer()
 
 
 # ---------------------------------------------------------------------------
@@ -811,65 +741,83 @@ async def _on_security_callback(query, db: Database, data: str) -> None:
 # ---------------------------------------------------------------------------
 
 async def li_conv_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    config: Config = context.bot_data["config"]
+    config, db = _deps(context)
     if not _is_admin(update, config):
         await _deny(update)
         return ConversationHandler.END
 
     query = update.callback_query
     await _answer(query)
-    await _safe_edit(
-        query,
-        "Введи число подписчиков LinkedIn одним сообщением.",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("Отмена", callback_data="li_cancel")],
-        ]),
-    )
+    await _show(query, await ui.linkedin_prompt(db))
     return LI_AWAITING_NUMBER
 
 
 async def li_conv_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    config: Config = context.bot_data["config"]
-    db: Database = context.bot_data["db"]
+    config, db = _deps(context)
     if not _is_admin(update, config):
         await _deny(update)
         return ConversationHandler.END
 
-    text = (update.message.text or "").strip().replace(" ", "").replace(",", "")
-    try:
-        count = int(text)
-        if count < 0:
-            raise ValueError
-    except ValueError:
-        await update.message.reply_text("Это не число. Попробуй ещё раз или /cancel.")
+    count = _parse_count(update.message.text or "")
+    if count is None:
+        await _reply(update, ui.linkedin_retry())
         return LI_AWAITING_NUMBER
 
-    await db.upsert("linkedin", count, source="manual")
-    await update.message.reply_text(
-        f"✅ LinkedIn обновлён: {count:,} подписчиков (вручную)",
-        reply_markup=_main_menu(),
-    )
+    prev_row = await db.get_latest("linkedin")
+    if prev_row is not None and not plausible_count(prev_row["count"], count):
+        await _reply(update, ui.linkedin_confirm(prev_row["count"], count))
+        return ConversationHandler.END
+
+    await _reply(update, await _save_linkedin(db, config, count))
     return ConversationHandler.END
 
 
 async def li_conv_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    config, db = _deps(context)
+    screen = await ui.home(db, config)
     if update.callback_query:
-        await _answer(update.callback_query)
-        await _safe_edit(update.callback_query, "Отменено.", reply_markup=_main_menu())
+        await _answer(update.callback_query, "Отменено")
+        await _show(update.callback_query, screen)
     elif update.message:
-        await update.message.reply_text("Отменено.", reply_markup=_main_menu())
+        await _reply(update, screen.noted("Отменено."))
     return ConversationHandler.END
 
 
 async def li_conv_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Menu button pressed mid-conversation — abandon the input and show the menu."""
-    await cmd_start(update, context)
+    await cmd_home(update, context)
+    return ConversationHandler.END
+
+
+async def li_conv_other_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Another button pressed mid-conversation: it wins, the input is abandoned."""
+    await on_callback(update, context)
     return ConversationHandler.END
 
 
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
+
+COMMANDS = {
+    "start": cmd_start,
+    "stats": cmd_home,
+    "help": cmd_help,
+    "now": cmd_now,
+    "week": cmd_week,
+    "security": cmd_security,
+    "settings": cmd_settings,
+    "modules": cmd_modules,
+    "linkedin": cmd_linkedin,
+    "history": cmd_history,
+    "settime": cmd_settime,
+    "setday": cmd_setday,
+    "setquiet": cmd_setquiet,
+    "setcookie": cmd_setcookie,
+    "cookieage": cmd_cookieage,
+    "restore": cmd_restore,
+}
+
 
 def register_handlers(app, config: Config, db: Database) -> None:
     app.bot_data["config"] = config
@@ -879,39 +827,30 @@ def register_handlers(app, config: Config, db: Database) -> None:
     app.add_handler(TypeHandler(Update, drop_stale_messages), group=-1)
 
     li_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(li_conv_start, pattern="^linkedin_prompt$")],
+        entry_points=[CallbackQueryHandler(li_conv_start, pattern=r"^(?:li:enter|linkedin_prompt)$")],
         states={
             LI_AWAITING_NUMBER: [
                 # Menu button must win over the number parser, or a dangling
-                # conversation swallows it with "Это не число".
-                MessageHandler(filters.Regex(rf"^{re.escape(MENU_BUTTON_TEXT)}$"), li_conv_menu),
+                # conversation swallows it with "not a number".
+                MessageHandler(_MENU_BUTTON, li_conv_menu),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, li_conv_number),
-                CallbackQueryHandler(li_conv_cancel, pattern="^li_cancel$"),
+                CallbackQueryHandler(li_conv_cancel, pattern=r"^(?:li:cancel|li_cancel)$"),
             ],
         },
-        fallbacks=[CommandHandler("cancel", li_conv_cancel)],
+        fallbacks=[CommandHandler("cancel", li_conv_cancel), CallbackQueryHandler(li_conv_other_button)],
         conversation_timeout=LI_CONV_TIMEOUT,
+        allow_reentry=True,
     )
     # Conversation must be registered before the catch-all CallbackQueryHandler
     app.add_handler(li_conv)
 
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("help", cmd_help))
-    app.add_handler(CommandHandler("stats", cmd_stats))
-    app.add_handler(CommandHandler("now", cmd_now))
-    app.add_handler(CommandHandler("week", cmd_week))
-    app.add_handler(CommandHandler("security", cmd_security))
-    app.add_handler(CommandHandler("modules", cmd_modules))
-    app.add_handler(CommandHandler("linkedin", cmd_linkedin))
-    app.add_handler(CommandHandler("history", cmd_history))
-    app.add_handler(CommandHandler("settime", cmd_settime))
-    app.add_handler(CommandHandler("setday", cmd_setday))
-    app.add_handler(CommandHandler("setquiet", cmd_setquiet))
-    app.add_handler(CommandHandler("setcookie", cmd_setcookie))
-    app.add_handler(CommandHandler("cookieage", cmd_cookieage))
-    app.add_handler(CommandHandler("restore", cmd_restore))
+    for name, handler in COMMANDS.items():
+        app.add_handler(CommandHandler(name, handler))
     # A file sent with the caption /restore: CommandHandler only reads message text.
     app.add_handler(MessageHandler(filters.Document.ALL & filters.CaptionRegex(r"^/restore\b"), cmd_restore))
-    app.add_handler(MessageHandler(filters.Regex(rf"^{re.escape(MENU_BUTTON_TEXT)}$"), cmd_start))
+    app.add_handler(MessageHandler(_MENU_BUTTON, cmd_home))
     app.add_handler(CallbackQueryHandler(on_callback))
+    # Last: whatever nothing above understood gets a hint instead of silence.
+    app.add_handler(MessageHandler(filters.COMMAND, on_unknown_command))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_unknown_text))
     app.add_error_handler(on_error)

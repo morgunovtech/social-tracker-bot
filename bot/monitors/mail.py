@@ -67,7 +67,7 @@ class Kind:
 KINDS: tuple[Kind, ...] = (
     Kind(
         "password_reset", "🚨", "запрошен сброс пароля",
-        "Если сброс запрашивал не ты — кто-то пробует войти. Пароль цел, проверь, что 2FA включена.",
+        "Если сброс запросил кто-то другой — значит, пробуют войти. Пароль цел, проверь, что 2FA включена.",
         ("password reset", "reset your password", "сброс пароля", "восстановление пароля"),
     ),
     Kind(
@@ -96,7 +96,7 @@ KINDS: tuple[Kind, ...] = (
     ),
     Kind(
         "login_code", "🟠", "пришёл код входа",
-        "Если ты не входил — кто-то знает твой пароль: смени его.",
+        "Если код запрашивал не ты — кто-то знает твой пароль: смени его.",
         ("verification code", "login code", "security code", "confirmation code", "one-time code",
          "instagram code", "код подтверждения", "код для входа", "код безопасности", "одноразовый код"),
     ),
@@ -281,7 +281,7 @@ async def check(bot: Bot, config: Config, db: Database, session: aiohttp.ClientS
             continue
         text, kind, network, platform_id = describe(mail)
         if kind is not None and kind.id == "password_changed" and platform_id:
-            text += "\n✍️ Дату смены пароля отметил в чек-листе /security."
+            text += "\n✍️ Дата смены пароля отмечена в чек-листе /security."
         try:
             await bot.send_message(chat_id=config.admin_chat_id, text=text, link_preview_options=NO_PREVIEW)
         except Exception:

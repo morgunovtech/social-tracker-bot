@@ -64,7 +64,7 @@ MONITORS: tuple[Monitor, ...] = (
         requires=_has_profiles,
         needs="Telegram-канал или YouTube",
     ),
-    Monitor("hygiene", "Гигиена", "чек-лист 2FA и паролей, балл безопасности, напоминания"),
+    Monitor("hygiene", "Чек-лист безопасности", "2FA и пароли: балл в отчёте, напоминание раз в месяц"),
     Monitor(
         "mail",
         "Письма безопасности",
