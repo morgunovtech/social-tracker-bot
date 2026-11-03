@@ -24,15 +24,14 @@ from telegram.ext import (
     filters,
 )
 
-from bot.collectors.linkedin import collect_linkedin, plausible_count
 from bot.config import Config, normalize_dow
 from bot.db import Database, utcnow
-from bot.reporter import PLATFORMS, build_history_all, build_history_table, build_report, build_week_report
+from bot.platforms import LABELS, PLATFORM_IDS, PLATFORMS
+from bot.platforms.linkedin import COOKIE_AGING_DAYS, collect_linkedin, get_cookie_age_days, plausible_count
+from bot.reporter import build_history_all, build_history_table, build_report, build_week_report
 from bot.scheduler import (
-    COOKIE_AGING_DAYS,
     _build_chart_png,
     collect_and_report,
-    get_cookie_age_days,
     get_report_schedule,
     is_quiet_mode,
     reschedule,
@@ -100,11 +99,8 @@ def _main_menu() -> InlineKeyboardMarkup:
 
 
 def _history_platforms() -> InlineKeyboardMarkup:
-    buttons = [
-        InlineKeyboardButton("Все", callback_data="history:all"),
-        InlineKeyboardButton("Telegram", callback_data="history:telegram"),
-        InlineKeyboardButton("YouTube", callback_data="history:youtube"),
-        InlineKeyboardButton("LinkedIn", callback_data="history:linkedin"),
+    buttons = [InlineKeyboardButton("Все", callback_data="history:all")] + [
+        InlineKeyboardButton(p.label, callback_data=f"history:{p.id}") for p in PLATFORMS
     ]
     return InlineKeyboardMarkup([buttons, [InlineKeyboardButton("← Назад", callback_data="menu")]])
 
@@ -244,7 +240,7 @@ async def cmd_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await _deny(update)
         return
     await update.message.reply_text("⏳ Собираю данные...")
-    outcome = await collect_and_report(context.bot, config, db, force_linkedin=True)
+    outcome = await collect_and_report(context.bot, config, db)
     await update.message.reply_text(outcome.report, reply_markup=_main_menu())
     await send_alerts(context.bot, config, db, outcome)
 
@@ -301,10 +297,10 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         if platform == "all":
             table = await build_history_all(db, days)
-        elif platform in PLATFORMS:
+        elif platform in PLATFORM_IDS:
             table = await build_history_table(db, platform, days)
         else:
-            await update.message.reply_text(f"Неизвестная платформа. Доступны: all, {', '.join(PLATFORMS)}")
+            await update.message.reply_text(f"Неизвестная платформа. Доступны: all, {', '.join(PLATFORM_IDS)}")
             return
         await update.message.reply_text(table, parse_mode="Markdown", reply_markup=_main_menu())
     else:
@@ -602,7 +598,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     elif data == "now":
         await _safe_edit(query, "⏳ Собираю данные...")
-        outcome = await collect_and_report(context.bot, config, db, force_linkedin=True)
+        outcome = await collect_and_report(context.bot, config, db)
         await _safe_edit(query, outcome.report, reply_markup=_main_menu())
         await send_alerts(context.bot, config, db, outcome)
 
@@ -637,7 +633,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         parts = data.split(":")
         if len(parts) == 2:
             platform = parts[1]
-            label = "Все платформы" if platform == "all" else platform.capitalize()
+            label = "Все платформы" if platform == "all" else LABELS.get(platform, platform)
             await _safe_edit(
                 query,
                 f"Платформа: {label}\nВыберите период:",

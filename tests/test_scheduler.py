@@ -8,6 +8,9 @@ from conftest import COOKIE
 
 from bot import scheduler
 from bot.db import utcnow
+from bot.platforms import linkedin as linkedin_platform
+from bot.platforms import telegram as telegram_platform
+from bot.platforms import youtube as youtube_platform
 from bot.scheduler import (
     CollectOutcome,
     _build_alerts,
@@ -57,9 +60,9 @@ def collectors(monkeypatch):
         seen["linkedin_prev"] = prev
         return values["linkedin"]
 
-    monkeypatch.setattr(scheduler, "collect_telegram", telegram)
-    monkeypatch.setattr(scheduler, "collect_youtube", youtube)
-    monkeypatch.setattr(scheduler, "collect_linkedin", linkedin)
+    monkeypatch.setattr(telegram_platform, "collect_telegram", telegram)
+    monkeypatch.setattr(youtube_platform, "collect_youtube", youtube)
+    monkeypatch.setattr(linkedin_platform, "collect_linkedin", linkedin)
     values["seen"] = seen
     return values
 
@@ -109,38 +112,45 @@ async def test_failures_and_cookie_state(bot, config, db, collectors):
     assert "cookie истёк" in outcome.report
 
 
-async def test_skip_linkedin(bot, config, db, collectors):
-    outcome = await collect_and_report(bot, config, db, force_linkedin=False)
+async def test_disabled_platform_is_not_collected(bot, config, db, collectors):
+    config = dataclasses.replace(config, linkedin_profile_url=None)
+    outcome = await collect_and_report(bot, config, db)
     assert "linkedin" not in outcome.collected and "linkedin_prev" not in collectors["seen"]
+
+
+async def test_linkedin_without_cookie_is_manual_not_an_error(bot, config, db, collectors):
+    collectors["linkedin"] = (None, None)
+    outcome = await collect_and_report(bot, config, db)
+    assert "linkedin" not in outcome.errors
 
 
 # --- alerts ------------------------------------------------------------------
 
-async def test_cookie_expiry_alerted_once_until_it_works_again(db):
+async def test_cookie_expiry_alerted_once_until_it_works_again(config, db):
     expired = CollectOutcome(report="", has_change=False, errors={"linkedin_cookie_expired": True})
-    assert any("cookie истёк" in line for line in await _build_alerts(db, expired))
-    assert await _build_alerts(db, expired) == []
+    assert any("cookie истёк" in line for line in await _build_alerts(db, config, expired))
+    assert await _build_alerts(db, config, expired) == []
     working = CollectOutcome(report="", has_change=False, collected={"linkedin": (4520, "cookie")})
-    await _build_alerts(db, working)
-    assert await _build_alerts(db, expired) != []
+    await _build_alerts(db, config, working)
+    assert await _build_alerts(db, config, expired) != []
 
 
-async def test_failure_streak_alerts_on_day_two_then_weekly(db):
+async def test_failure_streak_alerts_on_day_two_then_weekly(config, db):
     failed = CollectOutcome(report="", has_change=False, errors={"youtube": True})
     yesterday = (utcnow().date() - timedelta(days=1)).isoformat()
 
     async def next_day():
         await db.set_setting("fail_last_date_youtube", yesterday)
-        return await _build_alerts(db, failed)
+        return await _build_alerts(db, config, failed)
 
-    assert await _build_alerts(db, failed) == []       # day 1
-    assert await _build_alerts(db, failed) == []       # same-day retry doesn't count
+    assert await _build_alerts(db, config, failed) == []       # day 1
+    assert await _build_alerts(db, config, failed) == []       # same-day retry doesn't count
     assert "2 дн. подряд" in (await next_day())[0]     # day 2
     for _ in range(4):                                 # days 3..6
         assert await next_day() == []
     assert "7 дн. подряд" in (await next_day())[0]
     recovered = CollectOutcome(report="", has_change=False, collected={"youtube": (128, "api")})
-    await _build_alerts(db, recovered)
+    await _build_alerts(db, config, recovered)
     assert await db.get_setting("fail_streak_youtube") == "0"
 
 
@@ -168,7 +178,7 @@ def fake_collect(monkeypatch, db):
     """collect_and_report that only builds the report from what's in the DB."""
     state = {"errors": {}}
 
-    async def _collect(bot, config, database, force_linkedin=True):
+    async def _collect(bot, config, database):
         report, has_change = await scheduler.build_report(database)
         return CollectOutcome(report=report, has_change=has_change, errors=dict(state["errors"]))
 

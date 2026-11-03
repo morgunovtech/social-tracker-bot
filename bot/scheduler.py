@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import itertools
 import logging
 import os
-import statistics
 import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -17,36 +15,17 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from telegram import Bot
 
+from bot import monitors, platforms
 from bot.chart import render_chart
-from bot.collectors.linkedin import collect_linkedin, plausible_count
-from bot.collectors.telegram import collect_telegram
-from bot.collectors.youtube import collect_youtube
 from bot.config import DOW_ORDER, Config
 from bot.db import Database, parse_utc, utcnow
-from bot.reporter import (
-    PLATFORM_LABELS,
-    PLATFORMS,
-    _crossed_milestone,
-    _fmt,
-    build_month_report,
-    build_report,
-)
+from bot.monitors import collection, followers
+from bot.platforms import LABELS, PLATFORM_IDS
+from bot.platforms.base import Context
+from bot.reporter import _crossed_milestone, build_month_report, build_report
 from bot.updates import run_dependency_watch, run_deploy_watch
 
 UTC = ZoneInfo("UTC")
-
-# Warn user when cookie has been in use longer than this (LinkedIn lifetime ~12 months)
-COOKIE_AGING_DAYS = 330
-
-# A same-day drop is alert-worthy when it exceeds either bound.
-DROP_ALERT_MIN_ABS = 20
-DROP_ALERT_MIN_PCT = 1.0
-
-# A same-day gain is flagged as a possible bot influx when it is both
-# large in absolute terms and a multiple of the typical daily gain.
-SPIKE_ALERT_MIN_ABS = 30
-SPIKE_ALERT_FACTOR = 5
-SPIKE_ALERT_MIN_PCT = 3.0  # fallback when there is too little history
 
 # Failed platforms are re-collected up to this many times, an hour apart.
 COLLECT_MAX_ATTEMPTS = 3
@@ -98,119 +77,52 @@ def _today_matches_dow(dow_expr: str, now_utc: datetime | None = None) -> bool:
     return today_short in days
 
 
-async def get_active_cookie(db: Database, config: Config) -> str | None:
-    """Cookie precedence: DB (set via /setcookie) > env (LINKEDIN_LI_AT)."""
-    return (await db.get_setting("linkedin_li_at")) or config.linkedin_li_at
+async def collect_and_report(bot: Bot, config: Config, db: Database) -> CollectOutcome:
+    """Collect from every enabled platform, persist, and build a report.
 
-
-async def get_cookie_age_days(db: Database) -> int | None:
-    """Days since the active cookie was set via /setcookie (None if from env or unset)."""
-    set_at = await db.get_setting("linkedin_li_at_set_at")
-    if not set_at:
-        return None
-    try:
-        return (utcnow() - parse_utc(set_at)).days
-    except (ValueError, TypeError):
-        return None
-
-
-async def collect_and_report(
-    bot: Bot, config: Config, db: Database, force_linkedin: bool = True
-) -> CollectOutcome:
-    """Collect from all sources, persist, and build a report.
-
-    LinkedIn is collected by default; pass force_linkedin=False to skip.
     Alert-worthy events (drops, milestones, failures) are recorded on the
     returned CollectOutcome; deciding whether to notify is the caller's job.
     """
     outcome = CollectOutcome(report="", has_change=False)
-    errors = outcome.errors
 
-    async def is_spike(platform: str, prev: int, gain: int) -> bool:
-        """Abnormal influx (possible bot wave): gain far above the typical daily gain."""
-        if gain < SPIKE_ALERT_MIN_ABS:
-            return False
-        rows = await db.get_history(platform, 14)
-        counts = [r["count"] for r in rows]
-        deltas = [b - a for a, b in itertools.pairwise(counts)]
-        if len(deltas) >= 3:
-            baseline = max(statistics.median(deltas), 1)
-            return gain >= SPIKE_ALERT_FACTOR * baseline
-        return prev > 0 and gain / prev * 100 >= SPIKE_ALERT_MIN_PCT
-
-    async def record(platform: str, count: int, source: str = "api") -> None:
+    async def record(platform: str, count: int, source: str) -> None:
         """Persist a count and detect drops / spikes / milestone crossings vs the stored value."""
         prev_row = await db.get_latest(platform)
         prev = prev_row["count"] if prev_row else None
         if prev is not None:
             # Spike check reads history, so it runs before today's upsert.
-            if count > prev and await is_spike(platform, prev, count - prev):
+            if count > prev and await followers.is_spike(db, platform, prev, count - prev):
                 outcome.spikes[platform] = (prev, count)
         await db.upsert(platform, count, source=source)
         outcome.collected[platform] = (count, source)
         if prev is None:
             return
-        drop = prev - count
-        if drop > 0 and (
-            drop >= DROP_ALERT_MIN_ABS or (prev > 0 and drop / prev * 100 >= DROP_ALERT_MIN_PCT)
-        ):
+        if followers.is_drop(prev, count):
             outcome.drops[platform] = (prev, count)
         milestone = _crossed_milestone(prev, count)
         if milestone is not None:
             outcome.milestones.append((platform, milestone))
 
-    enabled = config.enabled_platforms
+    enabled = platforms.enabled(config)
     async with aiohttp.ClientSession() as session:
-        if "telegram" in enabled:
-            tg_count = await collect_telegram(bot, config.telegram_channel_id)
-            if tg_count is not None:
-                await record("telegram", tg_count)
-            else:
-                errors["telegram"] = True
-
-        if "youtube" in enabled:
-            yt_count = await collect_youtube(session, config.youtube_api_key, config.youtube_channel_id)
-            if yt_count is not None:
-                await record("youtube", yt_count)
-            else:
-                errors["youtube"] = True
-
-        if force_linkedin and "linkedin" in enabled:
-            li_at = await get_active_cookie(db, config)
-            prev = await db.get_latest("linkedin")
-            prev_count = prev["count"] if prev else None
-            li_count, li_source = await collect_linkedin(
-                session,
-                config.linkedin_profile_url,
-                li_at=li_at,
-                prev=prev_count,
-            )
-            if li_count is not None and li_source is not None:
-                if plausible_count(prev_count, li_count):
-                    await record("linkedin", li_count, source=li_source)
-                else:
-                    logger.warning(
-                        "LinkedIn count %d rejected as implausible (previous: %s) — "
-                        "likely parsed someone else's counter; reset baseline via /linkedin <N>",
-                        li_count,
-                        prev_count,
-                    )
-                    errors["linkedin"] = True
-            elif li_source == "cookie_expired":
-                errors["linkedin_cookie_expired"] = True
-            elif li_at and config.linkedin_profile_url:
-                errors["linkedin"] = True
-
-            # Proactive aging warning (only meaningful when cookie was set via /setcookie)
-            age = await get_cookie_age_days(db)
-            if age is not None and age >= COOKIE_AGING_DAYS:
-                errors["linkedin_cookie_aging"] = age
+        for platform in enabled:
+            prev_row = await db.get_latest(platform.id)
+            ctx = Context(bot, session, config, db, prev=prev_row["count"] if prev_row else None)
+            snap = await platform.collect(ctx)
+            outcome.errors.update(snap.flags)
+            if snap.count is not None:
+                await record(platform.id, snap.count, snap.source)
+            elif snap.error:
+                outcome.errors[platform.id] = True
 
         # Push finalized counts to the website (reuses the open session).
         await _push_subscribers(session, config, db)
 
     outcome.report, outcome.has_change = await build_report(
-        db, errors=errors, linkedin_stale_days=config.linkedin_stale_days, platforms=enabled
+        db,
+        errors=outcome.errors,
+        linkedin_stale_days=config.linkedin_stale_days,
+        platforms=[p.id for p in enabled],
     )
     return outcome
 
@@ -228,14 +140,14 @@ async def _push_subscribers(
     if not config.site_ingest_url or not config.site_ingest_token:
         return
 
-    platforms = config.enabled_platforms
+    enabled = config.enabled_platforms
     counts: dict[str, int] = {}
-    for platform in platforms:
+    for platform in enabled:
         latest = await db.get_latest(platform)
         if latest is not None:
             counts[platform] = latest["count"]
 
-    if not platforms or len(counts) < len(platforms):
+    if not enabled or len(counts) < len(enabled):
         logger.info("Site push skipped — not all platforms have data yet: %s", sorted(counts))
         return
 
@@ -256,51 +168,17 @@ async def _push_subscribers(
         logger.exception("Site push errored")
 
 
-async def _build_alerts(db: Database, outcome: CollectOutcome) -> list[str]:
-    """Turn the collection outcome into proactive alert lines, with dedup state in settings.
+async def _build_alerts(db: Database, config: Config, outcome: CollectOutcome) -> list[str]:
+    """Proactive alert lines of the monitors that are switched on.
 
-    - cookie expiry: alerted once until the cookie works again;
-    - failure streaks: alerted at 2 consecutive days, then weekly while broken;
-    - drops and milestones: naturally deduped (the stored value moves past them).
+    Drops and milestones are naturally deduped (the stored value moves past
+    them); collection health keeps its dedup state in settings.
     """
-    today_iso = utcnow().date().isoformat()
     lines: list[str] = []
-
-    if outcome.errors.get("linkedin_cookie_expired"):
-        if await db.get_setting("cookie_expired_alerted") != "1":
-            await db.set_setting("cookie_expired_alerted", "1")
-            lines.append("🔴 LinkedIn cookie истёк или отклонён — обнови через /setcookie")
-    elif outcome.collected.get("linkedin", (None, None))[1] == "cookie":
-        await db.set_setting("cookie_expired_alerted", "0")
-
-    for platform in PLATFORMS:
-        label = PLATFORM_LABELS[platform]
-        if outcome.errors.get(platform):
-            # Count at most one failure per day, so same-day retries don't inflate the streak.
-            if await db.get_setting(f"fail_last_date_{platform}") != today_iso:
-                streak = int(await db.get_setting(f"fail_streak_{platform}") or "0") + 1
-                await db.set_setting(f"fail_streak_{platform}", str(streak))
-                await db.set_setting(f"fail_last_date_{platform}", today_iso)
-                if streak == 2 or (streak > 2 and streak % 7 == 0):
-                    lines.append(f"🔴 {label}: не удаётся собрать данные {streak} дн. подряд")
-        elif platform in outcome.collected:
-            await db.set_setting(f"fail_streak_{platform}", "0")
-
-    for platform, (prev, new) in outcome.drops.items():
-        label = PLATFORM_LABELS[platform]
-        lines.append(f"🟠 {label}: −{_fmt(prev - new)} подписчиков за день ({_fmt(prev)} → {_fmt(new)})")
-
-    for platform, (prev, new) in outcome.spikes.items():
-        label = PLATFORM_LABELS[platform]
-        lines.append(
-            f"🚨 {label}: +{_fmt(new - prev)} за день ({_fmt(prev)} → {_fmt(new)}) — "
-            f"аномально резкий рост, возможен наплыв ботов"
-        )
-
-    for platform, milestone in outcome.milestones:
-        label = PLATFORM_LABELS[platform]
-        lines.append(f"🎯 {label} перешагнул {_fmt(milestone)}!")
-
+    if await monitors.is_on(db, config, "collection"):
+        lines += await collection.alert_lines(db, outcome)
+    if await monitors.is_on(db, config, "followers"):
+        lines += followers.alert_lines(outcome)
     return lines
 
 
@@ -311,7 +189,7 @@ async def send_alerts(bot: Bot, config: Config, db: Database, outcome: CollectOu
     value, so a drop or spike that isn't alerted now is never alerted.
     """
     try:
-        alerts = await _build_alerts(db, outcome)
+        alerts = await _build_alerts(db, config, outcome)
         if alerts:
             await bot.send_message(chat_id=config.admin_chat_id, text="\n".join(alerts))
             logger.info("Sent %d proactive alert(s)", len(alerts))
@@ -321,7 +199,7 @@ async def send_alerts(bot: Bot, config: Config, db: Database, outcome: CollectOu
 
 async def _build_chart_png(db: Database, days: int = 30) -> bytes | None:
     series: dict[str, list[tuple[datetime, int]]] = {}
-    for platform in PLATFORMS:
+    for platform in PLATFORM_IDS:
         rows = await db.get_history(platform, days)
         points = []
         for row in rows:
@@ -329,7 +207,7 @@ async def _build_chart_png(db: Database, days: int = 30) -> bytes | None:
                 points.append((parse_utc(row["collected_at"]), row["count"]))
             except (ValueError, TypeError):
                 continue
-        series[PLATFORM_LABELS[platform]] = points
+        series[LABELS[platform]] = points
     # Rendering is sync CPU work — keep the event loop free.
     return await asyncio.to_thread(render_chart, series)
 
@@ -385,7 +263,7 @@ async def _scheduled_job(
     digest (1st), weekly DB backup (Sunday), watchdog ping.
     """
     try:
-        outcome = await collect_and_report(bot, config, db, force_linkedin=True)
+        outcome = await collect_and_report(bot, config, db)
     except Exception:
         # No healthcheck ping on failure — the watchdog will fire.
         logger.exception("Scheduled collection failed")
@@ -399,7 +277,7 @@ async def _scheduled_job(
     await send_alerts(bot, config, db, outcome)
 
     # Retry failed platforms in an hour (cookie expiry is excluded — retrying won't help).
-    failed = [p for p in PLATFORMS if outcome.errors.get(p)]
+    failed = [p for p in PLATFORM_IDS if outcome.errors.get(p)]
     if failed and attempt < COLLECT_MAX_ATTEMPTS:
         run_at = utcnow() + COLLECT_RETRY_DELAY
         scheduler.add_job(

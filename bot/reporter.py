@@ -4,13 +4,7 @@ import math
 from datetime import date, datetime, timedelta
 
 from bot.db import Database, parse_utc, utcnow
-
-PLATFORMS = ["telegram", "youtube", "linkedin"]
-PLATFORM_LABELS = {
-    "telegram": "Telegram",
-    "youtube": "YouTube",
-    "linkedin": "LinkedIn",
-}
+from bot.platforms import BY_ID, LABELS, PLATFORM_IDS
 
 # Crossed when count moves up through one of these.
 MILESTONES = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000]
@@ -123,8 +117,8 @@ async def build_report(
     forecasts: list[str] = []
     accel_notes: list[str] = []
 
-    for platform in PLATFORMS:
-        label = PLATFORM_LABELS[platform]
+    for platform in PLATFORM_IDS:
+        label = LABELS[platform]
         snap = await _platform_snapshot(db, platform, today)
         latest = snap["latest"]
 
@@ -287,8 +281,8 @@ async def build_week_report(db: Database) -> str:
     prev_complete = True
     has_data = False
 
-    for platform in PLATFORMS:
-        label = PLATFORM_LABELS[platform]
+    for platform in PLATFORM_IDS:
+        label = LABELS[platform]
 
         latest = await db.get_latest(platform)
         if latest is None:
@@ -357,8 +351,8 @@ async def build_month_report(db: Database) -> str | None:
     base_complete = True
     has_data = False
 
-    for platform in PLATFORMS:
-        label = PLATFORM_LABELS[platform]
+    for platform in PLATFORM_IDS:
+        label = LABELS[platform]
         latest = await db.get_latest(platform)
         if latest is None:
             continue
@@ -412,7 +406,7 @@ async def build_history_all(db: Database, days: int) -> str:
     # Collect per-platform rows indexed by date object
     data: dict[date, dict[str, int]] = {}
 
-    for platform in PLATFORMS:
+    for platform in PLATFORM_IDS:
         rows = await db.get_history(platform, days)
         for row in rows:
             try:
@@ -426,24 +420,25 @@ async def build_history_all(db: Database, days: int) -> str:
 
     sorted_dates = sorted(data.keys())
 
+    # Only platforms with data in the period get a column.
+    columns = [p for p in PLATFORM_IDS if any(p in row for row in data.values())]
+
     lines = [f"📊 Все платформы — {days} дней", ""]
     lines.append("```")
-    lines.append(f"{'Дата':<7} {'TG':>7} {'YT':>7} {'LI':>7}")
-    lines.append("-" * 30)
+    lines.append(f"{'Дата':<7}" + "".join(f" {BY_ID[p].short:>7}" for p in columns))
+    lines.append("-" * (7 + 8 * len(columns)))
 
     for d in sorted_dates:
         row = data[d]
-        tg = _fmt(row["telegram"]) if "telegram" in row else "—"
-        yt = _fmt(row["youtube"]) if "youtube" in row else "—"
-        li = _fmt(row["linkedin"]) if "linkedin" in row else "—"
-        lines.append(f"{d.strftime('%d.%m'):<7} {tg:>7} {yt:>7} {li:>7}")
+        cells = "".join(f" {_fmt(row[p]) if p in row else '—':>7}" for p in columns)
+        lines.append(f"{d.strftime('%d.%m'):<7}{cells}")
 
     lines.append("```")
     return "\n".join(lines)
 
 
 async def build_history_table(db: Database, platform: str, days: int) -> str:
-    label = PLATFORM_LABELS.get(platform, platform)
+    label = LABELS.get(platform, platform)
     rows = await db.get_history(platform, days)
 
     if not rows:

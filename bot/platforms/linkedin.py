@@ -6,7 +6,13 @@ import re
 import aiohttp
 from bs4 import BeautifulSoup
 
+from bot.db import Database, parse_utc, utcnow
+from bot.platforms.base import Context, Platform, Snapshot
+
 logger = logging.getLogger(__name__)
+
+# Warn user when cookie has been in use longer than this (LinkedIn lifetime ~12 months)
+COOKIE_AGING_DAYS = 330
 
 # Cookie-based fetch
 _USER_AGENT = (
@@ -173,3 +179,63 @@ async def collect_linkedin(
     if count is not None:
         return count, "cookie"
     return None, None
+
+
+async def get_active_cookie(db: Database, config) -> str | None:
+    """Cookie precedence: DB (set via /setcookie) > env (LINKEDIN_LI_AT)."""
+    return (await db.get_setting("linkedin_li_at")) or config.linkedin_li_at
+
+
+async def get_cookie_age_days(db: Database) -> int | None:
+    """Days since the active cookie was set via /setcookie (None if from env or unset)."""
+    set_at = await db.get_setting("linkedin_li_at_set_at")
+    if not set_at:
+        return None
+    try:
+        return (utcnow() - parse_utc(set_at)).days
+    except (ValueError, TypeError):
+        return None
+
+
+class LinkedIn(Platform):
+    """Followers only: the profile is read with a session cookie, and its page
+    layout is too unstable for change alerts without false alarms."""
+
+    id = "linkedin"
+    label = "LinkedIn"
+    short = "LI"
+    account = "аккаунт LinkedIn"
+
+    def enabled(self, config) -> bool:
+        return bool(config.linkedin_profile_url)
+
+    def target(self, config) -> str:
+        return config.linkedin_profile_url or ""
+
+    async def collect(self, ctx: Context) -> Snapshot:
+        li_at = await get_active_cookie(ctx.db, ctx.config)
+        count, source = await collect_linkedin(
+            ctx.session, ctx.config.linkedin_profile_url, li_at=li_at, prev=ctx.prev
+        )
+        flags: dict[str, bool | int] = {}
+        # Proactive aging warning (only meaningful when cookie was set via /setcookie)
+        age = await get_cookie_age_days(ctx.db)
+        if age is not None and age >= COOKIE_AGING_DAYS:
+            flags["linkedin_cookie_aging"] = age
+
+        if count is not None and source is not None:
+            if plausible_count(ctx.prev, count):
+                return Snapshot(count, source, flags=flags)
+            logger.warning(
+                "LinkedIn count %d rejected as implausible (previous: %s) — "
+                "likely parsed someone else's counter; reset baseline via /linkedin <N>",
+                count,
+                ctx.prev,
+            )
+            return Snapshot(None, error=True, flags=flags)
+        if source == "cookie_expired":
+            # Not an error: retrying won't help until /setcookie, which has its own alert.
+            flags["linkedin_cookie_expired"] = True
+            return Snapshot(None, flags=flags)
+        # Without a cookie the number is entered by hand: nothing failed.
+        return Snapshot(None, error=bool(li_at), flags=flags)

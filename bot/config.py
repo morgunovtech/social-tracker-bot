@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
+from bot import platforms
+
 load_dotenv()
 
 
@@ -106,6 +108,10 @@ class Config:
     repo_slug: str | None  # owner/name on GitHub
     github_token: str | None  # optional: only lifts GitHub's rate limit
     update_watch: bool
+    # Security emails: the mail-worker that receives forwarded security
+    # notifications (see mail-worker/README.md) and its bearer token.
+    security_mail_url: str | None
+    security_mail_token: str | None
 
     @classmethod
     def from_env(cls) -> Config:
@@ -130,14 +136,11 @@ class Config:
             repo_slug=_repo_slug(),
             github_token=os.getenv("GITHUB_TOKEN") or None,
             update_watch=os.getenv("UPDATE_WATCH", "1") == "1",
+            security_mail_url=(os.getenv("SECURITY_MAIL_URL") or "").rstrip("/") or None,
+            security_mail_token=os.getenv("SECURITY_MAIL_TOKEN") or None,
         )
 
     @property
     def enabled_platforms(self) -> list[str]:
-        """Platforms configured well enough to collect, in report order."""
-        configured = {
-            "telegram": bool(self.telegram_channel_id),
-            "youtube": bool(self.youtube_api_key and self.youtube_channel_id),
-            "linkedin": bool(self.linkedin_profile_url),
-        }
-        return [platform for platform, on in configured.items() if on]
+        """Ids of the platforms configured well enough to collect, in report order."""
+        return [p.id for p in platforms.enabled(self)]

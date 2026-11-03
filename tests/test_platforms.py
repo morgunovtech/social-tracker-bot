@@ -4,8 +4,8 @@ from aiohttp import web
 from aiohttp.test_utils import TestServer
 from conftest import COOKIE
 
-from bot.collectors import youtube
-from bot.collectors.linkedin import _parse_follower_count, collect_linkedin, plausible_count
+from bot.platforms import youtube
+from bot.platforms.linkedin import _parse_follower_count, collect_linkedin, plausible_count
 
 # --- LinkedIn parsing --------------------------------------------------------
 
