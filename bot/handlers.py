@@ -21,10 +21,10 @@ from telegram.ext import (
     filters,
 )
 
-from bot.config import Config
+from bot.config import Config, normalize_dow
 from bot.db import Database, utcnow
 from bot.reporter import PLATFORMS, build_history_all, build_history_table, build_report, build_week_report
-from bot.collectors.linkedin import collect_linkedin
+from bot.collectors.linkedin import collect_linkedin, plausible_count
 from bot.scheduler import (
     COOKIE_AGING_DAYS,
     _build_chart_png,
@@ -32,8 +32,8 @@ from bot.scheduler import (
     get_cookie_age_days,
     get_report_schedule,
     is_quiet_mode,
-    normalize_dow,
     reschedule,
+    send_alerts,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,9 @@ LI_AWAITING_NUMBER = 1
 
 # End a dangling LinkedIn-input conversation after this many seconds of silence.
 LI_CONV_TIMEOUT = 120
+
+# Longest /history period: keeps the table under Telegram's 4096-char message limit.
+HISTORY_MAX_DAYS = 90
 
 # Persistent reply-keyboard label. Tapping this sends the same text back,
 # which our MessageHandler maps to /start.
@@ -202,6 +205,7 @@ async def cmd_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("⏳ Собираю данные...")
     outcome = await collect_and_report(context.bot, config, db, force_linkedin=True)
     await update.message.reply_text(outcome.report, reply_markup=_main_menu())
+    await send_alerts(context.bot, config, db, outcome)
 
 
 async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -250,6 +254,9 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             days = int(context.args[1])
         except ValueError:
             await update.message.reply_text("Ошибка: количество дней должно быть числом.")
+            return
+        if not 1 <= days <= HISTORY_MAX_DAYS:
+            await update.message.reply_text(f"Ошибка: количество дней — от 1 до {HISTORY_MAX_DAYS}.")
             return
         if platform == "all":
             table = await build_history_all(db, days)
@@ -353,45 +360,66 @@ async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         )
         return
 
+    # Don't leave the secret sitting in chat history — delete it before any
+    # check can bail out early. Replies go to the chat: the message is gone.
+    chat = update.effective_chat
+    deleted = True
+    try:
+        await update.message.delete()
+    except Exception:
+        deleted = False
+    note = "" if deleted else "\n⚠️ Удали сообщение с cookie из чата вручную."
+
     cookie = " ".join(context.args).strip()
     if len(cookie) < 50:
-        await update.message.reply_text("❌ Это не похоже на cookie (слишком короткое).")
+        await chat.send_message(f"❌ Это не похоже на cookie (слишком короткое).{note}")
         return
 
     if not config.linkedin_profile_url:
-        await update.message.reply_text("❌ Не задан LINKEDIN_PROFILE_URL — нечего проверять.")
+        await chat.send_message(f"❌ Не задан LINKEDIN_PROFILE_URL — нечего проверять.{note}")
         return
 
-    await update.message.reply_text("⏳ Проверяю cookie...")
+    await chat.send_message("⏳ Проверяю cookie...")
 
+    prev_row = await db.get_latest("linkedin")
+    prev = prev_row["count"] if prev_row else None
     async with aiohttp.ClientSession() as session:
         count, source = await collect_linkedin(
             session,
             profile_url=config.linkedin_profile_url,
             li_at=cookie,
+            prev=prev,
         )
 
     if count is None:
-        await update.message.reply_text(
-            "❌ Cookie не работает. Проверь, что скопировал значение целиком (без × или других левых символов)."
+        reason = (
+            "LinkedIn отклонил cookie"
+            if source == "cookie_expired"
+            else "не удалось получить число подписчиков (подробности в логах)"
+        )
+        await chat.send_message(
+            f"❌ Cookie не сохранён: {reason}.\n"
+            f"Проверь, что скопировал значение целиком (без × или других левых символов).{note}"
         )
         return
 
     await db.set_setting("linkedin_li_at", cookie)
     await db.set_setting("linkedin_li_at_set_at", utcnow().isoformat())
     await db.set_setting("cookie_expired_alerted", "0")  # fresh cookie — re-arm the alert
-    await db.upsert("linkedin", count, source="cookie")
 
-    # Don't leave the secret sitting in chat history.
-    deleted = True
-    try:
-        await update.message.delete()
-    except Exception:
-        deleted = False
+    # Same guard as the daily collect: a value far from the stored one is
+    # likely someone else's counter and must not become the new baseline.
+    if plausible_count(prev, count):
+        await db.upsert("linkedin", count, source="cookie")
+        fetched = f"Тест-фетч: {count:,} подписчиков."
+    else:
+        fetched = (
+            f"Тест-фетч вернул {count:,} — слишком далеко от прошлого {prev:,}, число не записано.\n"
+            "Если оно верное, задай его через /linkedin <число>."
+        )
 
-    note = "" if deleted else "\n⚠️ Удали сообщение с cookie из чата вручную."
-    await update.effective_chat.send_message(
-        f"✅ Cookie сохранён. Тест-фетч: {count:,} подписчиков.\n"
+    await chat.send_message(
+        f"✅ Cookie сохранён. {fetched}\n"
         f"Примерный срок жизни — ~12 месяцев. Бот предупредит за месяц до конца.{note}",
         reply_markup=_main_menu(),
     )
@@ -463,14 +491,14 @@ async def cmd_setquiet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
-    await query.answer()
-
     config: Config = context.bot_data["config"]
     db: Database = context.bot_data["db"]
 
+    # Check before answering: _deny answers with an alert, and a query can be answered only once.
     if not _is_admin(update, config):
         await _deny(update)
         return
+    await query.answer()
 
     data = query.data
 
@@ -485,6 +513,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await _safe_edit(query, "⏳ Собираю данные...")
         outcome = await collect_and_report(context.bot, config, db, force_linkedin=True)
         await _safe_edit(query, outcome.report, reply_markup=_main_menu())
+        await send_alerts(context.bot, config, db, outcome)
 
     elif data == "week":
         report = await build_week_report(db)
