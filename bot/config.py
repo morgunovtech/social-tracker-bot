@@ -50,6 +50,15 @@ def _report_dow() -> str:
         raise RuntimeError(f"Invalid REPORT_DOW={raw!r}: {e}") from None
 
 
+def _repo_slug() -> str | None:
+    slug = os.getenv("GITHUB_REPOSITORY", "").strip()
+    if not slug:
+        owner = os.getenv("RAILWAY_GIT_REPO_OWNER", "").strip()
+        name = os.getenv("RAILWAY_GIT_REPO_NAME", "").strip()
+        slug = f"{owner}/{name}" if owner and name else ""
+    return slug or None
+
+
 @dataclass(frozen=True)
 class Config:
     # Telegram bot (required) and the channel to track (optional)
@@ -83,6 +92,13 @@ class Config:
     # (e.g. https://hc-ping.com/<uuid> from healthchecks.io).
     healthcheck_url: str | None
 
+    # Update awareness (bot/updates.py). Railway provides the commit and the
+    # repository by itself; elsewhere pass APP_COMMIT and GITHUB_REPOSITORY.
+    app_commit: str
+    repo_slug: str | None  # owner/name on GitHub
+    github_token: str | None  # optional: only lifts GitHub's rate limit
+    update_watch: bool
+
     @classmethod
     def from_env(cls) -> Config:
         return cls(
@@ -102,6 +118,10 @@ class Config:
             site_ingest_url=os.getenv("SITE_INGEST_URL") or None,
             site_ingest_token=os.getenv("SOCIALBOT_INGEST_TOKEN"),
             healthcheck_url=os.getenv("HEALTHCHECK_URL"),
+            app_commit=(os.getenv("APP_COMMIT") or os.getenv("RAILWAY_GIT_COMMIT_SHA") or "").strip()[:12],
+            repo_slug=_repo_slug(),
+            github_token=os.getenv("GITHUB_TOKEN") or None,
+            update_watch=os.getenv("UPDATE_WATCH", "1") == "1",
         )
 
     @property

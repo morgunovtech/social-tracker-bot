@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import platform
 import re
 import tempfile
 
@@ -13,7 +14,7 @@ from telegram import (
     ReplyKeyboardMarkup,
     Update,
 )
-from telegram.error import BadRequest, Conflict
+from telegram.error import BadRequest, Conflict, NetworkError
 from telegram.ext import (
     CallbackQueryHandler,
     CommandHandler,
@@ -124,6 +125,16 @@ def _settings_keyboard(quiet: bool) -> InlineKeyboardMarkup:
     ])
 
 
+def _settings_text(dow: str, hour: int, minute: int, config: Config) -> str:
+    build = f"сборка {config.app_commit[:7]} · " if config.app_commit else ""
+    return (
+        "⚙️ Настройки\n\n"
+        f"Расписание: {_dow_pretty(dow)} в {hour:02d}:{minute:02d} UTC\n"
+        "Изменить: /settime HH:MM, /setday sat\n\n"
+        f"Версия: {build}Python {platform.python_version()}"
+    )
+
+
 def _dow_pretty(dow: str) -> str:
     if dow == "*":
         return "каждый день"
@@ -158,6 +169,10 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     if isinstance(context.error, Conflict):
         # A second instance is still polling: Railway overlaps deploys for a few seconds.
         logger.warning("Polling conflict (another instance running): %s", context.error)
+        return
+    if update is None and isinstance(context.error, NetworkError):
+        # Polling hiccup (e.g. no network yet right after start); PTB retries by itself.
+        logger.warning("Polling network error, retrying: %s", context.error)
         return
     logger.error("Unhandled error", exc_info=context.error)
     config: Config = context.bot_data["config"]
@@ -600,9 +615,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         quiet = await is_quiet_mode(db, config)
         await _safe_edit(
             query,
-            f"⚙️ Настройки\n\n"
-            f"Расписание: {_dow_pretty(dow)} в {hour:02d}:{minute:02d} UTC\n"
-            f"Изменить: /settime HH:MM, /setday sat\n",
+            _settings_text(dow, hour, minute, config),
             reply_markup=_settings_keyboard(quiet),
         )
 
@@ -613,9 +626,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         dow, hour, minute = await get_report_schedule(db, config)
         await _safe_edit(
             query,
-            f"⚙️ Настройки\n\n"
-            f"Расписание: {_dow_pretty(dow)} в {hour:02d}:{minute:02d} UTC\n"
-            f"Изменить: /settime HH:MM, /setday sat\n",
+            _settings_text(dow, hour, minute, config),
             reply_markup=_settings_keyboard(new_value),
         )
 

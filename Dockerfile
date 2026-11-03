@@ -15,5 +15,10 @@ RUN useradd --uid 1000 --create-home appuser \
     && chown -R appuser:appuser /app/data \
     && chmod +x /app/entrypoint.sh
 
+# Build commit for «🔄 Бот обновился» and ⚙️ Настройки. Railway sets
+# RAILWAY_GIT_COMMIT_SHA on its own; other builds can pass --build-arg.
+ARG APP_COMMIT=""
+ENV APP_COMMIT=$APP_COMMIT
+
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["python", "-m", "bot.main"]

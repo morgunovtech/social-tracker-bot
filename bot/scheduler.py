@@ -14,6 +14,7 @@ import aiohttp
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from telegram import Bot
 
 from bot.chart import render_chart
@@ -30,6 +31,7 @@ from bot.reporter import (
     build_month_report,
     build_report,
 )
+from bot.updates import run_dependency_watch, run_deploy_watch
 
 UTC = ZoneInfo("UTC")
 
@@ -447,9 +449,13 @@ async def _scheduled_job(
         except Exception:
             logger.exception("Monthly digest failed")
 
-    # Weekly DB backup on Sundays
+    # Weekly on Sundays: DB backup, then vulnerabilities / PRs waiting for a human
     if today.weekday() == 6:
         await _send_backup(bot, config, db)
+        try:
+            await run_dependency_watch(bot, config, db)
+        except Exception:
+            logger.exception("Dependency watch failed")
 
     await _ping_healthcheck(config)
 
@@ -501,6 +507,14 @@ async def setup_scheduler(bot: Bot, config: Config, db: Database) -> AsyncIOSche
         replace_existing=True,
         misfire_grace_time=DAILY_MISFIRE_GRACE_S,
         coalesce=True,
+    )
+    # Hourly: did the newest commit on main fail to deploy?
+    scheduler.add_job(
+        run_deploy_watch,
+        trigger=IntervalTrigger(hours=1, timezone=UTC),
+        args=[bot, config, db],
+        id="deploy_watch",
+        replace_existing=True,
     )
     logger.info("Scheduler started: daily collect at %02d:%02d UTC, push on %s", hour, minute, dow)
 

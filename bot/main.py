@@ -9,6 +9,7 @@ from bot.config import Config
 from bot.db import Database
 from bot.handlers import register_handlers
 from bot.scheduler import setup_scheduler
+from bot.updates import report_startup_changes
 
 _BOT_COMMANDS = [
     BotCommand("start", "Меню"),
@@ -46,6 +47,12 @@ async def _post_init(app: Application) -> None:
     app.bot_data["scheduler"] = scheduler
 
     await app.bot.set_my_commands(_BOT_COMMANDS)
+
+    # «🔄 Бот обновился» after a deploy; never let it block the start.
+    try:
+        await report_startup_changes(app.bot, config, db)
+    except Exception:
+        logger.exception("Startup update notice failed")
 
     logger.info("Bot ready: scheduler + DB initialized + commands registered")
 

@@ -22,6 +22,13 @@ os.environ.update({
     "SITE_INGEST_URL": "",
     "SOCIALBOT_INGEST_TOKEN": "",
     "HEALTHCHECK_URL": "",
+    "UPDATE_WATCH": "0",
+    "APP_COMMIT": "",
+    "RAILWAY_GIT_COMMIT_SHA": "",
+    "GITHUB_REPOSITORY": "",
+    "RAILWAY_GIT_REPO_OWNER": "",
+    "RAILWAY_GIT_REPO_NAME": "",
+    "GITHUB_TOKEN": "",
 })
 
 import dataclasses  # noqa: E402
