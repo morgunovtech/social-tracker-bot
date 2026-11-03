@@ -22,3 +22,6 @@ data/
 # Tooling caches
 .pytest_cache/
 .ruff_cache/
+
+# Local state of `wrangler dev` (mail-worker); never commit it.
+.wrangler/
