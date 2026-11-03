@@ -79,7 +79,9 @@ def main() -> None:
     register_handlers(app, config, db)
 
     logger.info("Bot starting...")
-    app.run_polling(drop_pending_updates=True)
+    # Keep what was sent while the bot was down for a deploy; stale messages are
+    # dropped by handlers.drop_stale_messages.
+    app.run_polling(drop_pending_updates=False)
 
 
 if __name__ == "__main__":
