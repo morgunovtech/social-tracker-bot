@@ -17,11 +17,13 @@ from telegram import (
 )
 from telegram.error import BadRequest, Conflict, NetworkError
 from telegram.ext import (
+    ApplicationHandlerStop,
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     ConversationHandler,
     MessageHandler,
+    TypeHandler,
     filters,
 )
 
@@ -56,6 +58,10 @@ HISTORY_MAX_DAYS = 90
 
 # Bot API getFile refuses files above 20 MB.
 RESTORE_MAX_BYTES = 20 * 1024 * 1024
+
+# Messages queued while the bot restarts (a deploy) are handled after start;
+# older ones (a long outage) are dropped rather than replayed.
+PENDING_MAX_AGE = timedelta(minutes=10)
 
 # Persistent reply-keyboard label. Tapping this sends the same text back,
 # which our MessageHandler maps to /start.
@@ -217,11 +223,33 @@ def _is_admin(update: Update, config: Config) -> bool:
     return user is not None and user.id == config.admin_chat_id
 
 
+async def _answer(query, text: str | None = None, show_alert: bool = False) -> None:
+    """query.answer() that survives a press made while the bot was restarting:
+    Telegram refuses to answer an old query, but the action itself still runs."""
+    try:
+        await query.answer(text, show_alert=show_alert)
+    except BadRequest as e:
+        reason = str(e).lower()
+        if "query is too old" not in reason and "query id is invalid" not in reason:
+            raise
+        logger.info("Late callback answer skipped: %s", e)
+
+
 async def _deny(update: Update) -> None:
     if update.callback_query:
-        await update.callback_query.answer("⛔ Доступ запрещён.", show_alert=True)
+        await _answer(update.callback_query, "⛔ Доступ запрещён.", show_alert=True)
     elif update.message:
         await update.message.reply_text("⛔ Доступ запрещён.")
+
+
+async def drop_stale_messages(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Runs before every handler. A message queued during a deploy restart is
+    handled; one older than PENDING_MAX_AGE is dropped, so a /now from hours
+    ago doesn't fire. Button presses carry no send time and always pass."""
+    message = update.message
+    if message is not None and message.date is not None and utcnow() - message.date > PENDING_MAX_AGE:
+        logger.info("Dropping a message queued for %s", utcnow() - message.date)
+        raise ApplicationHandlerStop
 
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -667,7 +695,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not _is_admin(update, config):
         await _deny(update)
         return
-    await query.answer()
+    await _answer(query)
 
     data = query.data
 
@@ -789,7 +817,7 @@ async def li_conv_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         return ConversationHandler.END
 
     query = update.callback_query
-    await query.answer()
+    await _answer(query)
     await _safe_edit(
         query,
         "Введи число подписчиков LinkedIn одним сообщением.",
@@ -826,7 +854,7 @@ async def li_conv_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def li_conv_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if update.callback_query:
-        await update.callback_query.answer()
+        await _answer(update.callback_query)
         await _safe_edit(update.callback_query, "Отменено.", reply_markup=_main_menu())
     elif update.message:
         await update.message.reply_text("Отменено.", reply_markup=_main_menu())
@@ -846,6 +874,9 @@ async def li_conv_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 def register_handlers(app, config: Config, db: Database) -> None:
     app.bot_data["config"] = config
     app.bot_data["db"] = db
+
+    # Before everything else: drop messages that waited through a long outage.
+    app.add_handler(TypeHandler(Update, drop_stale_messages), group=-1)
 
     li_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(li_conv_start, pattern="^linkedin_prompt$")],

@@ -1,12 +1,12 @@
 import shutil
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
 from conftest import ADMIN_ID, COOKIE, STRANGER_ID
 from telegram import Chat, Message, Update, User
-from telegram.error import Conflict, NetworkError
-from telegram.ext import ConversationHandler
+from telegram.error import BadRequest, Conflict, NetworkError
+from telegram.ext import ApplicationHandlerStop, ConversationHandler
 
 from bot import handlers
 from bot.db import Database, utcnow
@@ -342,3 +342,44 @@ async def test_polling_network_error_is_quiet(make_context, bot, caplog):
     context.error = NetworkError("httpx.ConnectError")
     await handlers.on_error(None, context)
     assert bot.messages == [] and "retrying" in caplog.text and "Traceback" not in caplog.text
+
+
+# --- updates queued during a restart -----------------------------------------
+
+async def test_late_button_answer_does_not_block_the_action(make_update, make_context, insert):
+    insert("telegram", 1000, 0)
+    press = make_update(callback="stats")
+
+    async def too_old(*args, **kwargs):
+        raise BadRequest("Query is too old and response timeout expired or query id is invalid")
+
+    press.callback_query.answer = too_old
+    await handlers.on_callback(press, make_context())
+    assert "Telegram: 1,000" in press.callback_query.edits[0]      # pressed during the restart, still done
+
+
+async def test_other_answer_errors_still_surface(make_update, make_context):
+    press = make_update(callback="stats")
+
+    async def broken(*args, **kwargs):
+        raise BadRequest("Chat not found")
+
+    press.callback_query.answer = broken
+    with pytest.raises(BadRequest, match="Chat not found"):
+        await handlers.on_callback(press, make_context())
+
+
+@pytest.mark.parametrize(("age_minutes", "dropped"), [(1, False), (9, False), (11, True), (600, True)])
+async def test_queued_messages_are_handled_unless_stale(make_update, make_context, age_minutes, dropped):
+    update = make_update(text="/now")
+    update.message.date = utcnow() - timedelta(minutes=age_minutes)
+    if dropped:
+        with pytest.raises(ApplicationHandlerStop):
+            await handlers.drop_stale_messages(update, make_context())
+    else:
+        assert await handlers.drop_stale_messages(update, make_context()) is None
+
+
+async def test_button_presses_are_never_dropped_as_stale(make_update, make_context):
+    # A press has no send time of its own: the menu it sits on may be days old.
+    assert await handlers.drop_stale_messages(make_update(callback="stats"), make_context()) is None
