@@ -175,6 +175,10 @@ python3 -m venv .venv
 
 Новая соцсеть — это модуль в `bot/platforms/` (наследник `Platform`: как понять, что она настроена, как читать подписчиков и, по желанию, какие публичные поля профиля стеречь) и строка в `PLATFORMS`. Мониторинги — в `bot/monitors/`.
 
+## Вопросы и баги
+
+Вопросы по установке и идеи — в [Discussions](https://github.com/morgunovtech/social-tracker-bot/discussions), баги — в [Issues](https://github.com/morgunovtech/social-tracker-bot/issues/new/choose): форма попросит строку версии из ⚙️ Настройки. Уязвимости — приватно, см. [SECURITY.md](SECURITY.md).
+
 ## Лицензия
 
 [MIT](LICENSE). Проект не связан с Telegram, YouTube или LinkedIn.
