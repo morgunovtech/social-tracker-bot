@@ -5,6 +5,7 @@ import os
 import platform
 import re
 import tempfile
+from datetime import timedelta
 
 import aiohttp
 from telegram import (
@@ -24,13 +25,17 @@ from telegram.ext import (
     filters,
 )
 
+from bot import monitors, platforms
 from bot.config import Config, normalize_dow
 from bot.db import Database, utcnow
-from bot.platforms import LABELS, PLATFORM_IDS, PLATFORMS
+from bot.monitors import hygiene
+from bot.platforms import BY_ID, LABELS, PLATFORM_IDS, PLATFORMS
+from bot.platforms.base import Platform
 from bot.platforms.linkedin import COOKIE_AGING_DAYS, collect_linkedin, get_cookie_age_days, plausible_count
-from bot.reporter import build_history_all, build_history_table, build_report, build_week_report
+from bot.reporter import build_history_all, build_history_table, build_week_report
 from bot.scheduler import (
     _build_chart_png,
+    build_stats,
     collect_and_report,
     get_report_schedule,
     is_quiet_mode,
@@ -85,17 +90,76 @@ def _main_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("📊 Статистика", callback_data="stats"),
-            InlineKeyboardButton("▶️ Собрать сейчас", callback_data="now"),
+            InlineKeyboardButton("🛡 Безопасность", callback_data="sec"),
         ],
         [
+            InlineKeyboardButton("▶️ Собрать сейчас", callback_data="now"),
             InlineKeyboardButton("📈 История", callback_data="history"),
+        ],
+        [
             InlineKeyboardButton("📅 Неделя", callback_data="week"),
+            InlineKeyboardButton("🧩 Модули", callback_data="mod"),
         ],
         [
             InlineKeyboardButton("✏️ LinkedIn", callback_data="linkedin_prompt"),
             InlineKeyboardButton("⚙️ Настройки", callback_data="settings"),
         ],
     ])
+
+
+def _rows(buttons: list[InlineKeyboardButton], per_row: int = 2) -> list[list[InlineKeyboardButton]]:
+    return [buttons[i : i + per_row] for i in range(0, len(buttons), per_row)]
+
+
+def _security_keyboard(config: Config) -> InlineKeyboardMarkup:
+    edits = [InlineKeyboardButton(f"✏️ {p.label}", callback_data=f"sec:edit:{p.id}") for p in platforms.enabled(config)]
+    return InlineKeyboardMarkup(_rows(edits) + [[InlineKeyboardButton("← Назад", callback_data="menu")]])
+
+
+async def _checklist_screen(db: Database, platform: Platform) -> tuple[str, InlineKeyboardMarkup]:
+    """One account's checklist: numbered items in the text, a row of answers per item."""
+    ans = await hygiene.answers(db, platform)
+    lines = [f"✏️ {platform.label} — {platform.account}", "", "Отметь, как сейчас. Пароль вводить не нужно.", ""]
+    rows: list[list[InlineKeyboardButton]] = []
+    checklist = hygiene.items(platform)
+    for n, item in enumerate(checklist, 1):
+        current = next((c for c in item.choices if c.value == ans.get(item.key)), None)
+        lines.append(f"{n}. {item.label}: {current.button if current else '—'}")
+        rows.append([
+            InlineKeyboardButton(
+                f"{n} · {'✅ ' if c is current else ''}{c.button}",
+                callback_data=f"sec:set:{platform.id}:{item.key}:{c.value}",
+            )
+            for c in item.choices
+        ])
+    n = len(checklist) + 1
+    age = hygiene.password_age(ans, utcnow().date())
+    when = "—" if age is None else "сегодня" if age == 0 else f"{age} дн. назад"
+    lines.append(f"{n}. Последняя смена пароля: {when}")
+    ages = [
+        InlineKeyboardButton(f"{n} · {label}", callback_data=f"sec:pwd:{platform.id}:{days}")
+        for label, days in hygiene.PASSWORD_AGES.items()
+    ]
+    rows += _rows(ages)
+    rows.append([InlineKeyboardButton("← К безопасности", callback_data="sec")])
+    return "\n".join(lines), InlineKeyboardMarkup(rows)
+
+
+async def _modules_screen(db: Database, config: Config) -> tuple[str, InlineKeyboardMarkup]:
+    lines = ["🧩 Модули", "", "Платформы (подключаются в .env):"]
+    for p in PLATFORMS:
+        lines.append(f"✅ {p.label} — {p.target(config)}" if p.enabled(config) else f"⚪ {p.label} — не подключено")
+    lines += ["", "Мониторинги:"]
+    toggles: list[InlineKeyboardButton] = []
+    for m in monitors.MONITORS:
+        if not m.requires(config):
+            lines.append(f"⚪ {m.label} — нужно: {m.needs}")
+            continue
+        on = await monitors.is_switched_on(db, m.id)
+        lines.append(f"{'✅' if on else '⏸'} {m.label} — {m.description}")
+        toggles.append(InlineKeyboardButton(f"{m.label}: {'вкл' if on else 'выкл'}", callback_data=f"mod:{m.id}"))
+    keyboard = _rows(toggles) + [[InlineKeyboardButton("← Назад", callback_data="menu")]]
+    return "\n".join(lines), InlineKeyboardMarkup(keyboard)
 
 
 def _history_platforms() -> InlineKeyboardMarkup:
@@ -192,7 +256,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Привет! Этот бот только для администратора.")
         return
     await update.message.reply_text(
-        "Привет! Я отслеживаю подписчиков в Telegram, YouTube и LinkedIn.\n"
+        "Привет! Я слежу за подписчиками и безопасностью твоих аккаунтов: падения и накрутка, "
+        "смена названия, ссылок и админов, письма о новых входах и смене пароля.\n"
         "Кнопка «📊 Меню» внизу экрана всегда вызывает это меню.",
         reply_markup=_persistent_keyboard(),
     )
@@ -209,6 +274,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/stats — текущая сводка\n"
         "/now — собрать данные прямо сейчас\n"
         "/week — недельный дайджест\n"
+        "/security — балл безопасности и чек-лист: 2FA, резервные коды, пароли\n"
+        "/modules — что подключено, включить или выключить мониторинги\n"
         "/linkedin <число> — ввести LinkedIn вручную\n"
         "/history [platform] [days] — история\n"
         "/settime HH:MM — изменить время отчёта (UTC)\n"
@@ -227,9 +294,7 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_admin(update, config):
         await _deny(update)
         return
-    report, _ = await build_report(
-        db, linkedin_stale_days=config.linkedin_stale_days, platforms=config.enabled_platforms
-    )
+    report, _ = await build_stats(db, config)
     await update.message.reply_text(report, reply_markup=_main_menu())
 
 
@@ -256,6 +321,25 @@ async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chart = await _build_chart_png(db)
     if chart:
         await update.message.reply_photo(chart, caption="📉 Динамика за 30 дней")
+
+
+async def cmd_security(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config: Config = context.bot_data["config"]
+    db: Database = context.bot_data["db"]
+    if not _is_admin(update, config):
+        await _deny(update)
+        return
+    await update.message.reply_text(await hygiene.render(db, config), reply_markup=_security_keyboard(config))
+
+
+async def cmd_modules(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config: Config = context.bot_data["config"]
+    db: Database = context.bot_data["db"]
+    if not _is_admin(update, config):
+        await _deny(update)
+        return
+    text, keyboard = await _modules_screen(db, config)
+    await update.message.reply_text(text, reply_markup=keyboard)
 
 
 async def cmd_linkedin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -591,9 +675,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await _safe_edit(query, "Выберите действие:", reply_markup=_main_menu())
 
     elif data == "stats":
-        report, _ = await build_report(
-            db, linkedin_stale_days=config.linkedin_stale_days, platforms=config.enabled_platforms
-        )
+        report, _ = await build_stats(db, config)
         await _safe_edit(query, report, reply_markup=_main_menu())
 
     elif data == "now":
@@ -629,6 +711,23 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     elif data == "history":
         await _safe_edit(query, "Выберите платформу:", reply_markup=_history_platforms())
 
+    elif data == "sec":
+        await _safe_edit(query, await hygiene.render(db, config), reply_markup=_security_keyboard(config))
+
+    elif data.startswith("sec:"):
+        await _on_security_callback(query, db, data)
+
+    elif data == "mod":
+        text, keyboard = await _modules_screen(db, config)
+        await _safe_edit(query, text, reply_markup=keyboard)
+
+    elif data.startswith("mod:"):
+        monitor_id = data.removeprefix("mod:")
+        if monitor_id in monitors.BY_ID:
+            await monitors.toggle(db, monitor_id)
+        text, keyboard = await _modules_screen(db, config)
+        await _safe_edit(query, text, reply_markup=keyboard)
+
     elif data.startswith("history:"):
         parts = data.split(":")
         if len(parts) == 2:
@@ -652,6 +751,31 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 parse_mode="Markdown",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("← Назад", callback_data=f"history:{platform}")]]),
             )
+
+
+async def _on_security_callback(query, db: Database, data: str) -> None:
+    """sec:edit:<platform> | sec:set:<platform>:<item>:<value> | sec:pwd:<platform>:<days ago>.
+
+    Values are checked against the checklist: callback data comes from the client.
+    """
+    parts = data.split(":")[1:]
+    if len(parts) < 2 or parts[1] not in BY_ID:
+        return
+    action, platform, rest = parts[0], BY_ID[parts[1]], parts[2:]
+    if action == "set" and len(rest) == 2:
+        item = next((i for i in hygiene.items(platform) if i.key == rest[0]), None)
+        if item is None or rest[1] not in {c.value for c in item.choices}:
+            return
+        await hygiene.set_answer(db, platform.id, item.key, rest[1])
+    elif action == "pwd" and len(rest) == 1:
+        if not rest[0].isdigit() or int(rest[0]) not in hygiene.PASSWORD_AGES.values():
+            return
+        changed = utcnow().date() - timedelta(days=int(rest[0]))
+        await hygiene.set_answer(db, platform.id, "pwd", changed.isoformat())
+    elif action != "edit":
+        return
+    text, keyboard = await _checklist_screen(db, platform)
+    await _safe_edit(query, text, reply_markup=keyboard)
 
 
 # ---------------------------------------------------------------------------
@@ -745,6 +869,8 @@ def register_handlers(app, config: Config, db: Database) -> None:
     app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("now", cmd_now))
     app.add_handler(CommandHandler("week", cmd_week))
+    app.add_handler(CommandHandler("security", cmd_security))
+    app.add_handler(CommandHandler("modules", cmd_modules))
     app.add_handler(CommandHandler("linkedin", cmd_linkedin))
     app.add_handler(CommandHandler("history", cmd_history))
     app.add_handler(CommandHandler("settime", cmd_settime))

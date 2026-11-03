@@ -41,6 +41,20 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 """
 
+# Security log: profile changes and security emails. platform is a display
+# name ("Google" for mail about a Google account); uid dedups re-deliveries
+# and restores.
+_CREATE_EVENTS = """
+CREATE TABLE IF NOT EXISTS security_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uid TEXT NOT NULL UNIQUE,
+    platform TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    detail TEXT NOT NULL,
+    occurred_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 # Settings that must never leave the server (wiped from off-site backups).
 _SECRET_SETTINGS = ("linkedin_li_at",)
 
@@ -81,6 +95,7 @@ class Database:
             await db.execute(_CREATE_TABLE)
             await db.execute(_CREATE_UNIQUE_INDEX)
             await db.execute(_CREATE_SETTINGS)
+            await db.execute(_CREATE_EVENTS)
             await db.commit()
         logger.info("Database initialized at %s", self._db_path)
 
@@ -126,6 +141,16 @@ class Database:
                     """,
                     skip,
                 )
+                # Backups made before the security log existed have no such table.
+                if await _scalar(
+                    db, "SELECT COUNT(*) FROM backup.sqlite_master WHERE name = 'security_events'"
+                ):
+                    await db.execute(
+                        """
+                        INSERT OR IGNORE INTO security_events (uid, platform, kind, detail, occurred_at)
+                        SELECT uid, platform, kind, detail, occurred_at FROM backup.security_events
+                        """
+                    )
                 await db.commit()
                 after = await _scalar(db, "SELECT COUNT(*) FROM followers")
                 first, last = await (
@@ -199,3 +224,21 @@ class Database:
             )
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
+
+    async def add_event(self, uid: str, platform: str, kind: str, detail: str) -> bool:
+        """Log a security event; False when this uid is already logged."""
+        async with aiosqlite.connect(self._db_path) as db:
+            cursor = await db.execute(
+                "INSERT OR IGNORE INTO security_events (uid, platform, kind, detail) VALUES (?, ?, ?, ?)",
+                (uid, platform, kind, detail),
+            )
+            await db.commit()
+            return cursor.rowcount == 1
+
+    async def recent_events(self, limit: int = 5) -> list[dict]:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM security_events ORDER BY occurred_at DESC, id DESC LIMIT ?", (limit,)
+            )
+            return [dict(r) for r in await cursor.fetchall()]

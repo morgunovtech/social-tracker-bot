@@ -1,10 +1,13 @@
+import json
+from types import SimpleNamespace
+
 import aiohttp
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestServer
 from conftest import COOKIE
 
-from bot.platforms import youtube
+from bot.platforms import telegram, youtube
 from bot.platforms.linkedin import _parse_follower_count, collect_linkedin, plausible_count
 
 # --- LinkedIn parsing --------------------------------------------------------
@@ -124,3 +127,58 @@ async def test_youtube(monkeypatch, response, expected):
             assert await youtube.collect_youtube(session, "key", "UCx") == expected
     finally:
         await server.close()
+
+
+async def test_youtube_profile(monkeypatch):
+    channel = {
+        "snippet": {
+            "title": "Канал",
+            "customUrl": "@chan",
+            "description": "о канале",
+            "thumbnails": {"default": {"url": "https://yt3.example/a"}},
+        },
+        "statistics": {"videoCount": "42"},
+    }
+    server = await _serve({"/channels": web.json_response({"items": [channel]})})
+    monkeypatch.setattr(youtube, "_YOUTUBE_API_URL", str(server.make_url("/channels")))
+    try:
+        async with aiohttp.ClientSession() as session:
+            fields = await youtube.fetch_youtube_channel(session, "key", "UCx")
+    finally:
+        await server.close()
+    assert fields == {
+        "title": "Канал", "handle": "@chan", "description": "о канале",
+        "avatar": "https://yt3.example/a", "videos": "42",
+    }
+    assert set(fields) == set(youtube.YouTube.profile_fields)
+
+
+# --- Telegram ----------------------------------------------------------------
+
+class ChannelBot:
+    def __init__(self, fail=False):
+        self.fail = fail
+
+    async def get_chat(self, chat_id):
+        if self.fail:
+            raise RuntimeError("Forbidden: bot is not a member of the channel chat")
+        return SimpleNamespace(
+            title="Канал", username="chan", description=None, photo=SimpleNamespace(big_file_unique_id="p1")
+        )
+
+    async def get_chat_administrators(self, chat_id):
+        return [
+            SimpleNamespace(user=SimpleNamespace(id=5, full_name="Bot", username=None), status="administrator"),
+            SimpleNamespace(user=SimpleNamespace(id=1, full_name="Owner", username="own"), status="creator"),
+        ]
+
+
+async def test_telegram_channel_profile():
+    fields = await telegram.fetch_channel(ChannelBot(), "@chan")
+    assert fields["title"] == "Канал" and fields["description"] == "" and fields["photo"] == "p1"
+    assert json.loads(fields["admins"]) == [
+        {"id": 1, "name": "Owner (@own)", "status": "creator"},
+        {"id": 5, "name": "Bot", "status": "administrator"},
+    ]
+    assert set(fields) == set(telegram.Telegram.profile_fields)
+    assert await telegram.fetch_channel(ChannelBot(fail=True), "@chan") is None

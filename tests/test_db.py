@@ -127,3 +127,34 @@ async def test_restore_rejects_foreign_files(db, tmp_path):
     with pytest.raises(ValueError, match="таблиц"):
         await db.restore_from(str(other))
     assert await db.get_latest("telegram") is None
+
+
+async def test_security_events_dedup_by_uid(db):
+    assert await db.add_event("mail:1", "Google", "new_login", "🚨 Google: новый вход")
+    assert not await db.add_event("mail:1", "Google", "new_login", "🚨 Google: новый вход")
+    await db.add_event("mail:2", "LinkedIn", "login_code", "🟠 LinkedIn: код входа")
+    assert [e["uid"] for e in await db.recent_events()] == ["mail:2", "mail:1"]
+
+
+async def test_restore_merges_security_events(db, tmp_path):
+    await db.add_event("mail:1", "Google", "new_login", "старое событие")
+    backup = str(tmp_path / "backup.db")
+    await db.snapshot_without_secrets(backup)
+
+    live = Database(str(tmp_path / "live.db"))
+    await live.init()
+    await live.add_event("mail:2", "LinkedIn", "login_code", "новое событие")
+    await live.restore_from(backup)
+    await live.restore_from(backup)                        # twice: still no duplicates
+    assert sorted(e["uid"] for e in await live.recent_events()) == ["mail:1", "mail:2"]
+
+
+async def test_restore_accepts_a_backup_without_the_security_log(db, tmp_path):
+    await db.upsert("telegram", 1000)
+    backup = str(tmp_path / "old.db")
+    await db.snapshot_without_secrets(backup)
+    with sqlite3.connect(backup) as conn:
+        conn.execute("DROP TABLE security_events")
+    live = Database(str(tmp_path / "live.db"))
+    await live.init()
+    assert (await live.restore_from(backup))["total"] == 1

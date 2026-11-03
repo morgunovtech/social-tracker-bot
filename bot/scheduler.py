@@ -13,13 +13,13 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from telegram import Bot
+from telegram import Bot, LinkPreviewOptions
 
 from bot import monitors, platforms
 from bot.chart import render_chart
 from bot.config import DOW_ORDER, Config
 from bot.db import Database, parse_utc, utcnow
-from bot.monitors import collection, followers
+from bot.monitors import collection, followers, hygiene, profile
 from bot.platforms import LABELS, PLATFORM_IDS
 from bot.platforms.base import Context
 from bot.reporter import _crossed_milestone, build_month_report, build_report
@@ -37,6 +37,10 @@ DAILY_MISFIRE_GRACE_S = 3600
 # On startup, a daily run missed while the bot was down is caught up after this delay.
 CATCH_UP_DELAY = timedelta(seconds=30)
 LAST_DAILY_RUN_KEY = "last_daily_run"
+
+# Security alerts quote changed descriptions and email subjects: a link in
+# them may be a scam page, so Telegram must not fetch and preview it.
+NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
 logger = logging.getLogger(__name__)
 
@@ -118,13 +122,25 @@ async def collect_and_report(bot: Bot, config: Config, db: Database) -> CollectO
         # Push finalized counts to the website (reuses the open session).
         await _push_subscribers(session, config, db)
 
-    outcome.report, outcome.has_change = await build_report(
-        db,
-        errors=outcome.errors,
-        linkedin_stale_days=config.linkedin_stale_days,
-        platforms=[p.id for p in enabled],
-    )
+    outcome.report, outcome.has_change = await build_stats(db, config, outcome.errors)
     return outcome
+
+
+async def build_stats(
+    db: Database, config: Config, errors: dict[str, bool | int] | None = None
+) -> tuple[str, bool]:
+    """The follower report plus the security score line (when hygiene is on)."""
+    report, has_change = await build_report(
+        db,
+        errors=errors,
+        linkedin_stale_days=config.linkedin_stale_days,
+        platforms=config.enabled_platforms,
+    )
+    if await monitors.is_on(db, config, "hygiene"):
+        line = await hygiene.report_line(db, config)
+        if line:
+            report += f"\n{line}"
+    return report, has_change
 
 
 async def _push_subscribers(
@@ -319,6 +335,16 @@ async def _scheduled_job(
                 logger.info("Scheduled report sent to admin")
         except Exception:
             logger.exception("Scheduled report send failed")
+        # Security hygiene reminder rides along with the report: at most
+        # monthly, and only when there is something to do.
+        if await monitors.is_on(db, config, "hygiene"):
+            try:
+                nudge = await hygiene.nudge(db, config)
+                if nudge:
+                    await bot.send_message(chat_id=config.admin_chat_id, text=nudge)
+                    logger.info("Hygiene reminder sent")
+            except Exception:
+                logger.exception("Hygiene reminder failed")
     else:
         logger.info("Today is not a report day (dow=%s) — collected, no push", dow)
 
@@ -341,6 +367,23 @@ async def _scheduled_job(
             logger.exception("Dependency watch failed")
 
     await _ping_healthcheck(config)
+
+
+async def _profile_job(bot: Bot, config: Config, db: Database) -> None:
+    """Profile integrity check every profile.CHECK_INTERVAL; changes are alerted at once."""
+    if not await monitors.is_on(db, config, "profile"):
+        return
+    try:
+        async with aiohttp.ClientSession() as session:
+            lines = await profile.check(bot, config, db, session)
+        if lines:
+            text = "🛡 Профиль\n\n" + "\n".join(lines)
+            if any(line.startswith(("🚨", "🟠")) for line in lines):
+                text += f"\n\n{profile.ADVICE}"
+            await bot.send_message(chat_id=config.admin_chat_id, text=text, link_preview_options=NO_PREVIEW)
+            logger.info("Sent %d profile alert(s)", len(lines))
+    except Exception:
+        logger.exception("Profile check failed")
 
 
 async def get_report_schedule(db: Database, config: Config) -> tuple[str, int, int]:
@@ -401,9 +444,20 @@ async def setup_scheduler(bot: Bot, config: Config, db: Database) -> AsyncIOSche
     )
     logger.info("Scheduler started: daily collect at %02d:%02d UTC, push on %s", hour, minute, dow)
 
+    now = utcnow()
+    scheduler.add_job(
+        _profile_job,
+        trigger=IntervalTrigger(seconds=int(profile.CHECK_INTERVAL.total_seconds()), timezone=UTC),
+        args=[bot, config, db],
+        id="profile_check",
+        replace_existing=True,
+        next_run_time=now + CATCH_UP_DELAY,  # the first look after a start refreshes the baseline
+        coalesce=True,
+        max_instances=1,
+    )
+
     # A freshly added cron job only fires in the future: if the bot was down at
     # today's run time, run it shortly instead of losing the day.
-    now = utcnow()
     due = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if now >= due and await db.get_setting(LAST_DAILY_RUN_KEY) != now.date().isoformat():
         run_at = now + CATCH_UP_DELAY

@@ -201,8 +201,19 @@ async def test_quiet_mode_sends_one_liner(bot, config, db, insert, fake_collect,
     insert("telegram", 1000, 0)
     await db.set_setting("report_dow", "*")
     await db.set_setting("quiet_if_no_change", "1")
+    await db.set_setting("hygiene_nudged_at", utcnow().date().isoformat())  # no reminder due
     await _scheduled_job(bot, config, db, job_scheduler)
     assert bot.messages == ["😴 Без изменений за неделю — всё стабильно ✅"] and bot.photos == []
+
+
+async def test_hygiene_reminder_rides_with_the_report(bot, config, db, insert, fake_collect, job_scheduler):
+    insert("telegram", 1000, 0)
+    await db.set_setting("report_dow", "*")
+    await _scheduled_job(bot, config, db, job_scheduler)
+    assert bot.messages[-1].startswith("🛡 Безопасность") and "/security" in bot.messages[-1]
+    bot.messages.clear()
+    await _scheduled_job(bot, config, db, job_scheduler)  # next day: not again for a month
+    assert not any(m.startswith("🛡") for m in bot.messages)
 
 
 async def test_not_a_report_day_stays_silent(bot, config, db, insert, fake_collect, job_scheduler, monkeypatch):
@@ -340,3 +351,25 @@ async def test_rejected_healthcheck_ping_is_a_warning(config, receiver, caplog):
     server, _ = receiver
     await scheduler._ping_healthcheck(dataclasses.replace(config, healthcheck_url=str(server.make_url("/wrong-secret"))))
     assert "rejected: HTTP 403" in caplog.text
+
+
+# --- profile watch -----------------------------------------------------------
+
+async def test_profile_job_alerts_with_advice_and_respects_the_switch(bot, config, db, monkeypatch):
+    lines = ["🚨 Telegram: новый админ — Stranger"]
+
+    async def check(*args):
+        return list(lines)
+
+    monkeypatch.setattr(scheduler.profile, "check", check)
+    await scheduler._profile_job(bot, config, db)
+    assert bot.messages[0].startswith("🛡 Профиль") and scheduler.profile.ADVICE in bot.messages[0]
+
+    await db.set_setting("monitor_profile", "off")
+    await scheduler._profile_job(bot, config, db)
+    assert len(bot.messages) == 1
+
+
+async def test_profile_watch_is_scheduled_soon_after_start(bot, config, db):
+    job = (await setup_scheduler(bot, config, db)).get_job("profile_check")
+    assert job is not None and job.next_run_time <= utcnow() + timedelta(minutes=1)
