@@ -44,6 +44,7 @@ Telegram-бот для отслеживания подписчиков в Telegr
 ```bash
 cp .env.example .env
 # заполните .env
+mkdir -p data && sudo chown 1000:1000 data  # Linux: контейнер пишет БД от uid 1000
 docker-compose up -d
 ```
 

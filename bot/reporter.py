@@ -17,6 +17,9 @@ MILESTONES = [100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 2500
 
 _BLOCKS = "▁▂▃▄▅▆▇█"
 
+# Collected values are refreshed daily; older than this means collection is failing.
+AUTO_STALE_DAYS = 2
+
 
 def _fmt(n: int) -> str:
     return f"{n:,}"
@@ -193,19 +196,21 @@ async def build_report(
         if deltas:
             line += " (" + ", ".join(deltas) + ")"
 
-        if platform == "linkedin":
-            try:
-                collected_dt = parse_utc(collected_at_str)
-                age_days = (utcnow() - collected_dt).days
-            except (ValueError, TypeError):
-                collected_dt = None
-                age_days = 0
+        # Age marker: the latest value can be days old when collection keeps failing.
+        try:
+            collected_dt = parse_utc(collected_at_str)
+            age_days = (utcnow() - collected_dt).days
+        except (ValueError, TypeError):
+            collected_dt = None
+            age_days = 0
+        date_str = collected_dt.strftime("%d.%m") if collected_dt else "?"
 
-            if source == "manual":
-                stale = age_days >= linkedin_stale_days
-                date_str = collected_dt.strftime("%d.%m") if collected_dt else "?"
-                marker = "⚠️ устарело" if stale else "вручную"
-                line += f"  ({marker}, {date_str})"
+        if source == "manual":
+            stale = age_days >= linkedin_stale_days
+            marker = "⚠️ устарело" if stale else "вручную"
+            line += f"  ({marker}, {date_str})"
+        elif age_days >= AUTO_STALE_DAYS:
+            line += f"  (⚠️ данные от {date_str})"
 
         if errors.get(platform):
             line += " ⚠️"
@@ -271,6 +276,8 @@ async def build_week_report(db: Database) -> str:
 
     total_now = 0
     total_prev = 0
+    # The total delta is only meaningful when every counted platform has a baseline.
+    prev_complete = True
     has_data = False
 
     for platform in PLATFORMS:
@@ -295,9 +302,11 @@ async def build_week_report(db: Database) -> str:
         count_prev = prev_row["count"] if prev_row else None
         if count_prev is not None:
             total_prev += count_prev
+        else:
+            prev_complete = False
 
         delta = _delta_str(count_now, count_prev)
-        prev_str = f" (было {_fmt(count_prev)})" if count_prev else ""
+        prev_str = f" (было {_fmt(count_prev)})" if count_prev is not None else ""
         line = f"{label}: {_fmt(count_now)}{prev_str}"
         if delta:
             line += f"  {delta}"
@@ -307,7 +316,7 @@ async def build_week_report(db: Database) -> str:
         return "Нет данных для недельного отчёта."
 
     lines.append("")
-    total_delta = _delta_str(total_now, total_prev if total_prev else None)
+    total_delta = _delta_str(total_now, total_prev if prev_complete else None)
     total_line = f"📈 Всего: {_fmt(total_now)}"
     if total_delta:
         total_line += f"  {total_delta} за неделю"
@@ -337,6 +346,8 @@ async def build_month_report(db: Database) -> str | None:
     growth_pct: dict[str, float] = {}
     total_now = 0
     total_base = 0
+    # The total delta is only meaningful when every counted platform has a baseline.
+    base_complete = True
     has_data = False
 
     for platform in PLATFORMS:
@@ -357,6 +368,7 @@ async def build_month_report(db: Database) -> str | None:
         total_now += count_now
 
         if base_row is None:
+            base_complete = False
             lines.append(f"{label}: {_fmt(count_now)} (нет данных на начало месяца)")
             continue
 
@@ -379,7 +391,7 @@ async def build_month_report(db: Database) -> str | None:
         lines.append(f"🏆 Лучшая платформа: {best[0]} ({best[1]:+.1f}%)")
         lines.append(f"🐌 Слабее всех: {worst[0]} ({worst[1]:+.1f}%)")
 
-    if total_base > 0:
+    if base_complete:
         total_diff = total_now - total_base
         sign = "+" if total_diff >= 0 else ""
         lines.append("")

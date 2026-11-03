@@ -40,19 +40,40 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 """
 
+# Settings that must never leave the server (wiped from off-site backups).
+_SECRET_SETTINGS = ("linkedin_li_at",)
+
 
 class Database:
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
 
     async def init(self) -> None:
-        os.makedirs(os.path.dirname(self._db_path) or ".", exist_ok=True)
+        db_dir = os.path.dirname(self._db_path) or "."
+        os.makedirs(db_dir, exist_ok=True)
+        if not os.access(db_dir, os.W_OK):
+            # Typical cause: Docker created the ./data bind mount as root on a Linux host.
+            raise RuntimeError(
+                f"Database directory {db_dir!r} is not writable by uid {os.getuid()}. "
+                f"On the host run: sudo chown -R {os.getuid()} ./data"
+            )
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(_CREATE_TABLE)
             await db.execute(_CREATE_UNIQUE_INDEX)
             await db.execute(_CREATE_SETTINGS)
             await db.commit()
         logger.info("Database initialized at %s", self._db_path)
+
+    async def snapshot_without_secrets(self, dest_path: str) -> None:
+        """Write a consistent copy of the DB to dest_path with secret settings wiped."""
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute("VACUUM INTO ?", (dest_path,))
+        async with aiosqlite.connect(dest_path) as db:
+            placeholders = ",".join("?" * len(_SECRET_SETTINGS))
+            await db.execute(f"DELETE FROM settings WHERE key IN ({placeholders})", _SECRET_SETTINGS)
+            await db.commit()
+            # Rebuild the file so deleted values don't linger in free pages.
+            await db.execute("VACUUM")
 
     async def get_setting(self, key: str, default: str | None = None) -> str | None:
         async with aiosqlite.connect(self._db_path) as db:

@@ -8,11 +8,46 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+DOW_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+
 def _require(name: str) -> str:
     value = os.getenv(name)
     if not value:
         raise RuntimeError(f"Missing required env variable: {name}")
     return value
+
+
+def normalize_dow(value: str) -> str:
+    """Validate and normalize a day-of-week expression for APScheduler.
+
+    Accepts: 'daily', '*', 'all', 'sat', 'mon,thu', 'mon-fri'.
+    Returns canonical form. Raises ValueError on invalid input.
+    """
+    v = value.strip().lower()
+    if v in ("daily", "*", "all"):
+        return "*"
+
+    # Range: mon-fri
+    if "-" in v and "," not in v:
+        a, _, b = v.partition("-")
+        if a.strip() in DOW_ORDER and b.strip() in DOW_ORDER:
+            return f"{a.strip()}-{b.strip()}"
+        raise ValueError(f"Invalid day range: {value}")
+
+    parts = [p.strip() for p in v.split(",") if p.strip()]
+    if not parts or any(p not in DOW_ORDER for p in parts):
+        raise ValueError(f"Invalid day-of-week: {value}")
+    return ",".join(parts)
+
+
+def _report_dow() -> str:
+    # Fail fast: an unparsed value (e.g. 'daily') would silently never match a report day.
+    raw = os.getenv("REPORT_DOW", "sat")
+    try:
+        return normalize_dow(raw)
+    except ValueError as e:
+        raise RuntimeError(f"Invalid REPORT_DOW={raw!r}: {e}") from None
 
 
 @dataclass(frozen=True)
@@ -61,7 +96,7 @@ class Config:
             linkedin_stale_days=int(os.getenv("LINKEDIN_STALE_DAYS", "7")),
             report_hour_utc=int(os.getenv("REPORT_HOUR_UTC", "8")),
             report_minute=int(os.getenv("REPORT_MINUTE", "0")),
-            report_dow=os.getenv("REPORT_DOW", "sat").lower(),
+            report_dow=_report_dow(),
             quiet_if_no_change=os.getenv("QUIET_IF_NO_CHANGE", "0") == "1",
             db_path=os.getenv("DB_PATH", "data/followers.db"),
             site_ingest_url=os.getenv(

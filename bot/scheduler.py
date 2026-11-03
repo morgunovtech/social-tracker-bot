@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import statistics
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -32,11 +34,18 @@ SPIKE_ALERT_MIN_PCT = 3.0  # fallback when there is too little history
 COLLECT_MAX_ATTEMPTS = 3
 COLLECT_RETRY_DELAY = timedelta(hours=1)
 
+# The daily job still runs if it starts up to this many seconds late
+# (APScheduler's default grace is 1 second).
+DAILY_MISFIRE_GRACE_S = 3600
+# On startup, a daily run missed while the bot was down is caught up after this delay.
+CATCH_UP_DELAY = timedelta(seconds=30)
+LAST_DAILY_RUN_KEY = "last_daily_run"
+
 from bot.chart import render_chart
 from bot.collectors.linkedin import collect_linkedin, plausible_count
 from bot.collectors.telegram import collect_telegram
 from bot.collectors.youtube import collect_youtube
-from bot.config import Config
+from bot.config import DOW_ORDER, Config
 from bot.db import Database, parse_utc, utcnow
 from bot.reporter import (
     PLATFORM_LABELS,
@@ -62,22 +71,19 @@ class CollectOutcome:
     spikes: dict[str, tuple[int, int]] = field(default_factory=dict)  # platform -> (prev, new)
     milestones: list[tuple[str, int]] = field(default_factory=list)  # (platform, milestone)
 
-VALID_DOW = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
-_DOW_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
-
 
 def _today_matches_dow(dow_expr: str, now_utc: datetime | None = None) -> bool:
     """Return True if today (UTC) matches the cron day-of-week expression."""
     if dow_expr == "*":
         return True
     today_idx = (now_utc or utcnow()).weekday()  # 0=Mon..6=Sun
-    today_short = _DOW_ORDER[today_idx]
+    today_short = DOW_ORDER[today_idx]
 
     if "-" in dow_expr and "," not in dow_expr:
         a, _, b = dow_expr.partition("-")
         try:
-            a_idx = _DOW_ORDER.index(a.strip())
-            b_idx = _DOW_ORDER.index(b.strip())
+            a_idx = DOW_ORDER.index(a.strip())
+            b_idx = DOW_ORDER.index(b.strip())
         except ValueError:
             return False
         if a_idx <= b_idx:
@@ -87,29 +93,6 @@ def _today_matches_dow(dow_expr: str, now_utc: datetime | None = None) -> bool:
 
     days = {d.strip() for d in dow_expr.split(",")}
     return today_short in days
-
-
-def normalize_dow(value: str) -> str:
-    """Validate and normalize a day-of-week expression for APScheduler.
-
-    Accepts: 'daily', '*', 'all', 'sat', 'mon,thu', 'mon-fri'.
-    Returns canonical form. Raises ValueError on invalid input.
-    """
-    v = value.strip().lower()
-    if v in ("daily", "*", "all"):
-        return "*"
-
-    # Range: mon-fri
-    if "-" in v and "," not in v:
-        a, _, b = v.partition("-")
-        if a.strip() in VALID_DOW and b.strip() in VALID_DOW:
-            return f"{a.strip()}-{b.strip()}"
-        raise ValueError(f"Invalid day range: {value}")
-
-    parts = [p.strip() for p in v.split(",") if p.strip()]
-    if not parts or any(p not in VALID_DOW for p in parts):
-        raise ValueError(f"Invalid day-of-week: {value}")
-    return ",".join(parts)
 
 
 async def get_active_cookie(db: Database, config: Config) -> str | None:
@@ -188,14 +171,15 @@ async def collect_and_report(
 
         if force_linkedin:
             li_at = await get_active_cookie(db, config)
+            prev = await db.get_latest("linkedin")
+            prev_count = prev["count"] if prev else None
             li_count, li_source = await collect_linkedin(
                 session,
                 config.linkedin_profile_url,
                 li_at=li_at,
+                prev=prev_count,
             )
             if li_count is not None and li_source is not None:
-                prev = await db.get_latest("linkedin")
-                prev_count = prev["count"] if prev else None
                 if plausible_count(prev_count, li_count):
                     await record("linkedin", li_count, source=li_source)
                 else:
@@ -313,6 +297,21 @@ async def _build_alerts(db: Database, outcome: CollectOutcome) -> list[str]:
     return lines
 
 
+async def send_alerts(bot: Bot, config: Config, db: Database, outcome: CollectOutcome) -> None:
+    """Send proactive alerts for a collection pass, scheduled or manual (/now).
+
+    Must run after every collect: the next pass compares against the stored
+    value, so a drop or spike that isn't alerted now is never alerted.
+    """
+    try:
+        alerts = await _build_alerts(db, outcome)
+        if alerts:
+            await bot.send_message(chat_id=config.admin_chat_id, text="\n".join(alerts))
+            logger.info("Sent %d proactive alert(s)", len(alerts))
+    except Exception:
+        logger.exception("Alert send failed")
+
+
 async def _build_chart_png(db: Database, days: int = 30) -> bytes | None:
     series: dict[str, list[tuple[datetime, int]]] = {}
     for platform in PLATFORMS:
@@ -328,17 +327,24 @@ async def _build_chart_png(db: Database, days: int = 30) -> bytes | None:
     return await asyncio.to_thread(render_chart, series)
 
 
-async def _send_backup(bot: Bot, config: Config) -> None:
-    """Weekly DB backup straight into the admin chat — free offsite storage."""
+async def _send_backup(bot: Bot, config: Config, db: Database) -> None:
+    """Weekly DB backup straight into the admin chat — free offsite storage.
+
+    The LinkedIn cookie is wiped from the copy: /setcookie deletes it from the
+    chat, so the backup must not bring it back.
+    """
     try:
-        with open(config.db_path, "rb") as f:
-            data = f.read()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "backup.db")
+            await db.snapshot_without_secrets(path)
+            with open(path, "rb") as f:
+                data = f.read()
         today = utcnow().date().isoformat()
         await bot.send_document(
             chat_id=config.admin_chat_id,
             document=data,
             filename=f"followers-{today}.db",
-            caption="📦 Еженедельный бэкап БД",
+            caption="📦 Еженедельный бэкап БД (без LinkedIn cookie — после восстановления /setcookie)",
         )
         logger.info("DB backup sent (%d bytes)", len(data))
     except Exception:
@@ -374,15 +380,11 @@ async def _scheduled_job(
         return
 
     today = utcnow().date()
+    if attempt == 1:
+        await db.set_setting(LAST_DAILY_RUN_KEY, today.isoformat())
 
     # Proactive alerts: sent immediately, not held for the report day.
-    alerts = await _build_alerts(db, outcome)
-    if alerts:
-        try:
-            await bot.send_message(chat_id=config.admin_chat_id, text="\n".join(alerts))
-            logger.info("Sent %d proactive alert(s)", len(alerts))
-        except Exception:
-            logger.exception("Alert send failed")
+    await send_alerts(bot, config, db, outcome)
 
     # Retry failed platforms in an hour (cookie expiry is excluded — retrying won't help).
     failed = [p for p in PLATFORMS if outcome.errors.get(p)]
@@ -442,7 +444,7 @@ async def _scheduled_job(
 
     # Weekly DB backup on Sundays
     if today.weekday() == 6:
-        await _send_backup(bot, config)
+        await _send_backup(bot, config, db)
 
     await _ping_healthcheck(config)
 
@@ -492,6 +494,26 @@ async def setup_scheduler(bot: Bot, config: Config, db: Database) -> AsyncIOSche
         args=[bot, config, db, scheduler],
         id="scheduled_report",
         replace_existing=True,
+        misfire_grace_time=DAILY_MISFIRE_GRACE_S,
+        coalesce=True,
     )
     logger.info("Scheduler started: daily collect at %02d:%02d UTC, push on %s", hour, minute, dow)
+
+    # A freshly added cron job only fires in the future: if the bot was down at
+    # today's run time, run it shortly instead of losing the day.
+    now = utcnow()
+    due = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if now >= due and await db.get_setting(LAST_DAILY_RUN_KEY) != now.date().isoformat():
+        run_at = now + CATCH_UP_DELAY
+        scheduler.add_job(
+            _scheduled_job,
+            trigger=DateTrigger(run_date=run_at, timezone=UTC),
+            args=[bot, config, db, scheduler],
+            id="collect_catch_up",
+            replace_existing=True,
+        )
+        logger.info(
+            "Missed today's %02d:%02d UTC run — catching up at %s",
+            hour, minute, run_at.strftime("%H:%M:%S UTC"),
+        )
     return scheduler

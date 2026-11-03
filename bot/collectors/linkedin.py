@@ -34,6 +34,10 @@ _FOLLOWER_TEXT_PATTERN = re.compile(
 )
 
 
+# Redirect targets meaning the session is gone: login wall or a security challenge.
+_AUTH_PATHS = ("/authwall", "/login", "/uas/login", "/checkpoint")
+
+
 class LinkedInAuthError(Exception):
     """Raised when the li_at cookie is rejected or expired."""
 
@@ -50,8 +54,17 @@ def plausible_count(prev: Optional[int], new: int) -> bool:
     return prev * 0.5 <= new <= prev * 1.5
 
 
-def _parse_follower_count(html: str) -> Optional[int]:
-    """Extract follower count from LinkedIn HTML using multiple strategies."""
+def _closest(candidates: list[int], prev: int) -> int:
+    return min(candidates, key=lambda c: abs(c - prev))
+
+
+def _parse_follower_count(html: str, prev: Optional[int] = None) -> Optional[int]:
+    """Extract follower count from LinkedIn HTML using multiple strategies.
+
+    Pages embed follower counts of suggested/viewed profiles too. With a known
+    previous value the candidate closest to it wins; the largest number would
+    often be a bigger profile's counter.
+    """
     # JSON-embedded counters (most reliable when authenticated)
     candidates: list[int] = []
     for pattern in _FOLLOWER_PATTERNS:
@@ -62,20 +75,22 @@ def _parse_follower_count(html: str) -> Optional[int]:
                 continue
 
     if candidates:
-        # Pick the maximum — pages may embed several counts (post followers, etc.);
-        # the total profile follower count is typically the largest.
-        return max(candidates)
+        # Without a baseline: the total profile follower count is typically the largest.
+        return _closest(candidates, prev) if prev is not None else max(candidates)
 
     # Visible text fallback: "1,234 followers"
     soup = BeautifulSoup(html, "html.parser")
     text = soup.get_text(" ", strip=True)
-    match = _FOLLOWER_TEXT_PATTERN.search(text)
-    if match:
-        raw = match.group(1).replace(",", "").replace(" ", "").replace(" ", "")
-        try:
-            return int(raw)
-        except ValueError:
-            return None
+    counts: list[int] = []
+    for match in _FOLLOWER_TEXT_PATTERN.finditer(text):
+        # Drops thousands separators of any kind: ',', ' ', U+00A0, U+202F.
+        digits = re.sub(r"\D", "", match.group(1))
+        if digits:
+            counts.append(int(digits))
+
+    if counts:
+        # Without a baseline: the profile's own counter comes first on the page.
+        return _closest(counts, prev) if prev is not None else counts[0]
 
     return None
 
@@ -84,6 +99,7 @@ async def _fetch_via_cookie(
     session: aiohttp.ClientSession,
     profile_url: str,
     li_at: str,
+    prev: Optional[int] = None,
 ) -> Optional[int]:
     cookies = {"li_at": li_at}
     try:
@@ -97,15 +113,19 @@ async def _fetch_via_cookie(
             final_url = str(resp.url)
             if resp.status in (401, 403):
                 raise LinkedInAuthError(f"LinkedIn returned {resp.status} — cookie likely expired")
-            if "authwall" in final_url or "login" in final_url:
+            # Match the path, not the whole URL: a username may contain "login".
+            if resp.url.path.startswith(_AUTH_PATHS):
                 raise LinkedInAuthError(f"LinkedIn redirected to {final_url} — cookie expired or invalid")
+            if resp.status == 999:
+                logger.error("LinkedIn returned 999 — request blocked as automated traffic (%s)", final_url)
+                return None
             if resp.status != 200:
                 logger.error("LinkedIn cookie fetch returned status %d (%s)", resp.status, final_url)
                 return None
 
             html = await resp.text()
 
-        count = _parse_follower_count(html)
+        count = _parse_follower_count(html, prev)
         if count is None:
             logger.error(
                 "LinkedIn cookie fetch: parse failed (html length=%d, url=%s)",
@@ -128,9 +148,12 @@ async def collect_linkedin(
     session: aiohttp.ClientSession,
     profile_url: Optional[str],
     li_at: Optional[str] = None,
+    prev: Optional[int] = None,
 ) -> tuple[Optional[int], Optional[str]]:
     """Collect LinkedIn follower count via the li_at cookie.
 
+    prev is the last stored count; it picks the profile's own counter among
+    the numbers on the page (callers still apply plausible_count).
     Returns (count, source) where source is 'cookie' or None.
     Returns (None, 'cookie_expired') as a special signal when the cookie is rejected.
     """
@@ -143,7 +166,7 @@ async def collect_linkedin(
         return None, None
 
     try:
-        count = await _fetch_via_cookie(session, profile_url, li_at)
+        count = await _fetch_via_cookie(session, profile_url, li_at, prev)
     except LinkedInAuthError as e:
         logger.error("LinkedIn auth error: %s", e)
         return None, "cookie_expired"
