@@ -67,22 +67,39 @@ class FakeBot:
 
 
 class FakeMessage:
+    """An incoming message; replies and later edits of a reply land in .replies,
+    their inline keyboards in .markups."""
+
     def __init__(self, text: str = ""):
         self.text = text
         self.document = None
         self.reply_to_message = None
         self.replies: list[str] = []
+        self.markups: list = []
         self.photos: list[bytes] = []
         self.deleted = False
 
     async def reply_text(self, text, **kwargs):
         self.replies.append(text)
+        self.markups.append(kwargs.get("reply_markup"))
+        return FakeSent(self)
 
     async def reply_photo(self, photo, **kwargs):
         self.photos.append(photo)
 
     async def delete(self):
         self.deleted = True
+
+
+class FakeSent:
+    """A message the bot sent: editing it is recorded on the message it replied to."""
+
+    def __init__(self, parent: FakeMessage):
+        self.parent = parent
+
+    async def edit_text(self, text, **kwargs):
+        self.parent.replies.append(text)
+        self.parent.markups.append(kwargs.get("reply_markup"))
 
 
 class FakeChat:
@@ -98,12 +115,25 @@ class FakeQuery:
         self.data = data
         self.answers: list[dict] = []
         self.edits: list[str] = []
+        self.markups: list = []
 
     async def answer(self, text=None, show_alert=False):
         self.answers.append({"text": text, "show_alert": show_alert})
 
     async def edit_message_text(self, text, **kwargs):
         self.edits.append(text)
+        self.markups.append(kwargs.get("reply_markup"))
+
+
+def buttons(markup) -> dict[str, str]:
+    """callback_data -> label of an inline keyboard."""
+    if markup is None:
+        return {}
+    return {b.callback_data: b.text for row in markup.inline_keyboard for b in row}
+
+
+def labels(markup) -> list[str]:
+    return [b.text for row in markup.inline_keyboard for b in row]
 
 
 @pytest.fixture

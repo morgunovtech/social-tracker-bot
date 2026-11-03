@@ -73,7 +73,7 @@ async def test_first_collect_records_everything(bot, config, db, collectors):
     outcome = await collect_and_report(bot, config, db)
     assert set(outcome.collected) == {"telegram", "youtube", "linkedin"}
     assert not outcome.errors and not outcome.drops and not outcome.milestones
-    assert "Telegram: 1,000" in outcome.report
+    assert "Telegram — 1 000" in outcome.report
 
 
 async def test_drop_spike_and_milestone(bot, config, db, insert, collectors):
@@ -163,7 +163,7 @@ async def test_send_alerts(bot, config, db):
     )
     await send_alerts(bot, config, db, outcome)
     text = bot.messages[0]
-    assert "−50" in text and "наплыв ботов" in text and "LinkedIn перешагнул 1,000" in text
+    assert "−50" in text and "наплыв ботов" in text and "LinkedIn перешагнул 1 000" in text
 
 
 # --- the daily job -----------------------------------------------------------

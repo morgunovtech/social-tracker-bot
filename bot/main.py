@@ -11,22 +11,14 @@ from bot.handlers import register_handlers
 from bot.scheduler import setup_scheduler
 from bot.updates import report_startup_changes
 
+# Only the entry points: everything else is a button away, and /help lists all commands.
 _BOT_COMMANDS = [
-    BotCommand("start", "Меню"),
-    BotCommand("stats", "Сводка сейчас"),
-    BotCommand("now", "Собрать данные"),
-    BotCommand("week", "Неделя"),
+    BotCommand("start", "Главная: подписчики и статус"),
+    BotCommand("now", "Обновить данные"),
+    BotCommand("week", "Динамика за неделю"),
     BotCommand("security", "Безопасность аккаунтов"),
-    BotCommand("modules", "Модули и мониторинги"),
-    BotCommand("history", "История"),
-    BotCommand("linkedin", "Ввод LinkedIn вручную"),
-    BotCommand("setcookie", "Обновить LinkedIn cookie"),
-    BotCommand("cookieage", "Возраст LinkedIn cookie"),
-    BotCommand("settime", "Время отчёта"),
-    BotCommand("setday", "День(и) отчёта"),
-    BotCommand("setquiet", "Тихий режим"),
-    BotCommand("restore", "Восстановить из бэкапа"),
-    BotCommand("help", "Справка"),
+    BotCommand("settings", "Настройки"),
+    BotCommand("help", "Помощь и все команды"),
 ]
 
 logging.basicConfig(

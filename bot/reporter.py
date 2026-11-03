@@ -14,20 +14,45 @@ _BLOCKS = "▁▂▃▄▅▆▇█"
 # Collected values are refreshed daily; older than this means collection is failing.
 AUTO_STALE_DAYS = 2
 
+NBSP = "\u00a0"
+MINUS = "\u2212"
+
 
 def _fmt(n: int) -> str:
-    return f"{n:,}"
+    """1234567 → «1 234 567». Russian groups digits with a (no-break) space:
+    «4,520» reads as a decimal fraction there."""
+    return f"{n:,}".replace(",", NBSP).replace("-", MINUS)
+
+
+def _signed(diff: int) -> str:
+    if diff > 0:
+        return f"+{_fmt(diff)}"
+    if diff < 0:
+        return f"{MINUS}{_fmt(-diff)}"
+    return "0"
 
 
 def _delta_str(current: int, previous: int | None) -> str:
-    if previous is None:
-        return ""
-    diff = current - previous
-    if diff > 0:
-        return f"▲ +{_fmt(diff)}"
-    elif diff < 0:
-        return f"▼ {_fmt(diff)}"
-    return "→ 0"
+    return "" if previous is None else _signed(current - previous)
+
+
+def _pct(value: float) -> str:
+    """+6.66 → «+6,7%»: the Russian decimal comma and a real minus sign."""
+    return f"{value:+.1f}%".replace(".", ",").replace("-", MINUS)
+
+
+def _deltas(current: int, day: int | None, week: int | None, month: int | None) -> str:
+    """«+10 за день · +15 за неделю · +20 за месяц», only the periods with a baseline."""
+    parts = [
+        f"{delta} за {name}"
+        for delta, name in (
+            (_delta_str(current, day), "день"),
+            (_delta_str(current, week), "неделю"),
+            (_delta_str(current, month), "месяц"),
+        )
+        if delta
+    ]
+    return " · ".join(parts)
 
 
 def _sparkline(values: list[int]) -> str:
@@ -93,17 +118,14 @@ async def build_report(
     today = utcnow().date()
     errors = errors or {}
 
-    lines: list[str] = []
-    lines.append(f"📊 Подписчики — {today.strftime('%d.%m.%Y')}")
-    lines.append("")
+    lines: list[str] = [f"📊 Подписчики · {today.strftime('%d.%m.%Y')}"]
 
+    # Problems first: they need an action, the numbers don't.
     if errors.get("linkedin_cookie_expired"):
-        lines.append("⚠️ LinkedIn cookie истёк — обнови через /setcookie")
-        lines.append("")
+        lines += ["", "⚠️ LinkedIn cookie истёк — обнови через /setcookie"]
     elif errors.get("linkedin_cookie_aging"):
         age = errors["linkedin_cookie_aging"]
-        lines.append(f"⏰ LinkedIn cookie живёт уже {age} дней — пора обновить (/setcookie)")
-        lines.append("")
+        lines += ["", f"⏰ LinkedIn cookie живёт уже {age} дн. — пора обновить: /setcookie"]
 
     total_current = 0
     total_yesterday: int | None = 0
@@ -126,9 +148,9 @@ async def build_report(
             if platforms is not None and platform not in platforms:
                 continue
             if platform == "linkedin":
-                lines.append(f"{label}: — (не введено)")
+                lines += ["", f"{label} — пока нет данных: число вводится вручную"]
             elif errors.get(platform):
-                lines.append(f"{label}: ⚠️ нет данных")
+                lines += ["", f"{label} — ⚠️ собрать не удалось"]
             continue
 
         has_any_data = True
@@ -163,39 +185,29 @@ async def build_report(
                 weeks_left = math.ceil((next_m - count) / rate)
                 if weeks_left <= 26:  # beyond half a year the estimate is noise
                     forecasts.append(
-                        f"🔮 {label}: {_fmt(next_m)} через ~{weeks_left} нед (+{_fmt(rate)}/нед)"
+                        f"🔮 {label}: {_fmt(next_m)} примерно через {weeks_left} нед. (+{_fmt(rate)} в неделю)"
                     )
             # Acceleration vs the average weekly rate over the prior ~3 weeks
             if month_count is not None:
                 prev_avg = (week_count - month_count) / 3.3  # 23 days ≈ 3.3 weeks
                 if prev_avg >= 3:  # too small a base gives meaningless ratios
                     if rate >= 2 * prev_avg:
-                        accel_notes.append(
-                            f"⚡ {label}: рост ×{rate / prev_avg:.1f} к среднему за месяц"
-                        )
+                        ratio = f"{rate / prev_avg:.1f}".replace(".", ",")
+                        accel_notes.append(f"⚡ {label}: растёт в {ratio} раза быстрее, чем обычно за месяц")
                     elif rate <= 0.5 * prev_avg:
                         accel_notes.append(
-                            f"🐌 {label}: рост замедлился (+{_fmt(rate)}/нед против ~{prev_avg:.0f})"
+                            f"🐌 {label}: рост замедлился — {_signed(rate)} в неделю против обычных ~{prev_avg:.0f}"
                         )
 
-        # Build the line
-        head = f"{label}: {_fmt(count)}"
+        # One block per platform: the number, its changes, then what is off about it.
+        head = f"{label} — {_fmt(count)}"
         spark = _sparkline(snap["spark_values"])
         if spark:
             head += f"  {spark}"
-
-        deltas: list[str] = []
-        for delta_raw, name in (
-            (_delta_str(count, day_count), "день"),
-            (_delta_str(count, week_count), "неделя"),
-            (_delta_str(count, month_count), "месяц"),
-        ):
-            if delta_raw:
-                deltas.append(f"{delta_raw} {name}")
-
-        line = head
+        block = ["", head]
+        deltas = _deltas(count, day_count, week_count, month_count)
         if deltas:
-            line += " (" + ", ".join(deltas) + ")"
+            block.append(deltas)
 
         # Age marker: the latest value can be days old when collection keeps failing.
         try:
@@ -207,16 +219,16 @@ async def build_report(
         date_str = collected_dt.strftime("%d.%m") if collected_dt else "?"
 
         if source == "manual":
-            stale = age_days >= linkedin_stale_days
-            marker = "⚠️ устарело" if stale else "вручную"
-            line += f"  ({marker}, {date_str})"
+            if age_days >= linkedin_stale_days:
+                block.append(f"⚠️ введено вручную {date_str} — пора обновить")
+            else:
+                block.append(f"введено вручную {date_str}")
         elif age_days >= AUTO_STALE_DAYS:
-            line += f"  (⚠️ данные от {date_str})"
+            block.append(f"⚠️ данные от {date_str} — свежие собрать не удаётся")
+        elif errors.get(platform):
+            block.append("⚠️ сегодня собрать не удалось")
 
-        if errors.get(platform):
-            line += " ⚠️"
-
-        lines.append(line)
+        lines += block
 
         if day_count is not None and total_yesterday is not None:
             total_yesterday += day_count
@@ -232,38 +244,25 @@ async def build_report(
             total_month_ago = None
 
     if not has_any_data:
-        lines.append("Нет данных. Используйте /now для первого сбора.")
+        lines += ["", "Данных пока нет — нажми «🔄 Обновить данные» или отправь /now."]
         return "\n".join(lines), False
 
-    # Highlights block
-    highlights: list[str] = []
-    for label, milestone in milestones_hit:
-        highlights.append(f"🎯 {label} перешагнул {_fmt(milestone)}!")
+    # Total: only the periods every platform with data can back.
+    lines += ["", f"📈 Всего — {_fmt(total_current)}"]
+    total_deltas = _deltas(total_current, total_yesterday, total_week_ago, total_month_ago)
+    if total_deltas:
+        lines.append(total_deltas)
+
+    highlights: list[str] = [f"🎯 {label} перешагнул {_fmt(milestone)}!" for label, milestone in milestones_hit]
     if week_growth:
         leader_name, leader_pct = max(week_growth.items(), key=lambda kv: kv[1])
         if leader_pct > 0:
-            highlights.append(f"🏆 Лидер недели: {leader_name} +{leader_pct:.1f}%")
+            highlights.append(f"🏆 Лидер недели: {leader_name}, {_pct(leader_pct)}")
     highlights.extend(accel_notes)
     highlights.extend(forecasts)
     if highlights:
         lines.append("")
         lines.extend(highlights)
-
-    # Total
-    lines.append("")
-    total_parts = [f"📈 Всего: {_fmt(total_current)}"]
-    for delta_raw, name in (
-        (_delta_str(total_current, total_yesterday), "день"),
-        (_delta_str(total_current, total_week_ago), "неделя"),
-        (_delta_str(total_current, total_month_ago), "месяц"),
-    ):
-        if delta_raw:
-            total_parts.append(f"{delta_raw} {name}")
-
-    total_line = total_parts[0]
-    if len(total_parts) > 1:
-        total_line += " (" + ", ".join(total_parts[1:]) + ")"
-    lines.append(total_line)
 
     return "\n".join(lines), has_change
 
@@ -273,7 +272,11 @@ async def build_week_report(db: Database) -> str:
     week_start = today - timedelta(days=today.weekday())
     last_week_end = week_start - timedelta(days=1)
 
-    lines = [f"📅 Неделя {week_start.strftime('%d.%m')} — {today.strftime('%d.%m.%Y')}", ""]
+    lines = [
+        f"📅 Неделя {week_start.strftime('%d.%m')} — {today.strftime('%d.%m.%Y')}",
+        "В сравнении с концом прошлой недели",
+        "",
+    ]
 
     total_now = 0
     total_prev = 0
@@ -303,24 +306,18 @@ async def build_week_report(db: Database) -> str:
         count_prev = prev_row["count"] if prev_row else None
         if count_prev is not None:
             total_prev += count_prev
+            lines.append(f"{label} — {_fmt(count_now)} ({_delta_str(count_now, count_prev)}, было {_fmt(count_prev)})")
         else:
             prev_complete = False
-
-        delta = _delta_str(count_now, count_prev)
-        prev_str = f" (было {_fmt(count_prev)})" if count_prev is not None else ""
-        line = f"{label}: {_fmt(count_now)}{prev_str}"
-        if delta:
-            line += f"  {delta}"
-        lines.append(line)
+            lines.append(f"{label} — {_fmt(count_now)} (за прошлую неделю данных нет)")
 
     if not has_data:
-        return "Нет данных для недельного отчёта."
+        return "📅 Неделя\n\nДанных пока нет — недельное сравнение появится после первых сборов."
 
     lines.append("")
-    total_delta = _delta_str(total_now, total_prev if prev_complete else None)
-    total_line = f"📈 Всего: {_fmt(total_now)}"
-    if total_delta:
-        total_line += f"  {total_delta} за неделю"
+    total_line = f"📈 Всего — {_fmt(total_now)}"
+    if prev_complete:
+        total_line += f" ({_delta_str(total_now, total_prev)} за неделю)"
     lines.append(total_line)
 
     return "\n".join(lines)
@@ -370,7 +367,7 @@ async def build_month_report(db: Database) -> str | None:
 
         if base_row is None:
             base_complete = False
-            lines.append(f"{label}: {_fmt(count_now)} (нет данных на начало месяца)")
+            lines.append(f"{label} — {_fmt(count_now)} (нет данных на начало месяца)")
             continue
 
         base = base_row["count"]
@@ -379,8 +376,7 @@ async def build_month_report(db: Database) -> str | None:
         pct = diff / base * 100 if base > 0 else 0.0
         if base > 0:
             growth_pct[label] = pct
-        sign = "+" if diff >= 0 else ""
-        lines.append(f"{label}: {_fmt(count_now)} ({sign}{_fmt(diff)}, {sign}{pct:.1f}%)")
+        lines.append(f"{label} — {_fmt(count_now)} ({_signed(diff)}, {_pct(pct)})")
 
     if not has_data:
         return None
@@ -389,20 +385,18 @@ async def build_month_report(db: Database) -> str | None:
         best = max(growth_pct.items(), key=lambda kv: kv[1])
         worst = min(growth_pct.items(), key=lambda kv: kv[1])
         lines.append("")
-        lines.append(f"🏆 Лучшая платформа: {best[0]} ({best[1]:+.1f}%)")
-        lines.append(f"🐌 Слабее всех: {worst[0]} ({worst[1]:+.1f}%)")
+        lines.append(f"🏆 Лучшая платформа: {best[0]}, {_pct(best[1])}")
+        lines.append(f"🐌 Слабее всех: {worst[0]}, {_pct(worst[1])}")
 
     if base_complete:
-        total_diff = total_now - total_base
-        sign = "+" if total_diff >= 0 else ""
         lines.append("")
-        lines.append(f"📈 Всего: {_fmt(total_now)} ({sign}{_fmt(total_diff)} за месяц)")
+        lines.append(f"📈 Всего — {_fmt(total_now)} ({_signed(total_now - total_base)} за месяц)")
 
     return "\n".join(lines)
 
 
 async def build_history_all(db: Database, days: int) -> str:
-    """Combined history table for all platforms."""
+    """Combined history table for all platforms, as Telegram HTML."""
     # Collect per-platform rows indexed by date object
     data: dict[date, dict[str, int]] = {}
 
@@ -415,62 +409,46 @@ async def build_history_all(db: Database, days: int) -> str:
                 continue
             data.setdefault(d, {})[platform] = row["count"]
 
+    title = f"<b>📋 Все платформы · {days} дн.</b>"
     if not data:
-        return f"Нет данных за последние {days} дней."
+        return f"{title}\n\nЗа последние {days} дн. данных нет."
 
     sorted_dates = sorted(data.keys())
 
     # Only platforms with data in the period get a column.
     columns = [p for p in PLATFORM_IDS if any(p in row for row in data.values())]
 
-    lines = [f"📊 Все платформы — {days} дней", ""]
-    lines.append("```")
-    lines.append(f"{'Дата':<7}" + "".join(f" {BY_ID[p].short:>7}" for p in columns))
-    lines.append("-" * (7 + 8 * len(columns)))
-
+    # Narrow columns keep the table unwrapped on a phone; the legend names them.
+    legend = ", ".join(f"{BY_ID[p].short} — {LABELS[p]}" for p in columns)
+    table = [f"{'Дата':<6}" + "".join(f" {BY_ID[p].short:>9}" for p in columns)]
     for d in sorted_dates:
         row = data[d]
-        cells = "".join(f" {_fmt(row[p]) if p in row else '—':>7}" for p in columns)
-        lines.append(f"{d.strftime('%d.%m'):<7}{cells}")
+        cells = "".join(f" {_fmt(row[p]) if p in row else '—':>9}" for p in columns)
+        table.append(f"{d.strftime('%d.%m'):<6}{cells}")
 
-    lines.append("```")
-    return "\n".join(lines)
+    return f"{title}\n{legend}\n\n<pre>" + "\n".join(table) + "</pre>"
 
 
 async def build_history_table(db: Database, platform: str, days: int) -> str:
+    """One platform's history with the change per collection, as Telegram HTML."""
     label = LABELS.get(platform, platform)
     rows = await db.get_history(platform, days)
 
+    title = f"<b>📋 {label} · {days} дн.</b>"
     if not rows:
-        return f"Нет данных по {label} за последние {days} дней."
+        return f"{title}\n\nЗа последние {days} дн. данных нет."
 
-    lines = [f"📊 {label} — история за {days} дней", ""]
-    lines.append("```")
-    lines.append(f"{'Дата':<12} {'Подписчики':>12} {'Изменение':>12}")
-    lines.append("-" * 38)
-
+    table = [f"{'Дата':<6} {'Подписчики':>11} {'Изменение':>10}"]
     prev_count: int | None = None
     for row in rows:
         try:
-            dt = datetime.fromisoformat(row["collected_at"])
-            date_str = dt.strftime("%d.%m.%Y")
+            date_str = datetime.fromisoformat(row["collected_at"]).strftime("%d.%m")
         except (ValueError, TypeError):
-            date_str = str(row["collected_at"])[:10]
+            date_str = str(row["collected_at"])[5:10]
 
         count = row["count"]
-        if prev_count is not None:
-            diff = count - prev_count
-            if diff > 0:
-                change = f"+{_fmt(diff)}"
-            elif diff < 0:
-                change = _fmt(diff)
-            else:
-                change = "0"
-        else:
-            change = "—"
-
-        lines.append(f"{date_str:<12} {_fmt(count):>12} {change:>12}")
+        change = "—" if prev_count is None else _signed(count - prev_count)
+        table.append(f"{date_str:<6} {_fmt(count):>11} {change:>10}")
         prev_count = count
 
-    lines.append("```")
-    return "\n".join(lines)
+    return f"{title}\n\n<pre>" + "\n".join(table) + "</pre>"

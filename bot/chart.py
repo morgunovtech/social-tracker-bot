@@ -4,6 +4,8 @@ import io
 import logging
 from datetime import datetime
 
+from bot.reporter import _fmt
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,7 +40,7 @@ def render_chart(series: dict[str, list[tuple[datetime, int]]]) -> bytes | None:
         xs = [p[0] for p in pts]
         ys = [p[1] for p in pts]
         ax.plot(xs, ys, marker="o", markersize=3, linewidth=1.5)
-        ax.set_title(f"{label} — {ys[-1]:,}", fontsize=10, loc="left")
+        ax.set_title(f"{label} — {_fmt(ys[-1])}", fontsize=10, loc="left")
         ax.grid(True, alpha=0.3)
         ax.margins(y=0.15)
         ax.ticklabel_format(axis="y", style="plain")

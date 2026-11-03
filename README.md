@@ -29,7 +29,7 @@ The bot is modular: connect only the platforms you have, and switch monitors on 
 
 1. **Telegram (required).** Create a bot with [@BotFather](https://t.me/BotFather) → `BOT_TOKEN`. Get your user id from [@userinfobot](https://t.me/userinfobot) → `ADMIN_CHAT_ID`: only you can use the bot. To track a channel, make the bot an **admin** of it → `TELEGRAM_CHANNEL_ID`.
 2. **YouTube (optional).** In [Google Cloud Console](https://console.cloud.google.com/) enable YouTube Data API v3 and create an API key → `YOUTUBE_API_KEY`; your channel id (`UC…`) → `YOUTUBE_CHANNEL_ID`.
-3. **LinkedIn (optional).** Your profile URL → `LINKEDIN_PROFILE_URL`. Then either send the bot `/setcookie <li_at>` with the `li_at` cookie of a logged-in browser (DevTools → Application → Cookies → linkedin.com) — the bot checks it, deletes your message and watches the cookie's age — or enter the number by hand with the «✏️ LinkedIn» button.
+3. **LinkedIn (optional).** Your profile URL → `LINKEDIN_PROFILE_URL`. Then either send the bot `/setcookie <li_at>` with the `li_at` cookie of a logged-in browser (DevTools → Application → Cookies → linkedin.com) — the bot checks it, deletes your message and watches the cookie's age — or enter the number by hand with the «✏️ Ввести число LinkedIn» button on the home screen.
 
 4. **Security emails (optional).** Deploy the [mail-worker](mail-worker/README.md) → `SECURITY_MAIL_URL`, `SECURITY_MAIL_TOKEN`, and set up forwarding in your mailbox.
 
@@ -48,19 +48,44 @@ Create a service from this repository, set the variables from `.env.example`, an
 
 The container starts as root only to hand the data directory to the unprivileged `appuser`, then drops root for good.
 
+## Menu
+
+Everything is a button away; the «🏠 Меню» button under the input field always brings you home.
+
+```
+🏠 Home — the follower report, the security score, when the next report goes out
+├── 🔄 Refresh — collect now, the home screen updates in place
+├── 📈 Trends — this week vs last week
+│   ├── 🖼 30-day chart
+│   └── 📋 Day by day — platform and period switched on the same screen
+├── 🛡 Security — score, each account, what to do first, recent events
+│   └── an account's checklist → one question at a time, with why it matters
+├── ✏️ Enter LinkedIn — only while the number is typed in by hand
+├── ⚙️ Settings — report days (checkboxes), report hour (a grid), quiet mode
+│   ├── 🧩 Monitors — switch each one on and off
+│   └── 💼 LinkedIn — how the number is collected, the cookie's age
+└── ❓ Help — how the bot works, what the icons mean, every command
+```
+
+A tap answers right away with a short confirmation («Сохранено», «Тихий режим включён»), a menu message is edited in place instead of piling up, and a button of an older version's menu opens the current one.
+
 ## Commands
+
+The `/` menu lists the six entry points; the rest are for typing.
 
 | Command | What it does |
 |---|---|
-| `/start`, `/help` | Menu and help |
-| `/stats` | Current summary |
+| `/start` | Greeting and the home screen |
 | `/now` | Collect now and show the report |
 | `/week` | This week vs last week, with the chart |
 | `/security` | Security score, the checklist per account, recent security events |
+| `/settings` | Report schedule, quiet mode, monitors, LinkedIn |
+| `/help` | How the bot works, the icons, every command |
+| `/stats` | The home screen without the greeting |
 | `/modules` | Connected platforms; switch monitors on and off |
-| `/history [platform] [days]` | History table, up to 90 days |
+| `/history [platform] [days]` | Day-by-day table, up to 90 days |
 | `/linkedin <number>` | Enter the LinkedIn number by hand |
-| `/settime HH:MM`, `/setday <days>` | Report time (UTC) and day(s): `sat`, `mon,thu`, `mon-fri`, `daily` |
+| `/settime HH:MM`, `/setday <days>` | Report time (UTC) and day(s): `sat`, `mon,thu`, `mon-fri`, `daily`; without an argument, the picker |
 | `/setquiet on\|off` | Quiet mode |
 | `/setcookie <li_at>`, `/cookieage` | Set the LinkedIn cookie, check its age |
 | `/restore` | Reply it to a backup message (or send a `.db` captioned `/restore`) to merge the history back |
@@ -94,7 +119,7 @@ python3 -m venv .venv
 
 The tests never touch the network: Telegram is a fake bot, LinkedIn, YouTube, the site push and the mail worker are local HTTP servers. CI runs ruff, pytest on Python 3.12–3.14, `pip-audit`, a build of the production image and the mail-worker tests (`cd mail-worker && npm ci && npm test`).
 
-A new network is one module in `bot/platforms/` (a `Platform` subclass: how to tell it's configured, how to read the follower count and, optionally, which public profile fields to watch) plus an entry in `PLATFORMS`. Monitors live in `bot/monitors/`.
+A new network is one module in `bot/platforms/` (a `Platform` subclass: how to tell it's configured, how to read the follower count and, optionally, which public profile fields to watch) plus an entry in `PLATFORMS`. Monitors live in `bot/monitors/`. Every menu screen is a function in `bot/ui.py` (text and buttons, no Telegram calls); `bot/handlers.py` routes commands and button presses to them, and a test walks every button from the home screen.
 
 ## License
 
