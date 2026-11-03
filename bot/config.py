@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import functools
 import os
 import re
 from dataclasses import dataclass
+from zoneinfo import available_timezones
 
 from dotenv import load_dotenv
 
@@ -44,6 +46,22 @@ def normalize_dow(value: str) -> str:
     return ",".join(parts)
 
 
+@functools.cache
+def _zones() -> dict[str, str]:
+    return {name.lower(): name for name in available_timezones()}
+
+
+def normalize_tz(value: str) -> str:
+    """The canonical IANA name of a time zone: 'europe/moscow' -> 'Europe/Moscow'.
+
+    Raises ValueError for a name the tz database doesn't have.
+    """
+    name = _zones().get(value.strip().lower())
+    if name is None:
+        raise ValueError(f"Unknown time zone: {value}")
+    return name
+
+
 def _url(name: str) -> str | None:
     """The first http(s) URL in the variable. Tolerates a whole pasted line
     such as `&& curl -fsS https://…`, the way TofsDevOps shows a heartbeat."""
@@ -58,6 +76,14 @@ def _report_dow() -> str:
         return normalize_dow(raw)
     except ValueError as e:
         raise RuntimeError(f"Invalid REPORT_DOW={raw!r}: {e}") from None
+
+
+def _report_tz() -> str:
+    raw = os.getenv("REPORT_TZ") or "UTC"
+    try:
+        return normalize_tz(raw)
+    except ValueError as e:
+        raise RuntimeError(f"Invalid REPORT_TZ={raw!r}: {e}") from None
 
 
 def _repo_slug() -> str | None:
@@ -85,10 +111,11 @@ class Config:
     linkedin_li_at: str | None  # 'li_at' cookie from logged-in browser session
     linkedin_stale_days: int  # mark manual entry as stale after N days
 
-    # Schedule (UTC)
-    report_hour_utc: int
+    # Schedule: the time and the day(s) are in report_tz
+    report_hour: int
     report_minute: int
     report_dow: str  # APScheduler day_of_week expression: 'sat', 'mon,thu', '*', etc.
+    report_tz: str  # IANA name: 'UTC', 'Europe/Moscow'
     quiet_if_no_change: bool
 
     # Database
@@ -124,9 +151,11 @@ class Config:
             linkedin_profile_url=os.getenv("LINKEDIN_PROFILE_URL") or None,
             linkedin_li_at=os.getenv("LINKEDIN_LI_AT"),
             linkedin_stale_days=int(os.getenv("LINKEDIN_STALE_DAYS", "7")),
-            report_hour_utc=int(os.getenv("REPORT_HOUR_UTC", "8")),
+            # REPORT_HOUR_UTC is its name from before the zone setting.
+            report_hour=int(os.getenv("REPORT_HOUR") or os.getenv("REPORT_HOUR_UTC") or "8"),
             report_minute=int(os.getenv("REPORT_MINUTE", "0")),
             report_dow=_report_dow(),
+            report_tz=_report_tz(),
             quiet_if_no_change=os.getenv("QUIET_IF_NO_CHANGE", "0") == "1",
             db_path=os.getenv("DB_PATH", "data/followers.db"),
             site_ingest_url=os.getenv("SITE_INGEST_URL") or None,

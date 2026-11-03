@@ -61,7 +61,7 @@ Everything is a button away; the «🏠 Меню» button under the input field 
 ├── 🛡 Security — score, each account, what to do first, recent events
 │   └── an account's checklist → one question at a time, with why it matters
 ├── ✏️ Enter LinkedIn — only while the number is typed in by hand
-├── ⚙️ Settings — report days (checkboxes), report hour (a grid), quiet mode
+├── ⚙️ Settings — report days (checkboxes), report hour (a grid), time zone, quiet mode
 │   ├── 🧩 Monitors — switch each one on and off
 │   └── 💼 LinkedIn — how the number is collected, the cookie's age
 └── ❓ Help — how the bot works, what the icons mean, every command
@@ -85,10 +85,17 @@ The `/` menu lists the six entry points; the rest are for typing.
 | `/modules` | Connected platforms; switch monitors on and off |
 | `/history [platform] [days]` | Day-by-day table, up to 90 days |
 | `/linkedin <number>` | Enter the LinkedIn number by hand |
-| `/settime HH:MM`, `/setday <days>` | Report time (UTC) and day(s): `sat`, `mon,thu`, `mon-fri`, `daily`; without an argument, the picker |
+| `/settime HH:MM`, `/setday <days>` | Report time and day(s) in your time zone: `sat`, `mon,thu`, `mon-fri`, `daily`; without an argument, the picker |
+| `/settz <zone>` | Your time zone, an IANA name such as `Europe/Moscow`; without an argument, a list of common ones |
 | `/setquiet on\|off` | Quiet mode |
 | `/setcookie <li_at>`, `/cookieage` | Set the LinkedIn cookie, check its age |
 | `/restore` | Reply it to a backup message (or send a `.db` captioned `/restore`) to merge the history back |
+
+## Schedule
+
+Data is collected every day at the report time, and the report goes out on the report day(s). Time and days are in your time zone: pick it with the «🌍 Часовой пояс» button in ⚙️ Settings or with `/settz`, and `/settime 09:00` means 09:00 on your clock, summer time included. Switching the zone keeps the report at the same moment and shows it on the new clock (08:00 UTC becomes 11:00 in Moscow).
+
+`REPORT_TZ`, `REPORT_HOUR`, `REPORT_MINUTE` and `REPORT_DOW` are the defaults until you change them in the bot: Saturday, 08:00 UTC. A schedule saved by a version without the zone setting stays in UTC until you pick a zone. Follower history, the monthly digest and the Sunday backup keep UTC days.
 
 ## Updates
 

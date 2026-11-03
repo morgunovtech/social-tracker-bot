@@ -413,12 +413,82 @@ async def test_settime(make_update, make_context, db, sched):
 
 async def test_hour_picker(make_update, make_context, db, sched):
     query = await press(make_update, make_context, "set:time", scheduler=sched)
-    assert buttons(query.markups[0])["set:hour:8"] == "✅ 08:00" and "11:00 по Москве" in query.edits[0]
+    assert buttons(query.markups[0])["set:hour:8"] == "✅ 08:00" and "Часы ниже — по UTC" in query.edits[0]
+    assert "по Москве" not in query.edits[0] and "set:tz" in buttons(query.markups[0])
     query = await press(make_update, make_context, "set:hour:19", scheduler=sched)
     assert await db.get_setting("report_time") == "19:00"
     assert str(sched.get_job("scheduled_report").trigger.fields[5]) == "19"
     assert query.answers[0]["text"] == "Отчёт будет приходить в 19:00 UTC"
     assert "в 19:00 UTC" in query.edits[0]
+
+
+def _trigger(sched) -> tuple[str, str]:
+    """The daily job's zone and hour."""
+    trigger = sched.get_job("scheduled_report").trigger
+    return str(trigger.timezone), str(trigger.fields[5])
+
+
+async def test_timezone_picker(make_update, make_context, db, sched, insert):
+    query = await press(make_update, make_context, "set", scheduler=sched)
+    assert "🌍 Часовой пояс: UTC" in query.edits[0] and "set:tz" in buttons(query.markups[0])
+
+    query = await press(make_update, make_context, "set:tz", scheduler=sched)
+    picks = buttons(query.markups[0])
+    assert picks["set:tz:UTC"] == "✅ UTC" and picks["set:tz:Europe/Moscow"] == "Москва +3"
+    assert picks["set"] == "← Настройки" and "/settz" in query.edits[0]
+
+    # 08:00 UTC is 11:00 in Moscow: the report stays at the same moment.
+    query = await press(make_update, make_context, "set:tz:Europe/Moscow", scheduler=sched)
+    assert await db.get_setting("report_tz") == "Europe/Moscow"
+    assert await db.get_setting("report_time") == "11:00" and await db.get_setting("report_dow") == "sat"
+    assert _trigger(sched) == ("Europe/Moscow", "11")
+    assert "✅ Часовой пояс: Москва (UTC+3)" in query.edits[0] and "по субботам, в 11:00\n" in query.edits[0]
+
+    query = await press(make_update, make_context, "set:time", scheduler=sched)    # the grid is in local hours
+    assert buttons(query.markups[0])["set:hour:11"] == "✅ 11:00" and "UTC+3" in query.edits[0]
+    query = await press(make_update, make_context, "set:hour:9", scheduler=sched)
+    assert query.answers[0]["text"] == "Отчёт будет приходить в 09:00"
+    assert _trigger(sched) == ("Europe/Moscow", "9")
+
+    insert("telegram", 1000, 0)
+    update = make_update()
+    await handlers.cmd_home(update, make_context())
+    assert "⏭ Следующий отчёт:" in update.message.replies[0] and "UTC" not in update.message.replies[0]
+
+    query = await press(make_update, make_context, "set:tz:Mars/Olympus", scheduler=sched)
+    assert query.edits == [] and await db.get_setting("report_tz") == "Europe/Moscow"
+
+
+async def test_new_zone_moves_the_days_past_midnight(make_update, make_context, db, sched):
+    """Saturday 22:00 UTC, saved by a version without zones, is Sunday 01:00 in Moscow."""
+    await db.set_setting("report_time", "22:00")
+    await db.set_setting("report_dow", "sat")
+    await press(make_update, make_context, "set:tz:Europe/Moscow", scheduler=sched)
+    assert (await db.get_setting("report_dow"), await db.get_setting("report_time")) == ("sun", "01:00")
+    assert _trigger(sched) == ("Europe/Moscow", "1")
+
+
+async def test_settz(make_update, make_context, db, sched):
+    update = make_update()
+    await handlers.cmd_settz(update, make_context("europe/berlin", scheduler=sched))
+    assert await db.get_setting("report_tz") == "Europe/Berlin"
+    assert update.message.replies[0].startswith("✅ Часовой пояс: Берлин (UTC+")
+    assert _trigger(sched)[0] == "Europe/Berlin"
+
+    update = make_update()
+    await handlers.cmd_settime(update, make_context("09:30", scheduler=sched))   # read in the chosen zone
+    assert update.message.replies[0].startswith("✅ Отчёт теперь в 09:30\n")
+    assert _trigger(sched) == ("Europe/Berlin", "9")
+
+    for args in (("Mars/Olympus",), ("MSK",), ("Europe/Moscow", "extra")):
+        update = make_update()
+        await handlers.cmd_settz(update, make_context(*args, scheduler=sched))
+        assert update.message.replies[0].startswith("❌ Не знаю такой часовой пояс")
+    assert await db.get_setting("report_tz") == "Europe/Berlin"
+
+    update = make_update()
+    await handlers.cmd_settz(update, make_context(scheduler=sched))           # no zone: the picker
+    assert "🌍 Часовой пояс" in update.message.replies[0]
 
 
 async def test_setday(make_update, make_context, db, sched):

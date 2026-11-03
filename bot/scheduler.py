@@ -17,7 +17,7 @@ from telegram import Bot
 
 from bot import monitors, platforms
 from bot.chart import render_chart
-from bot.config import DOW_ORDER, Config
+from bot.config import DOW_ORDER, Config, normalize_tz
 from bot.db import Database, parse_utc, utcnow
 from bot.monitors import collection, followers, hygiene, mail, profile
 from bot.platforms import LABELS, PLATFORM_IDS
@@ -56,11 +56,12 @@ class CollectOutcome:
     milestones: list[tuple[str, int]] = field(default_factory=list)  # (platform, milestone)
 
 
-def _today_matches_dow(dow_expr: str, now_utc: datetime | None = None) -> bool:
-    """Return True if today (UTC) matches the cron day-of-week expression."""
+def _today_matches_dow(dow_expr: str, now: datetime | None = None) -> bool:
+    """Return True if today, in the zone of `now` (UTC by default), matches the
+    cron day-of-week expression."""
     if dow_expr == "*":
         return True
-    today_idx = (now_utc or utcnow()).weekday()  # 0=Mon..6=Sun
+    today_idx = (now or utcnow()).weekday()  # 0=Mon..6=Sun
     today_short = DOW_ORDER[today_idx]
 
     if "-" in dow_expr and "," not in dow_expr:
@@ -290,9 +291,12 @@ async def _scheduled_job(
         logger.exception("Scheduled collection failed")
         return
 
-    today = utcnow().date()
+    now = utcnow()
+    today = now.date()  # follower days, the monthly digest and the backup stay in UTC
+    # The report time and days are in the owner's zone.
+    local_now = now.astimezone(await get_report_tz(db, config))
     if attempt == 1:
-        await db.set_setting(LAST_DAILY_RUN_KEY, today.isoformat())
+        await db.set_setting(LAST_DAILY_RUN_KEY, local_now.date().isoformat())
 
     # Proactive alerts: sent immediately, not held for the report day.
     await send_alerts(bot, config, db, outcome)
@@ -319,7 +323,7 @@ async def _scheduled_job(
 
     # Report push on configured day(s)
     dow = await db.get_setting("report_dow") or config.report_dow
-    if _today_matches_dow(dow):
+    if _today_matches_dow(dow, local_now):
         quiet = await is_quiet_mode(db, config)
         try:
             if quiet and not outcome.has_change:
@@ -410,7 +414,34 @@ async def get_report_schedule(db: Database, config: Config) -> tuple[str, int, i
             return dow, int(h), int(m)
         except (ValueError, AttributeError):
             pass
-    return dow, config.report_hour_utc, config.report_minute
+    return dow, config.report_hour, config.report_minute
+
+
+async def get_report_tz(db: Database, config: Config) -> ZoneInfo:
+    """The zone the report time and days are in."""
+    stored = await db.get_setting("report_tz")
+    if stored:
+        try:
+            return ZoneInfo(normalize_tz(stored))
+        except ValueError:
+            logger.warning("Unknown report_tz %r in settings — using UTC", stored)
+            return UTC
+    if await db.get_setting("report_time") or await db.get_setting("report_dow"):
+        return UTC  # saved by a version without the zone setting, which kept them in UTC
+    return ZoneInfo(config.report_tz)
+
+
+async def save_schedule(
+    db: Database, config: Config, *, dow: str | None = None, time: tuple[int, int] | None = None
+) -> None:
+    """Store the report day(s) and/or time together with the zone they are in,
+    so a REPORT_TZ changed later can't move a schedule already set."""
+    tz = await get_report_tz(db, config)  # before the write: a stored schedule changes the answer
+    if dow is not None:
+        await db.set_setting("report_dow", dow)
+    if time is not None:
+        await db.set_setting("report_time", f"{time[0]:02d}:{time[1]:02d}")
+    await db.set_setting("report_tz", tz.key)
 
 
 async def is_quiet_mode(db: Database, config: Config) -> bool:
@@ -420,28 +451,27 @@ async def is_quiet_mode(db: Database, config: Config) -> bool:
     return config.quiet_if_no_change
 
 
-def reschedule(
-    scheduler: AsyncIOScheduler,
-    dow: str,
-    hour: int,
-    minute: int,
-) -> None:
-    """Update the run time. Job fires daily; dow filter is applied inside the job
-    so we always have daily data for trends, but push only on report day(s).
+async def reschedule(scheduler: AsyncIOScheduler, db: Database, config: Config) -> None:
+    """Move the daily job to the stored report time. Job fires daily; dow filter is
+    applied inside the job so we always have daily data for trends, but push only
+    on report day(s).
     """
+    dow, hour, minute = await get_report_schedule(db, config)
+    tz = await get_report_tz(db, config)
     scheduler.reschedule_job(
         "scheduled_report",
-        trigger=CronTrigger(hour=hour, minute=minute, timezone=UTC),
+        trigger=CronTrigger(hour=hour, minute=minute, timezone=tz),
     )
-    logger.info("Rescheduled daily collect to %02d:%02d UTC (push dow=%s)", hour, minute, dow)
+    logger.info("Rescheduled daily collect to %02d:%02d %s (push dow=%s)", hour, minute, tz.key, dow)
 
 
 async def setup_scheduler(bot: Bot, config: Config, db: Database) -> AsyncIOScheduler:
     dow, hour, minute = await get_report_schedule(db, config)
+    tz = await get_report_tz(db, config)
     scheduler = AsyncIOScheduler(timezone=UTC)
     scheduler.add_job(
         _scheduled_job,
-        trigger=CronTrigger(hour=hour, minute=minute, timezone=UTC),
+        trigger=CronTrigger(hour=hour, minute=minute, timezone=tz),
         args=[bot, config, db, scheduler],
         id="scheduled_report",
         replace_existing=True,
@@ -456,7 +486,7 @@ async def setup_scheduler(bot: Bot, config: Config, db: Database) -> AsyncIOSche
         id="deploy_watch",
         replace_existing=True,
     )
-    logger.info("Scheduler started: daily collect at %02d:%02d UTC, push on %s", hour, minute, dow)
+    logger.info("Scheduler started: daily collect at %02d:%02d %s, push on %s", hour, minute, tz.key, dow)
 
     now = utcnow()
     scheduler.add_job(
@@ -482,8 +512,9 @@ async def setup_scheduler(bot: Bot, config: Config, db: Database) -> AsyncIOSche
 
     # A freshly added cron job only fires in the future: if the bot was down at
     # today's run time, run it shortly instead of losing the day.
-    due = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    if now >= due and await db.get_setting(LAST_DAILY_RUN_KEY) != now.date().isoformat():
+    local_now = now.astimezone(tz)
+    due = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if local_now >= due and await db.get_setting(LAST_DAILY_RUN_KEY) != local_now.date().isoformat():
         run_at = now + CATCH_UP_DELAY
         scheduler.add_job(
             _scheduled_job,
@@ -493,7 +524,7 @@ async def setup_scheduler(bot: Bot, config: Config, db: Database) -> AsyncIOSche
             replace_existing=True,
         )
         logger.info(
-            "Missed today's %02d:%02d UTC run — catching up at %s",
-            hour, minute, run_at.strftime("%H:%M:%S UTC"),
+            "Missed today's %02d:%02d %s run — catching up at %s",
+            hour, minute, tz.key, run_at.strftime("%H:%M:%S UTC"),
         )
     return scheduler

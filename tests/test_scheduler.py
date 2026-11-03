@@ -1,5 +1,6 @@
 import dataclasses
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from aiohttp import web
@@ -19,6 +20,8 @@ from bot.scheduler import (
     _send_backup,
     _today_matches_dow,
     collect_and_report,
+    get_report_tz,
+    save_schedule,
     send_alerts,
     setup_scheduler,
 )
@@ -217,10 +220,28 @@ async def test_hygiene_reminder_rides_with_the_report(bot, config, db, insert, f
 
 
 async def test_not_a_report_day_stays_silent(bot, config, db, insert, fake_collect, job_scheduler, monkeypatch):
-    monkeypatch.setattr(scheduler, "_today_matches_dow", lambda dow: False)
+    monkeypatch.setattr(scheduler, "_today_matches_dow", lambda *_: False)
     insert("telegram", 1000, 0)
     await _scheduled_job(bot, config, db, job_scheduler)
     assert bot.messages == [] and bot.documents == []
+
+
+async def test_report_day_is_the_owners_local_day(bot, config, db, insert, fake_collect, job_scheduler, monkeypatch):
+    """A Saturday 01:00 report in Moscow runs on Friday 22:00 UTC: it must still go out."""
+    insert("telegram", 1000, 0)
+    await db.set_setting("report_dow", "sat")
+    await db.set_setting("report_time", "01:00")
+    await db.set_setting("report_tz", "Europe/Moscow")
+    friday_utc = datetime(2026, 11, 6, 22, 0, tzinfo=UTC)
+    monkeypatch.setattr(scheduler, "utcnow", lambda: friday_utc)
+    await _scheduled_job(bot, config, db, job_scheduler)
+    assert bot.messages and bot.messages[0].startswith("📊 Подписчики")
+    assert await db.get_setting("last_daily_run") == "2026-11-07"              # the local date
+
+    bot.messages.clear()
+    await db.set_setting("report_dow", "fri")                                   # Friday in UTC, not in Moscow
+    await _scheduled_job(bot, config, db, job_scheduler)
+    assert not any(m.startswith("📊") for m in bot.messages)
 
 
 async def test_failed_platform_is_retried_up_to_the_limit(bot, config, db, fake_collect, job_scheduler):
@@ -240,7 +261,7 @@ async def test_monthly_digest_and_sunday_backup(bot, config, db, insert, fake_co
     insert("telegram", 1000, 0)
     first_sunday = datetime(2026, 11, 1, 9, 0, tzinfo=UTC)
     monkeypatch.setattr(scheduler, "utcnow", lambda: first_sunday)
-    monkeypatch.setattr(scheduler, "_today_matches_dow", lambda dow: False)
+    monkeypatch.setattr(scheduler, "_today_matches_dow", lambda *_: False)
     await _scheduled_job(bot, config, db, job_scheduler)
     assert any(m.startswith("🗓 Итоги месяца") for m in bot.messages)
     assert bot.documents and bot.documents[0]["filename"] == "followers-2026-11-01.db"
@@ -273,6 +294,53 @@ async def test_no_catch_up_before_run_time(bot, config, db, monkeypatch):
     monkeypatch.setattr(scheduler, "utcnow", lambda: SATURDAY)
     await db.set_setting("report_time", "13:00")
     assert (await setup_scheduler(bot, config, db)).get_job("collect_catch_up") is None
+
+
+async def test_catch_up_uses_the_local_run_time(bot, config, db, monkeypatch):
+    """02:00 in Moscow is 23:00 UTC the day before: at 00:30 UTC today's run has passed."""
+    await db.set_setting("report_time", "02:00")
+    await db.set_setting("report_tz", "Europe/Moscow")
+    after_midnight = datetime(2026, 11, 7, 0, 30, tzinfo=UTC)
+    monkeypatch.setattr(scheduler, "utcnow", lambda: after_midnight)
+    assert (await setup_scheduler(bot, config, db)).get_job("collect_catch_up") is not None
+
+    await db.set_setting("last_daily_run", "2026-11-07")
+    assert (await setup_scheduler(bot, config, db)).get_job("collect_catch_up") is None
+
+
+# --- time zones --------------------------------------------------------------
+
+async def test_daily_run_follows_the_local_clock_across_dst(bot, config, db):
+    await db.set_setting("report_time", "09:00")
+    await db.set_setting("report_tz", "Europe/Berlin")
+    trigger = (await setup_scheduler(bot, config, db)).get_job("scheduled_report").trigger
+    winter = trigger.get_next_fire_time(None, datetime(2026, 1, 15, tzinfo=UTC))
+    summer = trigger.get_next_fire_time(None, datetime(2026, 7, 15, tzinfo=UTC))
+    assert winter.astimezone(UTC).hour == 8 and summer.astimezone(UTC).hour == 7
+
+
+async def test_zone_comes_from_settings_then_env(config, db):
+    assert (await get_report_tz(db, config)).key == "UTC"
+    moscow = dataclasses.replace(config, report_tz="Europe/Moscow")
+    assert (await get_report_tz(db, moscow)).key == "Europe/Moscow"
+    await db.set_setting("report_tz", "Asia/Almaty")
+    assert (await get_report_tz(db, moscow)).key == "Asia/Almaty"
+    await db.set_setting("report_tz", "Mars/Olympus")                          # never written by the bot
+    assert await get_report_tz(db, moscow) == ZoneInfo("UTC")
+
+
+async def test_a_schedule_saved_before_zones_stays_in_utc(config, db):
+    await db.set_setting("report_time", "08:00")                               # no report_tz: an older version
+    moscow = dataclasses.replace(config, report_tz="Europe/Moscow")
+    assert (await get_report_tz(db, moscow)).key == "UTC"
+
+
+async def test_saving_the_schedule_pins_its_zone(config, db):
+    moscow = dataclasses.replace(config, report_tz="Europe/Moscow")
+    await save_schedule(db, moscow, time=(11, 0))
+    assert await db.get_setting("report_tz") == "Europe/Moscow"
+    berlin = dataclasses.replace(config, report_tz="Europe/Berlin")             # REPORT_TZ changed later
+    assert (await get_report_tz(db, berlin)).key == "Europe/Moscow"
 
 
 # --- outbound pushes ---------------------------------------------------------
