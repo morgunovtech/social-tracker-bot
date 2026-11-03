@@ -359,7 +359,8 @@ async def _send_backup(bot: Bot, config: Config, db: Database) -> None:
 
 
 async def _ping_healthcheck(config: Config) -> None:
-    """Dead man's switch: no ping today → healthchecks.io notifies the admin."""
+    """Dead man's switch: no ping today → the watchdog (healthchecks.io, a
+    TofsDevOps heartbeat) notifies the admin."""
     if not config.healthcheck_url:
         return
     try:
@@ -367,7 +368,11 @@ async def _ping_healthcheck(config: Config) -> None:
             async with session.get(
                 config.healthcheck_url, timeout=aiohttp.ClientTimeout(total=10)
             ) as resp:
-                logger.info("Healthcheck ping: HTTP %s", resp.status)
+                if resp.status < 300:
+                    logger.info("Healthcheck ping: HTTP %s", resp.status)
+                else:
+                    # e.g. 403 from a wrong secret: the watchdog will think the bot is dead.
+                    logger.warning("Healthcheck ping rejected: HTTP %s — check HEALTHCHECK_URL", resp.status)
     except Exception:
         logger.warning("Healthcheck ping failed", exc_info=True)
 

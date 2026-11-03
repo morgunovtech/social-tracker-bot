@@ -266,8 +266,13 @@ async def receiver():
         received.append({"method": request.method, "auth": request.headers.get("Authorization"), "body": body})
         return web.Response(text="ok")
 
+    async def forbidden(request):
+        received.append({"method": request.method, "auth": None, "body": None})
+        return web.Response(status=403, text="Forbidden")
+
     app = web.Application()
     app.router.add_route("*", "/hook", handle)
+    app.router.add_get("/wrong-secret", forbidden)
     server = TestServer(app)
     await server.start_server()
     yield server, received
@@ -319,3 +324,9 @@ async def test_site_push_counts_only_enabled_platforms(config, db, receiver):
     async with aiohttp.ClientSession() as session:
         await _push_subscribers(session, cfg, db)
     assert set(received[0]["body"]) == {"telegram", "youtube", "updatedAt"}
+
+
+async def test_rejected_healthcheck_ping_is_a_warning(config, receiver, caplog):
+    server, _ = receiver
+    await scheduler._ping_healthcheck(dataclasses.replace(config, healthcheck_url=str(server.make_url("/wrong-secret"))))
+    assert "rejected: HTTP 403" in caplog.text
