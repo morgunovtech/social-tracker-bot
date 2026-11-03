@@ -1,7 +1,7 @@
 [project]
 name = "social-tracker-bot"
 version = "1.0.0"
-description = "Telegram bot that tracks followers on Telegram, YouTube and LinkedIn"
+description = "Telegram bot that tracks followers and the security of your social accounts"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 dynamic = ["dependencies"]

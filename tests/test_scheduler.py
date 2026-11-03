@@ -8,6 +8,9 @@ from conftest import COOKIE
 
 from bot import scheduler
 from bot.db import utcnow
+from bot.platforms import linkedin as linkedin_platform
+from bot.platforms import telegram as telegram_platform
+from bot.platforms import youtube as youtube_platform
 from bot.scheduler import (
     CollectOutcome,
     _build_alerts,
@@ -57,9 +60,9 @@ def collectors(monkeypatch):
         seen["linkedin_prev"] = prev
         return values["linkedin"]
 
-    monkeypatch.setattr(scheduler, "collect_telegram", telegram)
-    monkeypatch.setattr(scheduler, "collect_youtube", youtube)
-    monkeypatch.setattr(scheduler, "collect_linkedin", linkedin)
+    monkeypatch.setattr(telegram_platform, "collect_telegram", telegram)
+    monkeypatch.setattr(youtube_platform, "collect_youtube", youtube)
+    monkeypatch.setattr(linkedin_platform, "collect_linkedin", linkedin)
     values["seen"] = seen
     return values
 
@@ -109,38 +112,45 @@ async def test_failures_and_cookie_state(bot, config, db, collectors):
     assert "cookie истёк" in outcome.report
 
 
-async def test_skip_linkedin(bot, config, db, collectors):
-    outcome = await collect_and_report(bot, config, db, force_linkedin=False)
+async def test_disabled_platform_is_not_collected(bot, config, db, collectors):
+    config = dataclasses.replace(config, linkedin_profile_url=None)
+    outcome = await collect_and_report(bot, config, db)
     assert "linkedin" not in outcome.collected and "linkedin_prev" not in collectors["seen"]
+
+
+async def test_linkedin_without_cookie_is_manual_not_an_error(bot, config, db, collectors):
+    collectors["linkedin"] = (None, None)
+    outcome = await collect_and_report(bot, config, db)
+    assert "linkedin" not in outcome.errors
 
 
 # --- alerts ------------------------------------------------------------------
 
-async def test_cookie_expiry_alerted_once_until_it_works_again(db):
+async def test_cookie_expiry_alerted_once_until_it_works_again(config, db):
     expired = CollectOutcome(report="", has_change=False, errors={"linkedin_cookie_expired": True})
-    assert any("cookie истёк" in line for line in await _build_alerts(db, expired))
-    assert await _build_alerts(db, expired) == []
+    assert any("cookie истёк" in line for line in await _build_alerts(db, config, expired))
+    assert await _build_alerts(db, config, expired) == []
     working = CollectOutcome(report="", has_change=False, collected={"linkedin": (4520, "cookie")})
-    await _build_alerts(db, working)
-    assert await _build_alerts(db, expired) != []
+    await _build_alerts(db, config, working)
+    assert await _build_alerts(db, config, expired) != []
 
 
-async def test_failure_streak_alerts_on_day_two_then_weekly(db):
+async def test_failure_streak_alerts_on_day_two_then_weekly(config, db):
     failed = CollectOutcome(report="", has_change=False, errors={"youtube": True})
     yesterday = (utcnow().date() - timedelta(days=1)).isoformat()
 
     async def next_day():
         await db.set_setting("fail_last_date_youtube", yesterday)
-        return await _build_alerts(db, failed)
+        return await _build_alerts(db, config, failed)
 
-    assert await _build_alerts(db, failed) == []       # day 1
-    assert await _build_alerts(db, failed) == []       # same-day retry doesn't count
+    assert await _build_alerts(db, config, failed) == []       # day 1
+    assert await _build_alerts(db, config, failed) == []       # same-day retry doesn't count
     assert "2 дн. подряд" in (await next_day())[0]     # day 2
     for _ in range(4):                                 # days 3..6
         assert await next_day() == []
     assert "7 дн. подряд" in (await next_day())[0]
     recovered = CollectOutcome(report="", has_change=False, collected={"youtube": (128, "api")})
-    await _build_alerts(db, recovered)
+    await _build_alerts(db, config, recovered)
     assert await db.get_setting("fail_streak_youtube") == "0"
 
 
@@ -168,7 +178,7 @@ def fake_collect(monkeypatch, db):
     """collect_and_report that only builds the report from what's in the DB."""
     state = {"errors": {}}
 
-    async def _collect(bot, config, database, force_linkedin=True):
+    async def _collect(bot, config, database):
         report, has_change = await scheduler.build_report(database)
         return CollectOutcome(report=report, has_change=has_change, errors=dict(state["errors"]))
 
@@ -191,8 +201,19 @@ async def test_quiet_mode_sends_one_liner(bot, config, db, insert, fake_collect,
     insert("telegram", 1000, 0)
     await db.set_setting("report_dow", "*")
     await db.set_setting("quiet_if_no_change", "1")
+    await db.set_setting("hygiene_nudged_at", utcnow().date().isoformat())  # no reminder due
     await _scheduled_job(bot, config, db, job_scheduler)
     assert bot.messages == ["😴 Без изменений за неделю — всё стабильно ✅"] and bot.photos == []
+
+
+async def test_hygiene_reminder_rides_with_the_report(bot, config, db, insert, fake_collect, job_scheduler):
+    insert("telegram", 1000, 0)
+    await db.set_setting("report_dow", "*")
+    await _scheduled_job(bot, config, db, job_scheduler)
+    assert bot.messages[-1].startswith("🛡 Безопасность") and "/security" in bot.messages[-1]
+    bot.messages.clear()
+    await _scheduled_job(bot, config, db, job_scheduler)  # next day: not again for a month
+    assert not any(m.startswith("🛡") for m in bot.messages)
 
 
 async def test_not_a_report_day_stays_silent(bot, config, db, insert, fake_collect, job_scheduler, monkeypatch):
@@ -330,3 +351,40 @@ async def test_rejected_healthcheck_ping_is_a_warning(config, receiver, caplog):
     server, _ = receiver
     await scheduler._ping_healthcheck(dataclasses.replace(config, healthcheck_url=str(server.make_url("/wrong-secret"))))
     assert "rejected: HTTP 403" in caplog.text
+
+
+# --- profile watch -----------------------------------------------------------
+
+async def test_profile_and_mail_jobs_respect_the_switch(bot, config, db, monkeypatch):
+    calls = []
+
+    async def check(*args):
+        calls.append(args)
+        return 0
+
+    monkeypatch.setattr(scheduler.profile, "check", check)
+    monkeypatch.setattr(scheduler.mail, "check", check)
+    mail_config = dataclasses.replace(config, security_mail_url="https://w", security_mail_token="t")
+    await scheduler._profile_job(bot, config, db)
+    await scheduler._mail_job(bot, mail_config, db)
+    assert len(calls) == 2
+
+    await db.set_setting("monitor_profile", "off")
+    await db.set_setting("monitor_mail", "off")
+    await scheduler._profile_job(bot, config, db)
+    await scheduler._mail_job(bot, mail_config, db)
+    assert len(calls) == 2
+
+
+async def test_collection_streak_stays_current_while_switched_off(config, db):
+    await db.set_setting("monitor_collection", "off")
+    failed = CollectOutcome(report="", has_change=False, errors={"youtube": True})
+    assert await _build_alerts(db, config, failed) == []
+    recovered = CollectOutcome(report="", has_change=False, collected={"youtube": (128, "api")})
+    await _build_alerts(db, config, recovered)
+    assert await db.get_setting("fail_streak_youtube") == "0"
+
+
+async def test_profile_watch_is_scheduled_soon_after_start(bot, config, db):
+    job = (await setup_scheduler(bot, config, db)).get_job("profile_check")
+    assert job is not None and job.next_run_time <= utcnow() + timedelta(minutes=1)

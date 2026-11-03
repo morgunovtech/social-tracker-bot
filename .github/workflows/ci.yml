@@ -35,3 +35,20 @@ jobs:
           sudo mkdir -p /tmp/rootdata
           docker run --rm -v /tmp/rootdata:/app/data social-tracker-bot-ci \
             python -c "import os, bot.main; assert os.getuid() == 1000 and os.access('data', os.W_OK)"
+
+  mail-worker:
+    name: mail-worker · test · audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mail-worker
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: mail-worker/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm audit --omit=dev

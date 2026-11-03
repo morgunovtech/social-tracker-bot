@@ -16,6 +16,8 @@ _BOT_COMMANDS = [
     BotCommand("stats", "Сводка сейчас"),
     BotCommand("now", "Собрать данные"),
     BotCommand("week", "Неделя"),
+    BotCommand("security", "Безопасность аккаунтов"),
+    BotCommand("modules", "Модули и мониторинги"),
     BotCommand("history", "История"),
     BotCommand("linkedin", "Ввод LinkedIn вручную"),
     BotCommand("setcookie", "Обновить LinkedIn cookie"),

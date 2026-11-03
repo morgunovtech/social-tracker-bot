@@ -9,7 +9,7 @@ from telegram.error import Conflict, NetworkError
 from telegram.ext import ConversationHandler
 
 from bot import handlers
-from bot.db import Database
+from bot.db import Database, utcnow
 from bot.scheduler import CollectOutcome, setup_scheduler
 
 
@@ -61,6 +61,65 @@ async def test_history_command(make_update, make_context, insert):
     update = make_update()
     await handlers.cmd_history(update, make_context("instagram", "7"))
     assert "Неизвестная платформа" in update.message.replies[0]
+
+
+async def test_stats_show_the_security_score_while_hygiene_is_on(make_update, make_context, db, insert):
+    insert("telegram", 1000, 0)
+    update = make_update()
+    await handlers.cmd_stats(update, make_context())
+    assert "🛡 Безопасность: 0/10 — /security" in update.message.replies[0]
+
+    await db.set_setting("monitor_hygiene", "off")
+    update = make_update()
+    await handlers.cmd_stats(update, make_context())
+    assert "🛡" not in update.message.replies[0]
+
+
+# --- security & modules ------------------------------------------------------
+
+async def test_security_checklist_flow(make_update, make_context, db):
+    update = make_update()
+    await handlers.cmd_security(update, make_context())
+    assert update.message.replies[0].startswith("🛡 Безопасность — 0/10")
+
+    press = make_update(callback="sec:edit:youtube")
+    await handlers.on_callback(press, make_context())
+    assert "Пароль вводить не нужно" in press.callback_query.edits[0]
+
+    for data in ("sec:set:youtube:2fa:app", "sec:set:youtube:backup:yes", "sec:pwd:youtube:30"):
+        press = make_update(callback=data)
+        await handlers.on_callback(press, make_context())
+    assert "1. Двухфакторная защита: приложение/ключ" in press.callback_query.edits[0]
+    assert "5. Последняя смена пароля: 30 дн. назад" in press.callback_query.edits[0]
+    assert await db.get_setting("hygiene_reviewed_at") == utcnow().date().isoformat()
+
+    press = make_update(callback="sec")
+    await handlers.on_callback(press, make_context())
+    assert "YouTube (Google-аккаунт канала) — 7/10" in press.callback_query.edits[0]
+
+
+@pytest.mark.parametrize(
+    "data",
+    ["sec:set:youtube:2fa:maybe", "sec:set:youtube:nope:yes", "sec:pwd:youtube:7", "sec:edit:myspace", "sec:x"],
+)
+async def test_forged_security_callbacks_change_nothing(make_update, make_context, db, data):
+    press = make_update(callback=data)
+    await handlers.on_callback(press, make_context())
+    assert press.callback_query.edits == []
+    assert await db.get_setting("hygiene_reviewed_at") is None
+
+
+async def test_modules_screen_and_toggle(make_update, make_context, db):
+    update = make_update()
+    await handlers.cmd_modules(update, make_context())
+    text = update.message.replies[0]
+    assert "✅ Telegram — @test_channel" in text
+    assert "⚪ Письма безопасности — нужно: SECURITY_MAIL_URL" in text
+
+    press = make_update(callback="mod:profile")
+    await handlers.on_callback(press, make_context())
+    assert "⏸ Профиль" in press.callback_query.edits[0]
+    assert await db.get_setting("monitor_profile") == "off"
 
 
 async def test_history_buttons(make_update, make_context, insert):

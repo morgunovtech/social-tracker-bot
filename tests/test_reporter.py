@@ -153,11 +153,11 @@ async def test_history_tables(db, insert):
 
 async def test_longest_history_fits_one_telegram_message(db, insert):
     for day in range(91):
-        for platform in reporter.PLATFORMS:
+        for platform in reporter.PLATFORM_IDS:
             insert(platform, 10_000_000 + day, day)
     longest = max(
         [len(await build_history_all(db, 90))]
-        + [len(await build_history_table(db, p, 90)) for p in reporter.PLATFORMS]
+        + [len(await build_history_table(db, p, 90)) for p in reporter.PLATFORM_IDS]
     )
     assert longest < 4096
 

@@ -1,0 +1,12 @@
+{
+  "name": "socialbot-mail-worker",
+  "private": true,
+  "type": "module",
+  "description": "Receives forwarded security emails for the bot (Cloudflare Email Worker + KV)",
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "postal-mime": "4.0.11"
+  }
+}

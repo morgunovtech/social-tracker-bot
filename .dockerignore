@@ -5,6 +5,7 @@
 venv
 data
 tests
+mail-worker
 *.md
 .env
 .env.*
