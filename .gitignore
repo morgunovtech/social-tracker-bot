@@ -17,3 +17,7 @@ data/
 .DS_Store
 .idea/
 .vscode/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/

@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: lint · test · audit
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: ruff check .
+      - run: pytest -q
+      # Known vulnerabilities in the pinned dependencies fail the build:
+      # the fix is a version bump (Dependabot opens it).
+      - run: pip-audit -r requirements.txt --strict --progress-spinner off
+      # The production image: tests pass on the runner's Python, but a base
+      # image bump or a package without wheels for it only breaks here.
+      - if: matrix.python == '3.14'
+        run: docker build --quiet --tag social-tracker-bot-ci .

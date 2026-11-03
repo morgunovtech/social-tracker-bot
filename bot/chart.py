@@ -34,7 +34,7 @@ def render_chart(series: dict[str, list[tuple[datetime, int]]]) -> bytes | None:
         squeeze=False,
     )
 
-    for ax, (label, pts) in zip((a for row in axes for a in row), plotted.items()):
+    for ax, (label, pts) in zip(axes[:, 0], plotted.items(), strict=True):
         xs = [p[0] for p in pts]
         ys = [p[1] for p in pts]
         ax.plot(xs, ys, marker="o", markersize=3, linewidth=1.5)

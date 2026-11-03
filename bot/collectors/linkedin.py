@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Optional
 
 import aiohttp
 from bs4 import BeautifulSoup
@@ -42,7 +41,7 @@ class LinkedInAuthError(Exception):
     """Raised when the li_at cookie is rejected or expired."""
 
 
-def plausible_count(prev: Optional[int], new: int) -> bool:
+def plausible_count(prev: int | None, new: int) -> bool:
     """Guard against scraping someone else's counter off the page.
 
     Profile pages embed follower counts of suggested/viewed profiles too, so a
@@ -58,7 +57,7 @@ def _closest(candidates: list[int], prev: int) -> int:
     return min(candidates, key=lambda c: abs(c - prev))
 
 
-def _parse_follower_count(html: str, prev: Optional[int] = None) -> Optional[int]:
+def _parse_follower_count(html: str, prev: int | None = None) -> int | None:
     """Extract follower count from LinkedIn HTML using multiple strategies.
 
     Pages embed follower counts of suggested/viewed profiles too. With a known
@@ -99,8 +98,8 @@ async def _fetch_via_cookie(
     session: aiohttp.ClientSession,
     profile_url: str,
     li_at: str,
-    prev: Optional[int] = None,
-) -> Optional[int]:
+    prev: int | None = None,
+) -> int | None:
     cookies = {"li_at": li_at}
     try:
         async with session.get(
@@ -146,10 +145,10 @@ async def _fetch_via_cookie(
 
 async def collect_linkedin(
     session: aiohttp.ClientSession,
-    profile_url: Optional[str],
-    li_at: Optional[str] = None,
-    prev: Optional[int] = None,
-) -> tuple[Optional[int], Optional[str]]:
+    profile_url: str | None,
+    li_at: str | None = None,
+    prev: int | None = None,
+) -> tuple[int | None, str | None]:
     """Collect LinkedIn follower count via the li_at cookie.
 
     prev is the last stored count; it picks the profile's own counter among

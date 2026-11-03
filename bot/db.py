@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import aiosqlite
 
@@ -10,13 +10,13 @@ logger = logging.getLogger(__name__)
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def parse_utc(ts: str) -> datetime:
     """Parse an ISO/SQLite timestamp; naive values are assumed to be UTC."""
     dt = datetime.fromisoformat(ts)
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS followers (
