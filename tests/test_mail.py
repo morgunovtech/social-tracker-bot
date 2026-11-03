@@ -79,7 +79,8 @@ def test_gmail_forwarding_confirmation_is_relayed():
         "To allow forwarding click https://mail-settings.google.com/mail/vf-abc123 ...",
     )
     text, kind, *_ = describe(m)
-    assert kind is None and "867530912" in text and "https://mail-settings.google.com/mail/vf-abc123" in text
+    assert kind is None and "867530912" in text
+    assert "https://" not in text                         # a forged confirmation can't relay a link
 
 
 # --- polling the worker ------------------------------------------------------

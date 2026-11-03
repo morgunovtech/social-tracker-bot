@@ -113,7 +113,6 @@ _BODY_KINDS = tuple(k for k in KINDS if k.id not in ("password_reset", "security
 _FORWARDED_FROM = re.compile(r"(?:^|\n)\s*(?:From|От|De|Von):[^\n]*?([\w.+-]+@[\w-]+(?:\.[\w-]+)+)", re.IGNORECASE)
 _FWD_PREFIX = re.compile(r"^\s*(?:(?:fwd?|пересл\.?)\s*:\s*)+", re.IGNORECASE)
 _CODE = re.compile(r"\(#(\d+)\)")
-_LINK = re.compile(r"https://\S+")
 
 
 @dataclass(frozen=True)
@@ -172,15 +171,18 @@ def _snippet(text: str) -> str:
 
 
 def _forwarding_notice(mail: Mail) -> str:
-    """Gmail sends a confirmation to a new forwarding address: relay it so the user can confirm."""
+    """Gmail sends a confirmation to a new forwarding address: relay its code.
+
+    Only the code, never the mail's link: the code is typed into Gmail's own
+    settings, so a forged "confirmation" can't turn the bot into a phishing relay.
+    """
     code = _CODE.search(mail.subject)
-    link = next((u for u in _LINK.findall(mail.text) if "google.com" in u), None)
     lines = ["📬 Gmail просит подтвердить пересылку писем на адрес бота."]
     if code:
-        lines.append(f"Код подтверждения: {code.group(1)}")
-    if link:
-        lines.append(f"Или ссылка: {link}")
-    lines.append("Потом создай фильтр по отправителям уведомлений безопасности — см. README.")
+        lines.append(f"Код подтверждения: {code.group(1)} — введи его в Gmail: Настройки → Пересылка.")
+    else:
+        lines.append(f"Кода в теме не нашёл: «{_snippet(mail.subject)}»")
+    lines.append("Потом создай фильтр по отправителям уведомлений безопасности — см. mail-worker/README.md.")
     return "\n".join(lines)
 
 

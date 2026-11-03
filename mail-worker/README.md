@@ -32,7 +32,7 @@ Plus, in your mailbox: a forwarding address and a filter. Remove both when teari
 3. **Route the address.** Email → Email Routing → Routing rules → Create address: an unguessable local part (`sec-7f3a9c@alerts.example.com`), action **Send to a Worker** → `socialbot-mail`.
 4. **Connect the bot.** `SECURITY_MAIL_URL` = the worker URL (`https://socialbot-mail.<account>.workers.dev`), `SECURITY_MAIL_TOKEN` = the token. Restart the bot; `/modules` shows «Письма безопасности» as on.
 5. **Forward from your mailbox.**
-   - **Gmail:** Settings → Forwarding and POP/IMAP → Add a forwarding address → the routed address. Gmail sends a confirmation there; the bot relays the code and link to you. Then Settings → Filters → Create filter, *From*: the security senders you actually get, for example
+   - **Gmail:** Settings → Forwarding and POP/IMAP → Add a forwarding address → the routed address. Gmail sends a confirmation there (it passes `ALLOWED_SENDERS`); the bot relays the code, which you enter in the same Gmail settings. Only the code, never the mail's link: a forged confirmation can't make the bot relay a phishing link. Then Settings → Filters → Create filter, *From*: the security senders you actually get, for example
      `no-reply@accounts.google.com OR security-noreply@linkedin.com OR security@mail.instagram.com OR security@facebookmail.com`
      → *Forward it to* the routed address. Open a recent security mail to check its exact sender.
    - **Proton** (paid plans): Settings → Filters → a filter on the same senders with *Forward to*.

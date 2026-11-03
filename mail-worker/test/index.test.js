@@ -103,6 +103,18 @@ test("allowlist matches the forwarding mailbox without its +tag", async () => {
   assert.equal(env.EVENTS.store.size, 0);
 });
 
+test("Gmail's forwarding confirmation passes the allowlist, a lookalike doesn't", async () => {
+  const confirmation = RAW.replace("Google <no-reply@accounts.google.com>", "forwarding-noreply@google.com");
+  const env = envWith({ ALLOWED_SENDERS: "me@gmail.com" });
+
+  await worker.email(emailMessage(confirmation, "bounce-123@bounces.google.com"), env);
+  assert.equal(env.EVENTS.store.size, 1);
+
+  const spoofed = emailMessage(confirmation, "forwarding-noreply@google.com.evil.example");
+  await worker.email(spoofed, env);
+  assert.deepEqual(spoofed.rejected, ["Sender not allowed"]);
+});
+
 test("html is reduced to text", () => {
   assert.equal(htmlToText("<div>a<br>b</div><script>x()</script>&lt;c&gt;"), "a\nb\n <c>");
 });

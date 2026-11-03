@@ -12,11 +12,14 @@ const BATCH = 50;
 
 export default {
   async email(message, env) {
-    if (!senderAllowed(message.from, env.ALLOWED_SENDERS)) {
+    const mail = await PostalMime.parse(message.raw);
+    if (
+      !senderAllowed(message.from, env.ALLOWED_SENDERS) &&
+      !isGmailForwardingConfirmation(message.from, mail.from?.address)
+    ) {
       message.setReject("Sender not allowed");
       return;
     }
-    const mail = await PostalMime.parse(message.raw);
     const event = {
       received_at: new Date().toISOString(),
       // The header From keeps the original sender through Gmail auto-forwarding.
@@ -69,6 +72,14 @@ export function senderAllowed(envelopeFrom, allowed) {
   if (list.length === 0) return true;
   const [local, domain] = String(envelopeFrom || "").toLowerCase().split("@");
   return list.includes(`${local.split("+")[0]}@${domain}`);
+}
+
+// Gmail confirms a new forwarding address with a mail from Google itself, not
+// from the allowed mailbox: without it forwarding can't be switched on.
+export function isGmailForwardingConfirmation(envelopeFrom, headerFrom) {
+  const domain = String(envelopeFrom || "").toLowerCase().split("@")[1] || "";
+  const fromGoogle = domain === "google.com" || domain.endsWith(".google.com");
+  return fromGoogle && String(headerFrom || "").toLowerCase() === "forwarding-noreply@google.com";
 }
 
 export function authorized(request, token) {
