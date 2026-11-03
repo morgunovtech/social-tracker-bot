@@ -8,6 +8,7 @@ import re
 import tempfile
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
+from zoneinfo import ZoneInfo
 
 import aiohttp
 from telegram import Update
@@ -25,7 +26,7 @@ from telegram.ext import (
 )
 
 from bot import monitors, ui
-from bot.config import DOW_ORDER, Config, normalize_dow
+from bot.config import DOW_ORDER, Config, normalize_dow, normalize_tz
 from bot.db import Database, utcnow
 from bot.monitors import NO_PREVIEW, hygiene
 from bot.platforms import BY_ID, PLATFORM_IDS
@@ -36,8 +37,10 @@ from bot.scheduler import (
     _build_chart_png,
     collect_and_report,
     get_report_schedule,
+    get_report_tz,
     is_quiet_mode,
     reschedule,
+    save_schedule,
     send_alerts,
 )
 
@@ -205,13 +208,34 @@ async def _collect_now(
     return True
 
 
-async def _set_report_time(context: ContextTypes.DEFAULT_TYPE, hour: int, minute: int) -> None:
+async def _apply_schedule(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Move the running daily job to the stored report time and zone."""
     config, db = _deps(context)
-    await db.set_setting("report_time", f"{hour:02d}:{minute:02d}")
     scheduler = context.bot_data.get("scheduler")
     if scheduler is not None:
-        dow, _, _ = await get_report_schedule(db, config)
-        reschedule(scheduler, dow, hour, minute)
+        await reschedule(scheduler, db, config)
+
+
+async def _set_report_time(context: ContextTypes.DEFAULT_TYPE, hour: int, minute: int) -> None:
+    config, db = _deps(context)
+    await save_schedule(db, config, time=(hour, minute))
+    await _apply_schedule(context)
+
+
+async def _set_report_tz(context: ContextTypes.DEFAULT_TYPE, tz: ZoneInfo) -> str:
+    """Switch the zone, keeping the report at the same moment: its time, and its
+    days when that crosses midnight, are told in the new zone. Returns the note."""
+    config, db = _deps(context)
+    dow, hour, minute = await get_report_schedule(db, config)
+    old = await get_report_tz(db, config)
+    dow, hour, minute = ui.shift_schedule(dow, hour, minute, old, tz)
+    await db.set_setting("report_dow", dow)
+    await db.set_setting("report_time", f"{hour:02d}:{minute:02d}")
+    await db.set_setting("report_tz", tz.key)
+    await _apply_schedule(context)
+    if tz.key == old.key:
+        return f"✅ Часовой пояс: {ui.tz_name(tz)}"
+    return f"✅ Часовой пояс: {ui.tz_name(tz)}. Отчёт придёт в тот же момент, что и раньше, — ниже его время по этому поясу"
 
 
 def _parse_count(text: str) -> int | None:
@@ -343,10 +367,11 @@ async def cmd_settime(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if len(context.args) != 1 or not (0 <= hour <= 23 and 0 <= minute <= 59):
             raise ValueError
     except (ValueError, AttributeError):
-        await update.message.reply_text("Неверный формат. Нужно ЧЧ:ММ по UTC, например: /settime 08:00")
+        await update.message.reply_text("Неверный формат. Нужно ЧЧ:ММ, например: /settime 08:00")
         return
     await _set_report_time(context, hour, minute)
-    await _reply(update, (await ui.settings(db, config)).noted(f"✅ Отчёт теперь в {hour:02d}:{minute:02d} UTC"))
+    tz = await get_report_tz(db, config)
+    await _reply(update, (await ui.settings(db, config)).noted(f"✅ Отчёт теперь в {ui.clock(hour, minute, tz)}"))
 
 
 @_admin_only
@@ -365,12 +390,30 @@ async def cmd_setday(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             "Примеры: /setday sat, /setday mon,thu, /setday mon-fri, /setday daily"
         )
         return
-    await db.set_setting("report_dow", normalized)
-    scheduler = context.bot_data.get("scheduler")
-    if scheduler is not None:
-        _, hour, minute = await get_report_schedule(db, config)
-        reschedule(scheduler, normalized, hour, minute)
+    await save_schedule(db, config, dow=normalized)
+    await _apply_schedule(context)
     await _reply(update, (await ui.settings(db, config)).noted(f"✅ Отчёт: {ui.dow_pretty(normalized)}"))
+
+
+@_admin_only
+async def cmd_settz(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config, db = _deps(context)
+    if not context.args:
+        await _reply(update, await ui.timezone(db, config))
+        return
+    try:
+        if len(context.args) != 1:
+            raise ValueError
+        name = normalize_tz(context.args[0])
+    except ValueError:
+        await update.message.reply_text(
+            f"❌ Не знаю такой часовой пояс: «{' '.join(context.args)}».\n"
+            "Нужно название из базы IANA, например /settz Europe/Moscow или /settz Asia/Almaty. "
+            "Частые пояса — кнопками: /settz без названия."
+        )
+        return
+    note = await _set_report_tz(context, ZoneInfo(name))
+    await _reply(update, (await ui.settings(db, config)).noted(note))
 
 
 @_admin_only
@@ -496,10 +539,7 @@ async def cmd_restore(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
 
     # The backup may carry another report time: apply it to the running job.
-    scheduler = context.bot_data.get("scheduler")
-    if scheduler is not None:
-        dow, hour, minute = await get_report_schedule(db, config)
-        reschedule(scheduler, dow, hour, minute)
+    await _apply_schedule(context)
 
     period = f"{result['first']} — {result['last']}" if result["first"] else "пусто"
     note = (
@@ -631,7 +671,7 @@ async def _after_answer(db: Database, platform, key: str) -> ui.Screen:
 
 
 async def _cb_settings(press: _Press, context, args: list[str]) -> None:
-    """set | set:quiet | set:days[:<preset>] | set:day:<day> | set:time | set:hour:<h>."""
+    """set | set:quiet | set:days[:<preset>] | set:day:<day> | set:time | set:hour:<h> | set:tz[:<zone>]."""
     config, db = _deps(context)
     action = args[0] if args else ""
     value = args[1] if len(args) == 2 else None
@@ -646,7 +686,7 @@ async def _cb_settings(press: _Press, context, args: list[str]) -> None:
         screen = await ui.report_days(db, config)
     elif action == "days" and value is not None:
         try:
-            await db.set_setting("report_dow", normalize_dow(value))
+            await save_schedule(db, config, dow=normalize_dow(value))
         except ValueError:
             return
         screen = await ui.report_days(db, config)
@@ -656,14 +696,24 @@ async def _cb_settings(press: _Press, context, args: list[str]) -> None:
         if not days:
             await press.answer("Нужен хотя бы один день")
             return
-        await db.set_setting("report_dow", ui.dow_expr(days))
+        await save_schedule(db, config, dow=ui.dow_expr(days))
         screen = await ui.report_days(db, config)
     elif action == "time" and len(args) == 1:
         screen = await ui.report_time(db, config)
     elif action == "hour" and value is not None and value.isdigit() and int(value) <= 23:
         await _set_report_time(context, int(value), 0)
-        await press.answer(f"Отчёт будет приходить в {int(value):02d}:00 UTC")
+        tz = await get_report_tz(db, config)
+        await press.answer(f"Отчёт будет приходить в {ui.clock(int(value), 0, tz)}")
         screen = await ui.settings(db, config)
+    elif action == "tz" and len(args) == 1:
+        screen = await ui.timezone(db, config)
+    elif action == "tz" and value is not None:
+        try:
+            tz = ZoneInfo(normalize_tz(value))
+        except ValueError:
+            return
+        note = await _set_report_tz(context, tz)
+        screen = (await ui.settings(db, config)).noted(note)
     else:
         return
     await _show(press.query, screen)
@@ -812,6 +862,7 @@ COMMANDS = {
     "history": cmd_history,
     "settime": cmd_settime,
     "setday": cmd_setday,
+    "settz": cmd_settz,
     "setquiet": cmd_setquiet,
     "setcookie": cmd_setcookie,
     "cookieage": cmd_cookieage,

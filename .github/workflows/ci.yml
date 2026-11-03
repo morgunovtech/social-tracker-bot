@@ -29,12 +29,14 @@ jobs:
       - if: matrix.python == '3.14'
         run: docker build --quiet --tag social-tracker-bot-ci .
       # The entrypoint must hand a root-owned volume to appuser and drop root,
-      # as on Railway: otherwise the bot can't write its DB.
+      # as on Railway: otherwise the bot can't write its DB. The report time
+      # zone needs the tz database in the image.
       - if: matrix.python == '3.14'
         run: |
           sudo mkdir -p /tmp/rootdata
           docker run --rm -v /tmp/rootdata:/app/data social-tracker-bot-ci \
-            python -c "import os, bot.main; assert os.getuid() == 1000 and os.access('data', os.W_OK)"
+            python -c "import os, bot.main; from bot.config import normalize_tz; \
+              assert os.getuid() == 1000 and os.access('data', os.W_OK) and normalize_tz('Europe/Moscow')"
 
   mail-worker:
     name: mail-worker · test · audit

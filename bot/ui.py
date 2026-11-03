@@ -14,6 +14,7 @@ import html
 import platform as py_platform
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
@@ -25,7 +26,7 @@ from bot.platforms import BY_ID, PLATFORMS
 from bot.platforms.base import Platform
 from bot.platforms.linkedin import COOKIE_AGING_DAYS, get_active_cookie, get_cookie_age_days
 from bot.reporter import _fmt, build_history_all, build_history_table, build_week_report
-from bot.scheduler import build_stats, get_report_schedule, is_quiet_mode
+from bot.scheduler import build_stats, get_report_schedule, get_report_tz, is_quiet_mode
 
 # Callback data of the screens and actions.
 HOME = "home"
@@ -57,6 +58,23 @@ _DOW_EVERY = {
     "fri": "по пятницам", "sat": "по субботам", "sun": "по воскресеньям",
 }
 _DAY_PRESETS = (("Каждый день", "*"), ("Будни", "mon-fri"), ("Выходные", "sat,sun"))
+
+# The zone picker, west to east; any other zone is set with /settz.
+COMMON_ZONES = (
+    ("America/New_York", "Нью-Йорк"),
+    ("UTC", "UTC"),
+    ("Europe/London", "Лондон"),
+    ("Europe/Berlin", "Берлин"),
+    ("Europe/Kaliningrad", "Калининград"),
+    ("Europe/Moscow", "Москва"),
+    ("Europe/Samara", "Самара"),
+    ("Asia/Tbilisi", "Тбилиси"),
+    ("Asia/Yekaterinburg", "Екатеринбург"),
+    ("Asia/Almaty", "Алматы"),
+    ("Asia/Novosibirsk", "Новосибирск"),
+    ("Asia/Vladivostok", "Владивосток"),
+)
+_ZONE_NAMES = dict(COMMON_ZONES)
 
 WELCOME = (
     "👋 Привет! Я слежу за подписчиками и безопасностью твоих аккаунтов.\n\n"
@@ -170,19 +188,59 @@ def dow_pretty(dow: str) -> str:
     return ", ".join(parts) or "ни в один день"
 
 
-def next_report(dow: str, hour: int, minute: int, now: datetime | None = None) -> str:
-    """When the next report goes out: 'сегодня в 08:00 UTC', 'сб 08.11 в 08:00 UTC'."""
-    now = now or utcnow()
+def utc_offset(tz: ZoneInfo, now: datetime | None = None) -> str:
+    """The zone's offset at the moment: 'UTC+3', 'UTC−4', 'UTC+5:30', 'UTC+0'."""
+    offset = (now or utcnow()).astimezone(tz).utcoffset()
+    minutes = round(offset.total_seconds() / 60) if offset else 0
+    hours, rest = divmod(abs(minutes), 60)
+    return f"UTC{'−' if minutes < 0 else '+'}{hours}" + (f":{rest:02d}" if rest else "")
+
+
+def tz_name(tz: ZoneInfo, now: datetime | None = None) -> str:
+    """'Москва (UTC+3)', 'Asia/Kolkata (UTC+5:30)', 'UTC'."""
+    if tz.key == "UTC":
+        return "UTC"
+    return f"{_ZONE_NAMES.get(tz.key, tz.key)} ({utc_offset(tz, now)})"
+
+
+def clock(hour: int, minute: int, tz: ZoneInfo) -> str:
+    """A report time in the owner's zone: '11:00'; '08:00 UTC' while the zone is UTC."""
+    return f"{hour:02d}:{minute:02d}" + (" UTC" if tz.key == "UTC" else "")
+
+
+def next_report(dow: str, hour: int, minute: int, tz: ZoneInfo, now: datetime | None = None) -> str:
+    """When the next report goes out, in its zone: 'сегодня в 11:00', 'сб 08.11 в 08:00 UTC'."""
+    now = (now or utcnow()).astimezone(tz)
     days = set(dow_days(dow))
     for offset in range(8):
         day = (now + timedelta(days=offset)).date()
-        at = datetime(day.year, day.month, day.day, hour, minute, tzinfo=now.tzinfo)
+        at = datetime(day.year, day.month, day.day, hour, minute, tzinfo=tz)
         code = DOW_ORDER[day.weekday()]
         if at <= now or code not in days:
             continue
         when = {0: "сегодня", 1: "завтра"}.get(offset) or f"{_DOW_SHORT[code].lower()} {day:%d.%m}"
-        return f"{when} в {hour:02d}:{minute:02d} UTC"
+        return f"{when} в {clock(hour, minute, tz)}"
     return "не запланирован"
+
+
+def shift_schedule(
+    dow: str, hour: int, minute: int, old: ZoneInfo, new: ZoneInfo, now: datetime | None = None
+) -> tuple[str, int, int]:
+    """The same report moment told in another zone: its time and, when it crosses
+    midnight, its days. Offsets are today's, so across a DST change the moment
+    is kept as it is today."""
+    today = (now or utcnow()).astimezone(old).date()
+    at = datetime(today.year, today.month, today.day, hour, minute, tzinfo=old)
+    moved = at.astimezone(new)
+    shift = (moved.date() - at.date()).days
+    if shift:
+        dow = dow_expr({DOW_ORDER[(DOW_ORDER.index(d) + shift) % 7] for d in dow_days(dow)})
+    return dow, moved.hour, moved.minute
+
+
+async def _schedule(db: Database, config: Config) -> tuple[str, int, int, ZoneInfo]:
+    dow, hour, minute = await get_report_schedule(db, config)
+    return dow, hour, minute, await get_report_tz(db, config)
 
 
 # ---------------------------------------------------------------------------
@@ -205,8 +263,8 @@ async def home(db: Database, config: Config, report: str | None = None) -> Scree
     """
     if report is None:
         report, _ = await build_stats(db, config)
-    dow, hour, minute = await get_report_schedule(db, config)
-    text = f"{_titled(report)}\n\n⏭ Следующий отчёт: {next_report(dow, hour, minute)}"
+    dow, hour, minute, tz = await _schedule(db, config)
+    text = f"{_titled(report)}\n\n⏭ Следующий отчёт: {next_report(dow, hour, minute, tz)}"
     rows = [
         [_button("🔄 Обновить данные", NOW)],
         [_button("📈 Динамика", DYNAMICS), _button("🛡 Безопасность", SECURITY)],
@@ -351,13 +409,14 @@ async def question(db: Database, platform: Platform, key: str) -> Screen:
 # ---------------------------------------------------------------------------
 
 async def settings(db: Database, config: Config) -> Screen:
-    dow, hour, minute = await get_report_schedule(db, config)
+    dow, hour, minute, tz = await _schedule(db, config)
     quiet = await is_quiet_mode(db, config)
     build = f"сборка {esc(config.app_commit[:7])} · " if config.app_commit else ""
     text = "\n".join([
         "<b>⚙️ Настройки</b>",
         "",
-        f"📅 Отчёт: {dow_pretty(dow)}, в {hour:02d}:{minute:02d} UTC",
+        f"📅 Отчёт: {dow_pretty(dow)}, в {clock(hour, minute, tz)}",
+        f"🌍 Часовой пояс: {esc(tz_name(tz))}",
         "Данные собираются каждый день в это время, а отчёт приходит в выбранные дни.",
         "",
         f"🔕 Тихий режим: {'включён' if quiet else 'выключен'}",
@@ -370,6 +429,7 @@ async def settings(db: Database, config: Config) -> Screen:
         tools.append(_button("💼 LinkedIn", LINKEDIN))
     rows = [
         [_button("📅 Дни отчёта", f"{SETTINGS}:days"), _button("🕗 Время отчёта", f"{SETTINGS}:time")],
+        [_button("🌍 Часовой пояс", f"{SETTINGS}:tz")],
         [_button(f"{_check(quiet)} Тихий режим", f"{SETTINGS}:quiet")],
         tools,
         _back(HOME, "Главная"),
@@ -378,11 +438,11 @@ async def settings(db: Database, config: Config) -> Screen:
 
 
 async def report_days(db: Database, config: Config) -> Screen:
-    dow, hour, minute = await get_report_schedule(db, config)
+    dow, hour, minute, tz = await _schedule(db, config)
     days = dow_days(dow)
     text = (
         "<b>📅 Дни отчёта</b>\n\n"
-        f"Сейчас: {dow_pretty(dow)}, в {hour:02d}:{minute:02d} UTC\n\n"
+        f"Сейчас: {dow_pretty(dow)}, в {clock(hour, minute, tz)}\n\n"
         "Отметь дни, когда присылать отчёт. Данные собираются каждый день, "
         "а о проблемах я пишу сразу, в любой день."
     )
@@ -395,16 +455,36 @@ async def report_days(db: Database, config: Config) -> Screen:
 
 
 async def report_time(db: Database, config: Config) -> Screen:
-    _, hour, minute = await get_report_schedule(db, config)
+    _, hour, minute, tz = await _schedule(db, config)
+    if tz.key == "UTC":
+        zone = "Часы ниже — по UTC. Чтобы выбирать по своим часам, укажи часовой пояс."
+    else:
+        zone = f"Часы ниже — по поясу {esc(tz_name(tz))}."
     text = (
         "<b>🕗 Время отчёта</b>\n\n"
-        f"Сейчас: {hour:02d}:{minute:02d} UTC — это {(hour + 3) % 24:02d}:{minute:02d} по Москве\n\n"
-        "Выбери час по UTC. Точное время с минутами — командой, например /settime 08:30"
+        f"Сейчас: {clock(hour, minute, tz)}\n\n"
+        f"{zone} Точное время с минутами — командой, например /settime 08:30"
     )
     hours = [
         _button(_picked((h, 0) == (hour, minute), f"{h:02d}:00"), f"{SETTINGS}:hour:{h}") for h in range(24)
     ]
-    return Screen(text, InlineKeyboardMarkup(_rows(hours, 4) + [_back(SETTINGS, "Настройки")]))
+    rows = _rows(hours, 4) + [[_button("🌍 Часовой пояс", f"{SETTINGS}:tz")], _back(SETTINGS, "Настройки")]
+    return Screen(text, InlineKeyboardMarkup(rows))
+
+
+async def timezone(db: Database, config: Config) -> Screen:
+    tz = await get_report_tz(db, config)
+    text = (
+        "<b>🌍 Часовой пояс</b>\n\n"
+        f"Сейчас: {esc(tz_name(tz))}, там {utcnow().astimezone(tz):%H:%M}\n\n"
+        "По этому поясу считаются время и дни отчёта. Выбери свой или пришли его название командой, "
+        "например /settz Asia/Kolkata"
+    )
+    picks = []
+    for key, name in COMMON_ZONES:
+        label = name if key == "UTC" else f"{name} {utc_offset(ZoneInfo(key)).removeprefix('UTC')}"
+        picks.append(_button(_picked(key == tz.key, label), f"{SETTINGS}:tz:{key}"))
+    return Screen(text, InlineKeyboardMarkup(_rows(picks) + [_back(SETTINGS, "Настройки")]))
 
 
 async def monitors_screen(db: Database, config: Config) -> Screen:
@@ -520,8 +600,9 @@ def help_screen() -> Screen:
         "/history [платформа] [дни] — таблица по дням, до 90 дней",
         "/linkedin &lt;число&gt; — ввести LinkedIn вручную",
         "/setcookie &lt;li_at&gt; — cookie LinkedIn для автосбора",
-        "/settime ЧЧ:ММ — время отчёта по UTC",
+        "/settime ЧЧ:ММ — время отчёта",
         "/setday &lt;дни&gt; — дни отчёта: sat, mon-fri, mon,thu, daily",
+        "/settz &lt;пояс&gt; — часовой пояс, например Europe/Moscow",
         "/setquiet on|off — тихий режим",
         "/modules — мониторинги",
         "",

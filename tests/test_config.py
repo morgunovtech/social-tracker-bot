@@ -1,6 +1,6 @@
 import pytest
 
-from bot.config import Config, normalize_dow
+from bot.config import Config, normalize_dow, normalize_tz
 
 
 @pytest.mark.parametrize(
@@ -46,12 +46,35 @@ def test_missing_required_variable(monkeypatch):
 
 
 def test_defaults(monkeypatch):
-    for name in ("LINKEDIN_STALE_DAYS", "REPORT_HOUR_UTC", "REPORT_MINUTE", "REPORT_DOW", "DB_PATH"):
+    for name in (
+        "LINKEDIN_STALE_DAYS", "REPORT_HOUR", "REPORT_HOUR_UTC", "REPORT_MINUTE", "REPORT_DOW", "REPORT_TZ", "DB_PATH",
+    ):
         monkeypatch.delenv(name, raising=False)
     config = Config.from_env()
-    assert (config.report_hour_utc, config.report_minute, config.report_dow) == (8, 0, "sat")
+    assert (config.report_hour, config.report_minute, config.report_dow, config.report_tz) == (8, 0, "sat", "UTC")
     assert config.linkedin_stale_days == 7 and config.db_path == "data/followers.db"
     assert config.quiet_if_no_change is False
+
+
+def test_report_hour_under_its_old_name(monkeypatch):
+    monkeypatch.delenv("REPORT_HOUR")
+    monkeypatch.setenv("REPORT_HOUR_UTC", "6")
+    assert Config.from_env().report_hour == 6
+
+
+@pytest.mark.parametrize(("raw", "expected"), [("europe/moscow", "Europe/Moscow"), (" UTC ", "UTC")])
+def test_report_tz_is_normalized(monkeypatch, raw, expected):
+    monkeypatch.setenv("REPORT_TZ", raw)
+    assert Config.from_env().report_tz == expected
+
+
+@pytest.mark.parametrize("raw", ["Mars/Olympus", "MSK", "Europe", "../etc/passwd"])
+def test_invalid_report_tz_fails_fast(monkeypatch, raw):
+    monkeypatch.setenv("REPORT_TZ", raw)
+    with pytest.raises(RuntimeError, match="REPORT_TZ"):
+        Config.from_env()
+    with pytest.raises(ValueError):
+        normalize_tz(raw)
 
 
 def test_platforms_are_optional(monkeypatch):
