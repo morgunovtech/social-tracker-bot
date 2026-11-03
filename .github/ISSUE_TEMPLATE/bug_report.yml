@@ -1,0 +1,58 @@
+name: Bug report
+description: The bot does something wrong, crashes or stays silent.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is public: before pasting anything, remove the bot token, API keys and the LinkedIn `li_at` cookie.
+        English or Russian — either is fine.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did and what the bot answered, or that it didn't.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The last line of ⚙️ Настройки (Settings) in the bot.
+      placeholder: "Версия: сборка 1a2b3c4 · Python 3.14.0"
+  - type: dropdown
+    id: deploy
+    attributes:
+      label: Where it runs
+      options:
+        - Railway
+        - Docker Compose
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Telegram
+        - YouTube
+        - LinkedIn
+        - Report or schedule
+        - Account protection, security emails (mail-worker)
+        - Backups, /restore
+        - Menu or commands
+        - Other
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The lines around the error. Remove tokens and cookies first.
+      render: text

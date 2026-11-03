@@ -121,6 +121,10 @@ The tests never touch the network: Telegram is a fake bot, LinkedIn, YouTube, th
 
 A new network is one module in `bot/platforms/` (a `Platform` subclass: how to tell it's configured, how to read the follower count and, optionally, which public profile fields to watch) plus an entry in `PLATFORMS`. Monitors live in `bot/monitors/`. Every menu screen is a function in `bot/ui.py` (text and buttons, no Telegram calls); `bot/handlers.py` routes commands and button presses to them, and a test walks every button from the home screen.
 
+## Questions and bugs
+
+Setup questions and ideas go to [Discussions](https://github.com/morgunovtech/social-tracker-bot/discussions), bugs to [Issues](https://github.com/morgunovtech/social-tracker-bot/issues/new/choose): the form asks for the version line from ⚙️ Настройки.
+
 ## Built with
 
 Designed and built by [Semyon Morgunov](https://s.morgunov.tech) with Claude Code as pair programmer.
