@@ -216,7 +216,9 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _is_admin(update, config):
         await _deny(update)
         return
-    report, _ = await build_report(db, linkedin_stale_days=config.linkedin_stale_days)
+    report, _ = await build_report(
+        db, linkedin_stale_days=config.linkedin_stale_days, platforms=config.enabled_platforms
+    )
     await update.message.reply_text(report, reply_markup=_main_menu())
 
 
@@ -578,7 +580,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await _safe_edit(query, "Выберите действие:", reply_markup=_main_menu())
 
     elif data == "stats":
-        report, _ = await build_report(db, linkedin_stale_days=config.linkedin_stale_days)
+        report, _ = await build_report(
+            db, linkedin_stale_days=config.linkedin_stale_days, platforms=config.enabled_platforms
+        )
         await _safe_edit(query, report, reply_markup=_main_menu())
 
     elif data == "now":

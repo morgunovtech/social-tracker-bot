@@ -160,3 +160,12 @@ async def test_longest_history_fits_one_telegram_message(db, insert):
         + [len(await build_history_table(db, p, 90)) for p in reporter.PLATFORMS]
     )
     assert longest < 4096
+
+
+async def test_report_shows_placeholders_only_for_enabled_platforms(db, insert):
+    insert("telegram", 1000, 0)
+    text, _ = await build_report(db, platforms=["telegram"])
+    assert "LinkedIn" not in text
+    insert("youtube", 128, 3)                                # disabled now, but has data
+    text, _ = await build_report(db, platforms=["telegram"])
+    assert "YouTube: 128" in text

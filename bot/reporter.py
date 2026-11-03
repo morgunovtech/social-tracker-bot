@@ -88,8 +88,13 @@ async def build_report(
     db: Database,
     errors: dict[str, bool | int] | None = None,
     linkedin_stale_days: int = 7,
+    platforms: list[str] | None = None,
 ) -> tuple[str, bool]:
-    """Build the textual report and return (text, has_meaningful_change)."""
+    """Build the textual report and return (text, has_meaningful_change).
+
+    platforms are the enabled ones: only they get a placeholder line while
+    they have no data (a disabled platform with old data is still shown).
+    """
     # DB timestamps are UTC, so "today" must be the UTC date too.
     today = utcnow().date()
     errors = errors or {}
@@ -124,6 +129,8 @@ async def build_report(
         latest = snap["latest"]
 
         if latest is None:
+            if platforms is not None and platform not in platforms:
+                continue
             if platform == "linkedin":
                 lines.append(f"{label}: — (не введено)")
             elif errors.get(platform):

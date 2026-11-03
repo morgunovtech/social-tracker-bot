@@ -157,20 +157,23 @@ async def collect_and_report(
         if milestone is not None:
             outcome.milestones.append((platform, milestone))
 
+    enabled = config.enabled_platforms
     async with aiohttp.ClientSession() as session:
-        tg_count = await collect_telegram(bot, config.telegram_channel_id)
-        if tg_count is not None:
-            await record("telegram", tg_count)
-        else:
-            errors["telegram"] = True
+        if "telegram" in enabled:
+            tg_count = await collect_telegram(bot, config.telegram_channel_id)
+            if tg_count is not None:
+                await record("telegram", tg_count)
+            else:
+                errors["telegram"] = True
 
-        yt_count = await collect_youtube(session, config.youtube_api_key, config.youtube_channel_id)
-        if yt_count is not None:
-            await record("youtube", yt_count)
-        else:
-            errors["youtube"] = True
+        if "youtube" in enabled:
+            yt_count = await collect_youtube(session, config.youtube_api_key, config.youtube_channel_id)
+            if yt_count is not None:
+                await record("youtube", yt_count)
+            else:
+                errors["youtube"] = True
 
-        if force_linkedin:
+        if force_linkedin and "linkedin" in enabled:
             li_at = await get_active_cookie(db, config)
             prev = await db.get_latest("linkedin")
             prev_count = prev["count"] if prev else None
@@ -205,7 +208,7 @@ async def collect_and_report(
         await _push_subscribers(session, config, db)
 
     outcome.report, outcome.has_change = await build_report(
-        db, errors=errors, linkedin_stale_days=config.linkedin_stale_days
+        db, errors=errors, linkedin_stale_days=config.linkedin_stale_days, platforms=enabled
     )
     return outcome
 
@@ -218,18 +221,19 @@ async def _push_subscribers(
     Fire-and-forget: any failure is logged, never raised, so the report flow is
     unaffected. Reads the authoritative latest count per platform from the DB,
     so a transient collection miss on one platform still pushes the last good
-    numbers. Skips entirely until all three platforms have data.
+    numbers. Skips entirely until every enabled platform has data.
     """
     if not config.site_ingest_url or not config.site_ingest_token:
         return
 
+    platforms = config.enabled_platforms
     counts: dict[str, int] = {}
-    for platform in ("telegram", "youtube", "linkedin"):
+    for platform in platforms:
         latest = await db.get_latest(platform)
         if latest is not None:
             counts[platform] = latest["count"]
 
-    if len(counts) < 3:
+    if not platforms or len(counts) < len(platforms):
         logger.info("Site push skipped — not all platforms have data yet: %s", sorted(counts))
         return
 

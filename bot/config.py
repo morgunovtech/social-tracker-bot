@@ -52,16 +52,16 @@ def _report_dow() -> str:
 
 @dataclass(frozen=True)
 class Config:
-    # Telegram
+    # Telegram bot (required) and the channel to track (optional)
     bot_token: str
     admin_chat_id: int
-    telegram_channel_id: str
+    telegram_channel_id: str | None
 
-    # YouTube
-    youtube_api_key: str
-    youtube_channel_id: str
+    # YouTube (optional: both values or the platform is off)
+    youtube_api_key: str | None
+    youtube_channel_id: str | None
 
-    # LinkedIn
+    # LinkedIn (optional: off without a profile URL)
     linkedin_profile_url: str | None
     linkedin_li_at: str | None  # 'li_at' cookie from logged-in browser session
     linkedin_stale_days: int  # mark manual entry as stale after N days
@@ -75,7 +75,7 @@ class Config:
     # Database
     db_path: str
 
-    # Site push — sends finalized counts to about-me-page's ingest endpoint.
+    # Optional push of finalized counts to your own site (POST JSON, Bearer token).
     site_ingest_url: str | None
     site_ingest_token: str | None
 
@@ -88,10 +88,10 @@ class Config:
         return cls(
             bot_token=_require("BOT_TOKEN"),
             admin_chat_id=int(_require("ADMIN_CHAT_ID")),
-            telegram_channel_id=_require("TELEGRAM_CHANNEL_ID"),
-            youtube_api_key=_require("YOUTUBE_API_KEY"),
-            youtube_channel_id=_require("YOUTUBE_CHANNEL_ID"),
-            linkedin_profile_url=os.getenv("LINKEDIN_PROFILE_URL"),
+            telegram_channel_id=os.getenv("TELEGRAM_CHANNEL_ID") or None,
+            youtube_api_key=os.getenv("YOUTUBE_API_KEY") or None,
+            youtube_channel_id=os.getenv("YOUTUBE_CHANNEL_ID") or None,
+            linkedin_profile_url=os.getenv("LINKEDIN_PROFILE_URL") or None,
             linkedin_li_at=os.getenv("LINKEDIN_LI_AT"),
             linkedin_stale_days=int(os.getenv("LINKEDIN_STALE_DAYS", "7")),
             report_hour_utc=int(os.getenv("REPORT_HOUR_UTC", "8")),
@@ -99,9 +99,17 @@ class Config:
             report_dow=_report_dow(),
             quiet_if_no_change=os.getenv("QUIET_IF_NO_CHANGE", "0") == "1",
             db_path=os.getenv("DB_PATH", "data/followers.db"),
-            site_ingest_url=os.getenv(
-                "SITE_INGEST_URL", "https://s.morgunov.tech/api/ingest/subscribers"
-            ),
+            site_ingest_url=os.getenv("SITE_INGEST_URL") or None,
             site_ingest_token=os.getenv("SOCIALBOT_INGEST_TOKEN"),
             healthcheck_url=os.getenv("HEALTHCHECK_URL"),
         )
+
+    @property
+    def enabled_platforms(self) -> list[str]:
+        """Platforms configured well enough to collect, in report order."""
+        configured = {
+            "telegram": bool(self.telegram_channel_id),
+            "youtube": bool(self.youtube_api_key and self.youtube_channel_id),
+            "linkedin": bool(self.linkedin_profile_url),
+        }
+        return [platform for platform, on in configured.items() if on]

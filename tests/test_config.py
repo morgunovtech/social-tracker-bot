@@ -52,3 +52,15 @@ def test_defaults(monkeypatch):
     assert (config.report_hour_utc, config.report_minute, config.report_dow) == (8, 0, "sat")
     assert config.linkedin_stale_days == 7 and config.db_path == "data/followers.db"
     assert config.quiet_if_no_change is False
+
+
+def test_platforms_are_optional(monkeypatch):
+    for name in ("TELEGRAM_CHANNEL_ID", "YOUTUBE_API_KEY", "LINKEDIN_PROFILE_URL"):
+        monkeypatch.setenv(name, "")
+    config = Config.from_env()
+    assert config.enabled_platforms == []
+    assert config.site_ingest_url is None              # no author's site as a default
+
+    monkeypatch.setenv("YOUTUBE_API_KEY", "key")       # channel id is still set by conftest
+    monkeypatch.setenv("LINKEDIN_PROFILE_URL", "https://www.linkedin.com/in/x/")
+    assert Config.from_env().enabled_platforms == ["youtube", "linkedin"]
