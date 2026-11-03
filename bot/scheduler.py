@@ -1,19 +1,35 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import logging
 import os
 import statistics
 import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import aiohttp
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from telegram import Bot
-from zoneinfo import ZoneInfo
+
+from bot.chart import render_chart
+from bot.collectors.linkedin import collect_linkedin, plausible_count
+from bot.collectors.telegram import collect_telegram
+from bot.collectors.youtube import collect_youtube
+from bot.config import DOW_ORDER, Config
+from bot.db import Database, parse_utc, utcnow
+from bot.reporter import (
+    PLATFORM_LABELS,
+    PLATFORMS,
+    _crossed_milestone,
+    _fmt,
+    build_month_report,
+    build_report,
+)
 
 UTC = ZoneInfo("UTC")
 
@@ -40,21 +56,6 @@ DAILY_MISFIRE_GRACE_S = 3600
 # On startup, a daily run missed while the bot was down is caught up after this delay.
 CATCH_UP_DELAY = timedelta(seconds=30)
 LAST_DAILY_RUN_KEY = "last_daily_run"
-
-from bot.chart import render_chart
-from bot.collectors.linkedin import collect_linkedin, plausible_count
-from bot.collectors.telegram import collect_telegram
-from bot.collectors.youtube import collect_youtube
-from bot.config import DOW_ORDER, Config
-from bot.db import Database, parse_utc, utcnow
-from bot.reporter import (
-    PLATFORM_LABELS,
-    PLATFORMS,
-    _crossed_milestone,
-    _fmt,
-    build_month_report,
-    build_report,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +130,7 @@ async def collect_and_report(
             return False
         rows = await db.get_history(platform, 14)
         counts = [r["count"] for r in rows]
-        deltas = [b - a for a, b in zip(counts, counts[1:])]
+        deltas = [b - a for a, b in itertools.pairwise(counts)]
         if len(deltas) >= 3:
             baseline = max(statistics.median(deltas), 1)
             return gain >= SPIKE_ALERT_FACTOR * baseline

@@ -21,10 +21,10 @@ from telegram.ext import (
     filters,
 )
 
+from bot.collectors.linkedin import collect_linkedin, plausible_count
 from bot.config import Config, normalize_dow
 from bot.db import Database, utcnow
 from bot.reporter import PLATFORMS, build_history_all, build_history_table, build_report, build_week_report
-from bot.collectors.linkedin import collect_linkedin, plausible_count
 from bot.scheduler import (
     COOKIE_AGING_DAYS,
     _build_chart_png,
