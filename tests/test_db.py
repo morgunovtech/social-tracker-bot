@@ -60,3 +60,70 @@ async def test_unwritable_data_dir_explains_the_fix(tmp_path):
             await Database(str(readonly / "followers.db")).init()
     finally:
         readonly.chmod(0o700)
+
+
+# --- restore -----------------------------------------------------------------
+
+async def _backup_db(path, rows, settings) -> Database:
+    """A backup file as the bot itself writes it: same schema, given content."""
+    backup = Database(str(path))
+    await backup.init()
+    with sqlite3.connect(backup._db_path) as conn:
+        conn.executemany(
+            "INSERT INTO followers (platform, count, source, collected_at) "
+            "VALUES (?, ?, 'api', DATETIME('now', ?))",
+            [(platform, count, f"-{days} days") for platform, count, days in rows],
+        )
+        conn.executemany("INSERT INTO settings (key, value) VALUES (?, ?)", settings.items())
+    return backup
+
+
+async def test_restore_merges_and_live_data_wins(db, insert, tmp_path):
+    backup = await _backup_db(
+        tmp_path / "backup.db",
+        rows=[("telegram", 900, 3), ("telegram", 950, 0), ("youtube", 100, 3)],
+        settings={"report_time": "09:15", "quiet_if_no_change": "1",
+                  "linkedin_li_at": "OLD-COOKIE", "linkedin_li_at_set_at": "2026-01-01T00:00:00+00:00"},
+    )
+    insert("telegram", 1000, 0)                                   # collected after the wipe
+    await db.set_setting("quiet_if_no_change", "0")
+    await db.set_setting("linkedin_li_at", COOKIE)
+
+    result = await db.restore_from(backup._db_path)
+
+    assert result["added"] == 2 and result["total"] == 3
+    assert [r["count"] for r in await db.get_history("telegram", 7)] == [900, 1000]
+    assert await db.get_setting("report_time") == "09:15"         # missing → taken from backup
+    assert await db.get_setting("quiet_if_no_change") == "0"      # live wins
+    assert await db.get_setting("linkedin_li_at") == COOKIE       # live cookie kept...
+    assert await db.get_setting("linkedin_li_at_set_at") is None  # ...without the old one's age
+
+
+async def test_restore_brings_back_the_cookie_when_live_has_none(db, tmp_path):
+    backup = await _backup_db(
+        tmp_path / "backup.db", rows=[],
+        settings={"linkedin_li_at": "OLD-COOKIE", "linkedin_li_at_set_at": "2026-01-01T00:00:00+00:00"},
+    )
+    await db.restore_from(backup._db_path)
+    assert await db.get_setting("linkedin_li_at") == "OLD-COOKIE"
+    assert await db.get_setting("linkedin_li_at_set_at") == "2026-01-01T00:00:00+00:00"
+
+
+async def test_restore_twice_adds_nothing(db, tmp_path):
+    backup = await _backup_db(tmp_path / "backup.db", rows=[("youtube", 100, 3)], settings={})
+    assert (await db.restore_from(backup._db_path))["added"] == 1
+    assert (await db.restore_from(backup._db_path))["added"] == 0
+
+
+async def test_restore_rejects_foreign_files(db, tmp_path):
+    text = tmp_path / "notes.db"
+    text.write_text("definitely not sqlite " * 100)
+    with pytest.raises(ValueError, match="SQLite"):
+        await db.restore_from(str(text))
+
+    other = tmp_path / "other.db"
+    with sqlite3.connect(other) as conn:
+        conn.execute("CREATE TABLE photos (id INTEGER)")
+    with pytest.raises(ValueError, match="таблиц"):
+        await db.restore_from(str(other))
+    assert await db.get_latest("telegram") is None
