@@ -235,6 +235,11 @@ class Database:
             await db.commit()
             return cursor.rowcount == 1
 
+    async def has_event(self, uid: str) -> bool:
+        async with aiosqlite.connect(self._db_path) as db:
+            row = await (await db.execute("SELECT 1 FROM security_events WHERE uid = ?", (uid,))).fetchone()
+            return row is not None
+
     async def recent_events(self, limit: int = 5) -> list[dict]:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row

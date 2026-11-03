@@ -81,3 +81,11 @@ def test_platforms_are_optional(monkeypatch):
 def test_healthcheck_url_is_extracted(monkeypatch, raw, expected):
     monkeypatch.setenv("HEALTHCHECK_URL", raw)
     assert Config.from_env().healthcheck_url == expected
+
+
+def test_security_mail_settings(monkeypatch):
+    config = Config.from_env()
+    assert config.security_mail_url is None and config.security_mail_token is None
+    monkeypatch.setenv("SECURITY_MAIL_URL", "https://socialbot-mail.example.workers.dev/")
+    monkeypatch.setenv("SECURITY_MAIL_TOKEN", "t")
+    assert Config.from_env().security_mail_url == "https://socialbot-mail.example.workers.dev"

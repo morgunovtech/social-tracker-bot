@@ -10,9 +10,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from telegram import LinkPreviewOptions
+
 from bot import platforms
 from bot.config import Config
 from bot.db import Database
+
+# Security alerts quote changed descriptions and email subjects: a link in
+# them may be a scam page, so Telegram must not fetch and preview it.
+NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
 
 @dataclass(frozen=True)

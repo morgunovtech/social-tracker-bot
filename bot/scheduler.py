@@ -13,13 +13,13 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from telegram import Bot, LinkPreviewOptions
+from telegram import Bot
 
 from bot import monitors, platforms
 from bot.chart import render_chart
 from bot.config import DOW_ORDER, Config
 from bot.db import Database, parse_utc, utcnow
-from bot.monitors import collection, followers, hygiene, profile
+from bot.monitors import collection, followers, hygiene, mail, profile
 from bot.platforms import LABELS, PLATFORM_IDS
 from bot.platforms.base import Context
 from bot.reporter import _crossed_milestone, build_month_report, build_report
@@ -37,10 +37,6 @@ DAILY_MISFIRE_GRACE_S = 3600
 # On startup, a daily run missed while the bot was down is caught up after this delay.
 CATCH_UP_DELAY = timedelta(seconds=30)
 LAST_DAILY_RUN_KEY = "last_daily_run"
-
-# Security alerts quote changed descriptions and email subjects: a link in
-# them may be a scam page, so Telegram must not fetch and preview it.
-NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
 logger = logging.getLogger(__name__)
 
@@ -380,10 +376,23 @@ async def _profile_job(bot: Bot, config: Config, db: Database) -> None:
             text = "🛡 Профиль\n\n" + "\n".join(lines)
             if any(line.startswith(("🚨", "🟠")) for line in lines):
                 text += f"\n\n{profile.ADVICE}"
-            await bot.send_message(chat_id=config.admin_chat_id, text=text, link_preview_options=NO_PREVIEW)
+            await bot.send_message(chat_id=config.admin_chat_id, text=text, link_preview_options=monitors.NO_PREVIEW)
             logger.info("Sent %d profile alert(s)", len(lines))
     except Exception:
         logger.exception("Profile check failed")
+
+
+async def _mail_job(bot: Bot, config: Config, db: Database) -> None:
+    """Poll the mail worker every mail.POLL_INTERVAL; each security email is alerted at once."""
+    if not await monitors.is_on(db, config, "mail"):
+        return
+    try:
+        async with aiohttp.ClientSession() as session:
+            sent = await mail.check(bot, config, db, session)
+        if sent:
+            logger.info("Sent %d security mail alert(s)", sent)
+    except Exception:
+        logger.exception("Mail check failed")
 
 
 async def get_report_schedule(db: Database, config: Config) -> tuple[str, int, int]:
@@ -452,6 +461,16 @@ async def setup_scheduler(bot: Bot, config: Config, db: Database) -> AsyncIOSche
         id="profile_check",
         replace_existing=True,
         next_run_time=now + CATCH_UP_DELAY,  # the first look after a start refreshes the baseline
+        coalesce=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        _mail_job,
+        trigger=IntervalTrigger(seconds=int(mail.POLL_INTERVAL.total_seconds()), timezone=UTC),
+        args=[bot, config, db],
+        id="mail_check",
+        replace_existing=True,
+        next_run_time=now + CATCH_UP_DELAY,
         coalesce=True,
         max_instances=1,
     )

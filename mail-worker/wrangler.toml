@@ -1,0 +1,18 @@
+name = "socialbot-mail"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# Mail waiting for the bot. Create it with:
+#   npx wrangler kv namespace create EVENTS
+# and paste the printed id here.
+[[kv_namespaces]]
+binding = "EVENTS"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[vars]
+# Mailboxes allowed to forward here, comma-separated (the forwarding
+# Gmail/Proton address). Empty = anyone who knows the address.
+ALLOWED_SENDERS = ""
+
+# The bot's bearer token is a secret, not a var:
+#   npx wrangler secret put TOKEN

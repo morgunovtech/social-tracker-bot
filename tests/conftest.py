@@ -29,6 +29,8 @@ os.environ.update({
     "RAILWAY_GIT_REPO_OWNER": "",
     "RAILWAY_GIT_REPO_NAME": "",
     "GITHUB_TOKEN": "",
+    "SECURITY_MAIL_URL": "",
+    "SECURITY_MAIL_TOKEN": "",
 })
 
 import dataclasses  # noqa: E402
