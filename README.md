@@ -1,92 +1,67 @@
-# Social Media Follower Tracker Bot
+# Social Tracker Bot
 
-Telegram-бот для отслеживания подписчиков в Telegram, YouTube и LinkedIn.
+> A Telegram bot that counts your followers on Telegram, YouTube and LinkedIn every day and sends a weekly report with deltas, trends and forecasts. It stays quiet while things are fine and speaks up the moment something breaks.
 
-## Возможности
+🇷🇺 [По-русски](README.ru.md)
 
-- Ежедневный сбор данных (хранится для трендов и графиков)
-- Пуш-отчёт по настраиваемому дню недели (по умолчанию суббота 13:00 Ташкент)
-- LinkedIn fetch автоматически через cookie `li_at` (управление через `/setcookie`)
-- Inline-ввод LinkedIn через кнопку, без `/linkedin <число>`
-- Sparkline за 14 дней, дельты день / неделя / месяц, график PNG за 30 дней
-- Milestone-алерт при пересечении круглых чисел (1k, 5k, 10k…) — в день пересечения
-- Прогноз до следующего milestone и индикатор ускорения/замедления роста
-- Лидер недели по % роста, месячный дайджест 1-го числа
-- Проактивные алерты: истёкший cookie, сбои сбора 2+ дня, падение подписчиков
-- Антибот-детектор: предупреждение при аномально резком притоке подписчиков (×5 к обычному темпу)
-- Авто-retry неудавшегося сбора (до 3 попыток с интервалом в час)
-- Watchdog через healthchecks.io (`HEALTHCHECK_URL`) — узнаете, если бот умер
-- Еженедельный бэкап БД прямо в чат (воскресенье, без LinkedIn cookie) и `/restore`, чтобы вернуть из него историю — данные добавляются к текущим, ничего не перезаписывается
-- «Тихий режим»: короткая однострочка вместо полного отчёта, если ничего не изменилось
+The bot talks to you in Russian; the setup is the same in any language.
 
-## Получение токенов
+## What you get
 
-### Telegram Bot
-1. Напишите [@BotFather](https://t.me/BotFather) → `/newbot`
-2. Скопируйте токен → `BOT_TOKEN`
-3. Добавьте бота **администратором** в канал
-4. Узнайте свой chat ID через [@userinfobot](https://t.me/userinfobot) → `ADMIN_CHAT_ID`
+- **Daily collection, weekly report**: deltas for the day / week / month, a 14-day sparkline, a 30-day PNG chart, the week's leader by growth, a monthly digest on the 1st. Every platform is optional.
+- **Signals, not noise**: milestones (1k, 5k, 10k…) on the day they're crossed, a forecast to the next one, growth speeding up or slowing down, a bot-influx detector (a jump ×5 above the usual daily gain).
+- **Problems arrive at once**: an expired LinkedIn cookie, collection failing 2+ days in a row, a drop in followers, data that has gone stale.
+- **Self-recovering**: failed platforms are retried hourly (up to 3 times), a run missed while the bot was down is caught up on start, a dead man's switch (`HEALTHCHECK_URL`) tells you when the bot itself dies.
+- **Your data stays yours**: SQLite on your volume, a weekly backup sent to your chat (without the LinkedIn cookie), and `/restore` to merge a backup back without overwriting anything collected since.
+- **Quiet mode**: a one-liner instead of the full report when nothing changed.
 
-### YouTube Data API
-1. [Google Cloud Console](https://console.cloud.google.com/) → новый проект → включите YouTube Data API v3
-2. Создайте API Key → `YOUTUBE_API_KEY`
-3. Найдите ID канала → `YOUTUBE_CHANNEL_ID`
+## Setup
 
-### LinkedIn (cookie-based)
-1. Зайдите в [linkedin.com](https://www.linkedin.com/) в браузере под своим аккаунтом
-2. DevTools → Application → Cookies → `linkedin.com` → скопируйте значение `li_at`
-3. Отправьте боту `/setcookie <значение>` (проверит cookie и начнёт отслеживать его возраст) — либо задайте `LINKEDIN_LI_AT` в `.env`
-4. Укажите URL профиля → `LINKEDIN_PROFILE_URL`
-5. Cookie живёт ~1 год; об истечении бот предупредит сразу, отдельным сообщением
+1. **Telegram (required).** Create a bot with [@BotFather](https://t.me/BotFather) → `BOT_TOKEN`. Get your user id from [@userinfobot](https://t.me/userinfobot) → `ADMIN_CHAT_ID`: only you can use the bot. To track a channel, make the bot an **admin** of it → `TELEGRAM_CHANNEL_ID`.
+2. **YouTube (optional).** In [Google Cloud Console](https://console.cloud.google.com/) enable YouTube Data API v3 and create an API key → `YOUTUBE_API_KEY`; your channel id (`UC…`) → `YOUTUBE_CHANNEL_ID`.
+3. **LinkedIn (optional).** Your profile URL → `LINKEDIN_PROFILE_URL`. Then either send the bot `/setcookie <li_at>` with the `li_at` cookie of a logged-in browser (DevTools → Application → Cookies → linkedin.com) — the bot checks it, deletes your message and watches the cookie's age — or enter the number by hand with the «✏️ LinkedIn» button.
 
-## Настройка
+> ⚠️ **About LinkedIn.** There is no official API for a personal profile's follower count, so the bot opens your profile page with your cookie, once a day. LinkedIn's User Agreement prohibits automated access: use it at your own risk, LinkedIn may restrict the account. Leave the cookie out and type the number in by hand if you'd rather not take that risk.
+
+### Docker Compose
 
 ```bash
-cp .env.example .env
-# заполните .env
+cp .env.example .env    # fill it in
 docker-compose up -d
 ```
 
-БД лежит в `./data` (на Railway — volume, смонтированный в `/app/data`). Контейнер стартует от root только чтобы отдать эту папку пользователю `appuser`, и дальше работает без прав root.
+### Railway
 
-Логи: `docker-compose logs -f`. Остановка: `docker-compose down`.
+Create a service from this repository, set the variables from `.env.example`, and **attach a volume at `/app/data`** — without one the database is lost on every deploy.
 
-## Команды
+The container starts as root only to hand the data directory to the unprivileged `appuser`, then drops root for good.
 
-| Команда | Описание |
-|---------|----------|
-| `/start` | Приветствие + меню |
-| `/stats` | Текущая сводка |
-| `/now` | Принудительный сбор + отчёт |
-| `/week` | Недельный дайджест |
-| `/linkedin <число>` | Ввод LinkedIn вручную |
-| `/history [platform] [days]` | История |
-| `/settime HH:MM` | Время отчёта (UTC) |
-| `/setday <дни>` | День(и) отчёта: `sat`, `mon,thu`, `mon-fri`, `daily` |
-| `/setquiet on\|off` | Тихий режим (однострочка вместо отчёта без изменений) |
-| `/setcookie <li_at>` | Обновить LinkedIn cookie (с проверкой живым запросом) |
-| `/cookieage` | Возраст текущего LinkedIn cookie |
-| `/restore` | Вернуть историю из бэкапа: ответить им на сообщение с файлом или прислать `.db` с подписью `/restore` |
+## Commands
 
-Все команды доступны только администратору (`ADMIN_CHAT_ID`).
+| Command | What it does |
+|---|---|
+| `/start`, `/help` | Menu and help |
+| `/stats` | Current summary |
+| `/now` | Collect now and show the report |
+| `/week` | This week vs last week, with the chart |
+| `/history [platform] [days]` | History table, up to 90 days |
+| `/linkedin <number>` | Enter the LinkedIn number by hand |
+| `/settime HH:MM`, `/setday <days>` | Report time (UTC) and day(s): `sat`, `mon,thu`, `mon-fri`, `daily` |
+| `/setquiet on\|off` | Quiet mode |
+| `/setcookie <li_at>`, `/cookieage` | Set the LinkedIn cookie, check its age |
+| `/restore` | Reply it to a backup message (or send a `.db` captioned `/restore`) to merge the history back |
 
-## Расписание
+## Development
 
-- Бот **собирает данные ежедневно** в `REPORT_HOUR_UTC:REPORT_MINUTE` (для трендов).
-- **Пушит отчёт** только в дни, выбранные через `/setday` (или `REPORT_DOW`).
-- Дефолт: `sat` 08:00 UTC = суббота 13:00 Ташкент.
-
-## Формат отчёта
-
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+.venv/bin/ruff check .
+.venv/bin/pytest -q
 ```
-📊 Подписчики — 02.05.2026
 
-Telegram: 1,010  ▁▃▄▅▆█ (▲ +7 день, ▲ +20 неделя, ▲ +60 месяц)
-YouTube: 850  ▁▂▃█ (▲ +30 неделя, ▲ +50 месяц)
-LinkedIn: 4,520  ▁▅▇█ (▲ +5 день, ▲ +30 неделя, ▲ +120 месяц)
+The tests never touch the network: Telegram is a fake bot, LinkedIn, YouTube and the site push are local HTTP servers. CI runs ruff, pytest on Python 3.12–3.14, `pip-audit` and a build of the production image.
 
-🎯 Telegram перешагнул 1,000!
-🏆 Лидер недели: YouTube +3.7%
+## License
 
-📈 Всего: 6,380 (▲ +80 неделя, ▲ +230 месяц)
-```
+[MIT](LICENSE). Not affiliated with Telegram, YouTube or LinkedIn. Security reports: see [SECURITY.md](SECURITY.md).

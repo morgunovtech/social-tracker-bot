@@ -296,3 +296,26 @@ async def test_healthcheck_ping(config, receiver):
     server, received = receiver
     await scheduler._ping_healthcheck(dataclasses.replace(config, healthcheck_url=str(server.make_url("/hook"))))
     assert received == [{"method": "GET", "auth": None, "body": None}]
+
+
+async def test_unconfigured_platforms_are_skipped_silently(bot, config, db, collectors):
+    only_telegram = dataclasses.replace(config, youtube_api_key=None, linkedin_profile_url=None)
+    outcome = await collect_and_report(bot, only_telegram, db)
+    assert set(outcome.collected) == {"telegram"} and not outcome.errors
+    assert "YouTube" not in outcome.report and "LinkedIn" not in outcome.report
+    assert "linkedin_prev" not in collectors["seen"]
+
+
+async def test_site_push_counts_only_enabled_platforms(config, db, receiver):
+    import aiohttp
+
+    server, received = receiver
+    cfg = dataclasses.replace(
+        config, linkedin_profile_url=None,
+        site_ingest_url=str(server.make_url("/hook")), site_ingest_token="t0k",
+    )
+    await db.upsert("telegram", 1000)
+    await db.upsert("youtube", 128)
+    async with aiohttp.ClientSession() as session:
+        await _push_subscribers(session, cfg, db)
+    assert set(received[0]["body"]) == {"telegram", "youtube", "updatedAt"}
