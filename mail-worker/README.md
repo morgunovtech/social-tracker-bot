@@ -1,6 +1,6 @@
 # mail-worker
 
-A Cloudflare Email Worker for the bot's **security emails** monitor. Your mailbox forwards the security notifications of your accounts (new sign-in, password or email changed, 2FA changed, login codes) to an address on your domain; the worker keeps the sender, subject and the first 4,000 characters of the text in KV until the bot picks them up (every 2 minutes) and deletes them. Classification happens in the bot.
+A Cloudflare Email Worker for the bot's **security emails** monitor. Your mailbox forwards the security notifications of your accounts (new sign-in, password or email changed, 2FA changed, login codes) to an address on your domain; the worker keeps the sender, subject and the first 4,000 characters of the text in KV until the bot picks them up (every 5 minutes) and deletes them. Classification happens in the bot.
 
 What it never gets: your password, your inbox, any mail you don't forward. Mail the bot doesn't collect is dropped after 14 days.
 
@@ -28,7 +28,7 @@ Plus, in your mailbox: a forwarding address and a filter. Remove both when teari
    npx wrangler secret put TOKEN             # paste the token
    npx wrangler deploy
    ```
-   Set `ALLOWED_SENDERS` in `wrangler.toml` to the mailbox that will forward (e.g. `me@gmail.com`) before deploying: other senders are rejected.
+   **Set `ALLOWED_SENDERS`** in `wrangler.toml` to the mailbox that will forward (e.g. `me@gmail.com`) before deploying: mail from anyone else is rejected, and an empty list rejects everything — otherwise anyone who learned the address could post fake «security alerts» to your chat. Gmail's own forwarding confirmation is let through. If forwarded mail doesn't arrive, `npx wrangler tail` shows the rejected envelope sender to add.
 3. **Route the address.** Email → Email Routing → Routing rules → Create address: an unguessable local part (`sec-7f3a9c@alerts.example.com`), action **Send to a Worker** → `socialbot-mail`.
 4. **Connect the bot.** `SECURITY_MAIL_URL` = the worker URL (`https://socialbot-mail.<account>.workers.dev`), `SECURITY_MAIL_TOKEN` = the token. Restart the bot; `/modules` shows «Письма безопасности» as on.
 5. **Forward from your mailbox.**
@@ -36,7 +36,11 @@ Plus, in your mailbox: a forwarding address and a filter. Remove both when teari
      `no-reply@accounts.google.com OR security-noreply@linkedin.com OR security@mail.instagram.com OR security@facebookmail.com`
      → *Forward it to* the routed address. Open a recent security mail to check its exact sender.
    - **Proton** (paid plans): Settings → Filters → a filter on the same senders with *Forward to*.
-6. **Test it:** forward any security email by hand. The bot answers within 2 minutes; a mail it doesn't recognise is reported as «📨 Письмо без признаков тревоги» so you know the path works.
+6. **Test it:** forward any security email by hand. The bot answers within 5 minutes; a mail it doesn't recognise is reported as «📨 Письмо без признаков тревоги» so you know the path works.
+
+## Limits
+
+Each bot poll is one KV list operation: 288 a day at one poll per 5 minutes. Cloudflare's free plan allows 1,000 list operations a day, so don't point a second bot (say, a local dev copy) at the same worker for long. Each mail costs one write and one delete (1,000 a day each on the free plan).
 
 ## API (for the bot)
 

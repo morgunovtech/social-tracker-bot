@@ -54,13 +54,15 @@ async def fetch_youtube_channel(
         if channel is None:
             return None
         snippet = channel["snippet"]
-        return {
-            "title": snippet.get("title", ""),
-            "handle": snippet.get("customUrl", ""),
-            "description": snippet.get("description", ""),
-            "avatar": snippet.get("thumbnails", {}).get("default", {}).get("url", ""),
-            "videos": channel["statistics"].get("videoCount", "0"),
+        fields = {
+            "title": snippet.get("title"),
+            "handle": snippet.get("customUrl"),
+            "description": snippet.get("description"),
+            "avatar": snippet.get("thumbnails", {}).get("default", {}).get("url"),
+            "videos": channel["statistics"].get("videoCount"),
         }
+        # A field the API left out this time is unknown, not emptied: no alert.
+        return {name: value for name, value in fields.items() if value is not None}
     except Exception:
         logger.exception("Failed to fetch YouTube channel profile")
         return None

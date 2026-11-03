@@ -54,7 +54,21 @@ def test_text_change_and_a_new_link_is_critical():
     renamed = {**CHANNEL, "title": "Tesla Live", "description": "Розыгрыш BTC: https://scam.example/x"}
     lines = profile.diff(TELEGRAM, CHANNEL, renamed)
     assert lines[0] == "🟠 Telegram: название канала — «Мой канал» → «Tesla Live»"
-    assert lines[1].startswith("🚨 Telegram: описание канала") and "https://scam.example/x" in lines[1]
+    assert lines[1].startswith("🚨 Telegram: описание канала") and "hxxps://scam[.]example/x" in lines[1]
+    assert "https://" not in "".join(lines)                # quoted links are not clickable
+
+
+def test_link_list_is_capped():
+    links = " ".join(f"https://spam{i}.example" for i in range(40))
+    (line,) = profile.diff(TELEGRAM, CHANNEL, {**CHANNEL, "description": links})
+    listed = line.split("новые ссылки:")[1]
+    assert listed.count("hxxps://") == profile.MAX_LINKS and listed.endswith("и ещё 35")
+
+
+def test_defang():
+    assert monitors.defang("см. evil.example/x и https://a.b/c, т.е. v1.2") == (
+        "см. evil[.]example/x и hxxps://a[.]b/c, т.е. v1.2"
+    )
 
 
 def test_long_text_is_cut():
@@ -119,21 +133,47 @@ def watch(monkeypatch):
 
 async def test_first_look_is_baseline_then_changes_are_alerted_once(bot, config, db, watch):
     watch += [CHANNEL, {**CHANNEL, "title": "Hacked"}, {**CHANNEL, "title": "Hacked"}]
-    assert await profile.check(bot, config, db, None) == []
-    lines = await profile.check(bot, config, db, None)
-    assert lines == ["🟠 Telegram: название канала — «Мой канал» → «Hacked»"]
-    assert await profile.check(bot, config, db, None) == []
+    assert await profile.check(bot, config, db, None) == 0
+    assert await profile.check(bot, config, db, None) == 1
+    line = "🟠 Telegram: название канала — «Мой канал» → «Hacked»"
+    assert bot.messages[0].startswith(f"🛡 Профиль\n\n{line}") and profile.ADVICE in bot.messages[0]
+    assert await profile.check(bot, config, db, None) == 0
     (event,) = await db.recent_events()
-    assert event["kind"] == "profile" and event["detail"] == lines[0]
+    assert event["kind"] == "profile" and event["detail"] == line
+
+
+async def test_failed_send_keeps_the_old_baseline_and_retries(bot, config, db, watch):
+    watch += [CHANNEL, {**CHANNEL, "title": "Hacked"}, {**CHANNEL, "title": "Hacked"}]
+    await profile.check(bot, config, db, None)
+    send = bot.send_message
+
+    async def broken(*args, **kwargs):
+        raise RuntimeError("Telegram is down")
+
+    bot.send_message = broken
+    assert await profile.check(bot, config, db, None) == 0
+    assert await db.recent_events() == []
+    bot.send_message = send
+    assert await profile.check(bot, config, db, None) == 1  # the same change, alerted now
+    assert "«Hacked»" in bot.messages[0]
+
+
+async def test_field_missing_from_a_fetch_keeps_its_baseline(bot, config, db, watch):
+    without_title = {k: v for k, v in CHANNEL.items() if k != "title"}
+    watch += [CHANNEL, without_title, {**CHANNEL, "title": "Hacked"}]
+    await profile.check(bot, config, db, None)
+    assert await profile.check(bot, config, db, None) == 0
+    assert await profile.check(bot, config, db, None) == 1      # still compared with «Мой канал»
 
 
 async def test_unreachable_profile_alerted_once_and_recovery(bot, config, db, watch):
     watch += [CHANNEL] + [None] * (profile.UNREACHABLE_AFTER + 1) + [CHANNEL]
     await profile.check(bot, config, db, None)
-    alerts = [await profile.check(bot, config, db, None) for _ in range(profile.UNREACHABLE_AFTER + 1)]
-    assert [len(a) for a in alerts] == [0] * (profile.UNREACHABLE_AFTER - 1) + [1, 0]
-    assert alerts[-2][0].startswith("🔴 Telegram: профиль не читается")
-    assert await profile.check(bot, config, db, None) == ["✅ Telegram: профиль снова доступен"]
+    sent = [await profile.check(bot, config, db, None) for _ in range(profile.UNREACHABLE_AFTER + 1)]
+    assert sent == [0] * (profile.UNREACHABLE_AFTER - 1) + [1, 0]
+    assert "🔴 Telegram: профиль не читается" in bot.messages[0]
+    assert await profile.check(bot, config, db, None) == 1
+    assert "✅ Telegram: профиль снова доступен" in bot.messages[1]
 
 
 # --- hygiene -----------------------------------------------------------------

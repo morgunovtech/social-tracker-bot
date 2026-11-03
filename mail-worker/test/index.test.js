@@ -25,7 +25,7 @@ class MemoryKV {
 }
 
 function envWith(extra = {}) {
-  return { EVENTS: new MemoryKV(), TOKEN: "s3cret", ALLOWED_SENDERS: "", ...extra };
+  return { EVENTS: new MemoryKV(), TOKEN: "s3cret", ALLOWED_SENDERS: "me@gmail.com", ...extra };
 }
 
 const RAW = [
@@ -93,7 +93,8 @@ test("requests without the token are refused", async () => {
 
 test("allowlist matches the forwarding mailbox without its +tag", async () => {
   assert.ok(senderAllowed("me+caf_=bot=example.com@gmail.com", "me@gmail.com"));
-  assert.ok(senderAllowed("anyone@example.com", ""));
+  assert.ok(!senderAllowed("anyone@example.com", ""));          // an empty list fails closed
+  assert.ok(!senderAllowed("", "me@gmail.com"));
   assert.ok(!senderAllowed("attacker@evil.example", "me@gmail.com, you@proton.me"));
 
   const env = envWith({ ALLOWED_SENDERS: "me@gmail.com" });

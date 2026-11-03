@@ -17,6 +17,8 @@ export default {
       !senderAllowed(message.from, env.ALLOWED_SENDERS) &&
       !isGmailForwardingConfirmation(message.from, mail.from?.address)
     ) {
+      // Visible in `npx wrangler tail`: the address to add to ALLOWED_SENDERS.
+      console.log(`rejected: envelope sender ${message.from} is not in ALLOWED_SENDERS`);
       message.setReject("Sender not allowed");
       return;
     }
@@ -62,6 +64,8 @@ export default {
   },
 };
 
+// Only the user's own mailbox may feed the bot: an empty list allows no one,
+// or anyone who learned the address could post "security alerts" to the chat.
 // Gmail rewrites the envelope sender of auto-forwarded mail to
 // "me+caf_=…@gmail.com": the +tag is dropped before comparing.
 export function senderAllowed(envelopeFrom, allowed) {
@@ -69,8 +73,7 @@ export function senderAllowed(envelopeFrom, allowed) {
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
-  if (list.length === 0) return true;
-  const [local, domain] = String(envelopeFrom || "").toLowerCase().split("@");
+  const [local = "", domain] = String(envelopeFrom || "").toLowerCase().split("@");
   return list.includes(`${local.split("+")[0]}@${domain}`);
 }
 

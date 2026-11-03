@@ -186,9 +186,12 @@ async def _build_alerts(db: Database, config: Config, outcome: CollectOutcome) -
     Drops and milestones are naturally deduped (the stored value moves past
     them); collection health keeps its dedup state in settings.
     """
+    # Collection health keeps its streaks current even while switched off,
+    # so switching it back on doesn't alert on a stale streak.
+    collection_lines = await collection.alert_lines(db, outcome)
     lines: list[str] = []
     if await monitors.is_on(db, config, "collection"):
-        lines += await collection.alert_lines(db, outcome)
+        lines += collection_lines
     if await monitors.is_on(db, config, "followers"):
         lines += followers.alert_lines(outcome)
     return lines
@@ -371,13 +374,9 @@ async def _profile_job(bot: Bot, config: Config, db: Database) -> None:
         return
     try:
         async with aiohttp.ClientSession() as session:
-            lines = await profile.check(bot, config, db, session)
-        if lines:
-            text = "🛡 Профиль\n\n" + "\n".join(lines)
-            if any(line.startswith(("🚨", "🟠")) for line in lines):
-                text += f"\n\n{profile.ADVICE}"
-            await bot.send_message(chat_id=config.admin_chat_id, text=text, link_preview_options=monitors.NO_PREVIEW)
-            logger.info("Sent %d profile alert(s)", len(lines))
+            sent = await profile.check(bot, config, db, session)
+        if sent:
+            logger.info("Sent %d profile alert(s)", sent)
     except Exception:
         logger.exception("Profile check failed")
 

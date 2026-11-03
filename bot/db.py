@@ -116,8 +116,10 @@ class Database:
         Follower rows are added only for (platform, day) pairs the live DB lacks,
         so data collected since the backup is kept. Settings are added only when
         missing; the cookie and its timestamp travel as a pair, so a live cookie
-        is never replaced by an older one. Raises ValueError for a file that is
-        not an intact backup of this bot.
+        is never replaced by an older one; profile baselines and failure
+        streaks are live state and never restored. Security events are merged
+        by uid. Raises ValueError for a file that is not an intact backup of
+        this bot.
         """
         _check_backup(backup_path)
         async with aiosqlite.connect(self._db_path) as db:
@@ -138,6 +140,11 @@ class Database:
                     INSERT OR IGNORE INTO settings (key, value)
                     SELECT key, value FROM backup.settings
                     WHERE key NOT IN ({",".join("?" * len(skip)) or "''"})
+                      -- Live state, not history: an old profile baseline would alert on
+                      -- every change made since the backup, an old failure streak on
+                      -- a recovery that never happened.
+                      AND key NOT LIKE 'profile\\_%' ESCAPE '\\'
+                      AND key NOT LIKE '%fail%'
                     """,
                     skip,
                 )
@@ -244,6 +251,7 @@ class Database:
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
-                "SELECT * FROM security_events ORDER BY occurred_at DESC, id DESC LIMIT ?", (limit,)
+                "SELECT * FROM security_events WHERE kind != 'info' ORDER BY occurred_at DESC, id DESC LIMIT ?",
+                (limit,),
             )
             return [dict(r) for r in await cursor.fetchall()]

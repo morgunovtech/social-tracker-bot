@@ -7,6 +7,7 @@ has it. Platforms are switched on by their own configuration, not here.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -19,6 +20,21 @@ from bot.db import Database
 # Security alerts quote changed descriptions and email subjects: a link in
 # them may be a scam page, so Telegram must not fetch and preview it.
 NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
+
+# A URL, or anything Telegram would turn into a link: a bare domain.
+_LINKISH = re.compile(r"(?:https?://|www\.)\S+|\b[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}\b(?:/\S*)?", re.IGNORECASE)
+
+
+def defang(text: str) -> str:
+    """Make the links in quoted, untrusted text readable but not clickable:
+    https://evil.example/x → hxxps://evil[.]example/x. Telegram links every URL
+    and bare domain whether or not previews are on."""
+
+    def _one(match: re.Match) -> str:
+        link = re.sub(r"^http", "hxxp", match.group(0), flags=re.IGNORECASE)
+        return link.replace(".", "[.]")
+
+    return _LINKISH.sub(_one, text)
 
 
 @dataclass(frozen=True)

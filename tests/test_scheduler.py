@@ -355,19 +355,34 @@ async def test_rejected_healthcheck_ping_is_a_warning(config, receiver, caplog):
 
 # --- profile watch -----------------------------------------------------------
 
-async def test_profile_job_alerts_with_advice_and_respects_the_switch(bot, config, db, monkeypatch):
-    lines = ["🚨 Telegram: новый админ — Stranger"]
+async def test_profile_and_mail_jobs_respect_the_switch(bot, config, db, monkeypatch):
+    calls = []
 
     async def check(*args):
-        return list(lines)
+        calls.append(args)
+        return 0
 
     monkeypatch.setattr(scheduler.profile, "check", check)
+    monkeypatch.setattr(scheduler.mail, "check", check)
+    mail_config = dataclasses.replace(config, security_mail_url="https://w", security_mail_token="t")
     await scheduler._profile_job(bot, config, db)
-    assert bot.messages[0].startswith("🛡 Профиль") and scheduler.profile.ADVICE in bot.messages[0]
+    await scheduler._mail_job(bot, mail_config, db)
+    assert len(calls) == 2
 
     await db.set_setting("monitor_profile", "off")
+    await db.set_setting("monitor_mail", "off")
     await scheduler._profile_job(bot, config, db)
-    assert len(bot.messages) == 1
+    await scheduler._mail_job(bot, mail_config, db)
+    assert len(calls) == 2
+
+
+async def test_collection_streak_stays_current_while_switched_off(config, db):
+    await db.set_setting("monitor_collection", "off")
+    failed = CollectOutcome(report="", has_change=False, errors={"youtube": True})
+    assert await _build_alerts(db, config, failed) == []
+    recovered = CollectOutcome(report="", has_change=False, collected={"youtube": (128, "api")})
+    await _build_alerts(db, config, recovered)
+    assert await db.get_setting("fail_streak_youtube") == "0"
 
 
 async def test_profile_watch_is_scheduled_soon_after_start(bot, config, db):

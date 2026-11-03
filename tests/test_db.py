@@ -158,3 +158,19 @@ async def test_restore_accepts_a_backup_without_the_security_log(db, tmp_path):
     live = Database(str(tmp_path / "live.db"))
     await live.init()
     assert (await live.restore_from(backup))["total"] == 1
+
+
+async def test_restore_skips_live_state(db, tmp_path):
+    await db.set_setting("profile_telegram", '{"title": "old"}')
+    await db.set_setting("profile_fail_telegram", "5")
+    await db.set_setting("fail_streak_youtube", "3")
+    await db.set_setting("hygiene_youtube_2fa", "app")
+    backup = str(tmp_path / "backup.db")
+    await db.snapshot_without_secrets(backup)
+
+    live = Database(str(tmp_path / "live.db"))
+    await live.init()
+    await live.restore_from(backup)
+    for key in ("profile_telegram", "profile_fail_telegram", "fail_streak_youtube"):
+        assert await live.get_setting(key) is None
+    assert await live.get_setting("hygiene_youtube_2fa") == "app"

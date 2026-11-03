@@ -10,8 +10,8 @@ binding = "EVENTS"
 id = "REPLACE_WITH_KV_NAMESPACE_ID"
 
 [vars]
-# Mailboxes allowed to forward here, comma-separated (the forwarding
-# Gmail/Proton address). Empty = anyone who knows the address.
+# Required: the mailbox(es) that forward here, comma-separated (e.g. your
+# Gmail address). Mail from anyone else is rejected; empty rejects all.
 ALLOWED_SENDERS = ""
 
 # The bot's bearer token is a secret, not a var:

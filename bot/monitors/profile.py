@@ -8,6 +8,7 @@ count moves. The first look at a profile only stores the baseline.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
 from datetime import timedelta
@@ -18,7 +19,10 @@ from telegram import Bot
 from bot import platforms
 from bot.config import Config
 from bot.db import Database, utcnow
+from bot.monitors import NO_PREVIEW, defang
 from bot.platforms.base import ADMINS, COUNT, IMAGE, TEXT, Context, Platform
+
+logger = logging.getLogger(__name__)
 
 CHECK_INTERVAL = timedelta(minutes=30)
 # Consecutive failed fetches before "profile unreachable" is alerted (~1.5 h).
@@ -27,6 +31,10 @@ UNREACHABLE_AFTER = 3
 COUNT_DROP_MIN_ABS = 3
 COUNT_DROP_MIN_PCT = 10.0
 SNIPPET_LEN = 120
+# A description stuffed with links must not push the alert past Telegram's
+# 4096-character limit: the send would fail and the alert be lost.
+MAX_LINKS = 5
+MESSAGE_LIMIT = 4000
 
 ADVICE = (
     "Если это сделал не ты — смени пароль, заверши чужие сеансы и проверь список админов. "
@@ -40,7 +48,7 @@ def _snippet(text: str) -> str:
     text = " ".join(text.split())
     if not text:
         return "(пусто)"
-    return text if len(text) <= SNIPPET_LEN else text[: SNIPPET_LEN - 1] + "…"
+    return defang(text if len(text) <= SNIPPET_LEN else text[: SNIPPET_LEN - 1] + "…")
 
 
 def _admin_lines(label: str, before: str, after: str) -> list[str]:
@@ -68,7 +76,8 @@ def diff(platform: Platform, old: dict[str, str], new: dict[str, str]) -> list[s
             added = sorted(set(_LINK.findall(after)) - set(_LINK.findall(before)))
             line = f"{'🚨' if added else '🟠'} {platform.label}: {label} — «{_snippet(before)}» → «{_snippet(after)}»"
             if added:
-                line += "\n    новые ссылки: " + ", ".join(added)
+                more = f" и ещё {len(added) - MAX_LINKS}" if len(added) > MAX_LINKS else ""
+                line += "\n    новые ссылки: " + defang(", ".join(added[:MAX_LINKS])) + more
             lines.append(line)
         elif kind == IMAGE:
             lines.append(f"🟠 {platform.label}: новая {label}")
@@ -85,42 +94,67 @@ def diff(platform: Platform, old: dict[str, str], new: dict[str, str]) -> list[s
     return lines
 
 
-async def _track_reachability(db: Database, platform: Platform, reachable: bool) -> list[str]:
-    key = f"profile_fail_{platform.id}"
-    fails = int(await db.get_setting(key) or "0")
+def _reachability(platform: Platform, fails: int, reachable: bool) -> tuple[list[str], int]:
+    """(alert lines, new count of consecutive failed fetches)."""
     if reachable:
-        if fails:
-            await db.set_setting(key, "0")
-        return [f"✅ {platform.label}: профиль снова доступен"] if fails >= UNREACHABLE_AFTER else []
+        return ([f"✅ {platform.label}: профиль снова доступен"] if fails >= UNREACHABLE_AFTER else []), 0
     fails += 1
-    await db.set_setting(key, str(fails))
     if fails == UNREACHABLE_AFTER:
         return [
             f"🔴 {platform.label}: профиль не читается {fails} проверки подряд — "
             f"канал удалён или скрыт, или у бота отобрали права?"
-        ]
-    return []
+        ], fails
+    return [], fails
 
 
-async def check(bot: Bot, config: Config, db: Database, session: aiohttp.ClientSession) -> list[str]:
-    """Fetch every watched profile, log and return alert lines, keep the baseline."""
-    lines: list[str] = []
+async def _send(bot: Bot, config: Config, lines: list[str]) -> bool:
+    text = "🛡 Профиль\n\n" + "\n".join(lines)
+    if any(line.startswith(("🚨", "🟠")) for line in lines):
+        text += f"\n\n{ADVICE}"
+    if len(text) > MESSAGE_LIMIT:
+        text = text[: MESSAGE_LIMIT - 1] + "…"
+    try:
+        await bot.send_message(chat_id=config.admin_chat_id, text=text, link_preview_options=NO_PREVIEW)
+        return True
+    except Exception:
+        logger.exception("Profile alert send failed — will retry on the next check")
+        return False
+
+
+async def check(bot: Bot, config: Config, db: Database, session: aiohttp.ClientSession) -> int:
+    """Fetch every watched profile and alert on changes, one message per
+    platform; returns the number of messages sent.
+
+    The new baseline, the failure counter and the log entries are saved only
+    after the alert went out: a failed send leaves everything as it was, so
+    the next check finds the same change and retries.
+    """
+    sent = 0
     for platform in platforms.enabled(config):
         if not platform.profile_fields:
             continue
         current = await platform.fetch_profile(Context(bot, session, config, db))
-        lines += await _track_reachability(db, platform, current is not None)
-        if current is None:
-            continue
-
-        key = f"profile_{platform.id}"
+        fail_key, key = f"profile_fail_{platform.id}", f"profile_{platform.id}"
+        fails = int(await db.get_setting(fail_key) or "0")
         stored = await db.get_setting(key)
-        if stored is not None:
-            changes = diff(platform, json.loads(stored), current)
-            stamp = utcnow().isoformat()
-            for i, line in enumerate(changes):
-                await db.add_event(f"profile:{platform.id}:{stamp}:{i}", platform.label, "profile", line)
-            lines += changes
-        if stored is None or json.loads(stored) != current:
-            await db.set_setting(key, json.dumps(current, ensure_ascii=False))
-    return lines
+        baseline = json.loads(stored) if stored is not None else None
+
+        lines, new_fails = _reachability(platform, fails, current is not None)
+        changes = diff(platform, baseline, current) if current is not None and baseline is not None else []
+        lines += changes
+        if lines:
+            if not await _send(bot, config, lines):
+                continue
+            sent += 1
+
+        if new_fails != fails:
+            await db.set_setting(fail_key, str(new_fails))
+        if current is not None:
+            # Merged: a field missing from this fetch keeps its last known value.
+            merged = {**(baseline or {}), **current}
+            if merged != baseline:
+                await db.set_setting(key, json.dumps(merged, ensure_ascii=False))
+        stamp = utcnow().isoformat()
+        for i, line in enumerate(changes):
+            await db.add_event(f"profile:{platform.id}:{stamp}:{i}", platform.label, "profile", line)
+    return sent

@@ -18,13 +18,14 @@ from telegram import Bot
 
 from bot.config import Config
 from bot.db import Database, utcnow
-from bot.monitors import NO_PREVIEW, hygiene
+from bot.monitors import NO_PREVIEW, defang, hygiene
 
 logger = logging.getLogger(__name__)
 
-POLL_INTERVAL = timedelta(minutes=2)
+# 288 polls a day: each is a KV list, and Cloudflare's free plan allows 1,000 lists a day.
+POLL_INTERVAL = timedelta(minutes=5)
 # Consecutive failed polls before the worker is reported unreachable (~30 min).
-UNREACHABLE_AFTER = 15
+UNREACHABLE_AFTER = 6
 SUBJECT_LEN = 150
 # Only the start of the body is searched: footers say "if this wasn't you,
 # reset your password" under every kind of notice.
@@ -166,8 +167,10 @@ def kind_of(mail: Mail) -> Kind | None:
 
 
 def _snippet(text: str) -> str:
+    """The subject as quoted in an alert. Anyone who learns the worker's
+    address can write it, so its links are defanged."""
     text = " ".join(_FWD_PREFIX.sub("", text).split()) or "(без темы)"
-    return text if len(text) <= SUBJECT_LEN else text[: SUBJECT_LEN - 1] + "…"
+    return defang(text if len(text) <= SUBJECT_LEN else text[: SUBJECT_LEN - 1] + "…")
 
 
 def _forwarding_notice(mail: Mail) -> str:
@@ -286,10 +289,11 @@ async def check(bot: Bot, config: Config, db: Database, session: aiohttp.ClientS
             continue
         sent += 1
         handled.append(mail.id)
-        if kind is not None:
-            await db.add_event(uid, network, kind.id, text)
-            if kind.id == "password_changed" and platform_id:
-                await hygiene.mark_password_changed(db, platform_id, utcnow().date())
+        # Every handled mail is logged, so none is alerted twice; "info" ones
+        # (unrecognized, Gmail's confirmation) stay out of /security's events.
+        await db.add_event(uid, network, kind.id if kind else "info", text)
+        if kind is not None and kind.id == "password_changed" and platform_id:
+            await hygiene.mark_password_changed(db, platform_id, utcnow().date())
 
     if handled:
         await _ack(session, config, handled)

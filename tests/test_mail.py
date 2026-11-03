@@ -68,6 +68,12 @@ def test_alert_text_has_advice_and_recovery_link():
     assert "https://g.co/recover" in text and platform_id == "youtube"
 
 
+def test_links_in_the_subject_are_defanged():
+    text, *_ = describe(_mail("no-reply@accounts.google.com", "New sign-in: verify at https://evil.example/login"))
+    assert "hxxps://evil[.]example/login" in text and "https://evil" not in text
+    assert "https://g.co/recover" in text                  # our own recovery link stays clickable
+
+
 def test_unrecognized_mail_is_reported_plainly():
     text, kind, *_ = describe(_mail("news@linkedin.com", "5 people viewed your profile"))
     assert kind is None and text.startswith("📨 Письмо без признаков тревоги: LinkedIn")
@@ -133,6 +139,14 @@ async def test_alert_ack_and_no_duplicate_on_redelivery(bot, mail_config, db, wo
     worker["acked"].clear()                                  # the ack got lost: the worker re-delivers
     assert await _check(bot, mail_config, db) == 0
     assert len(bot.messages) == 1 and worker["acked"] == ["evt:1"]
+
+
+async def test_unrecognized_mail_is_not_realerted_and_stays_out_of_events(bot, mail_config, db, worker):
+    worker["events"].append({"id": "evt:1", "from": "news@linkedin.com", "subject": "5 people viewed your profile"})
+    assert await _check(bot, mail_config, db) == 1
+    worker["acked"].clear()
+    assert await _check(bot, mail_config, db) == 0
+    assert len(bot.messages) == 1 and await db.recent_events() == []
 
 
 async def test_failed_send_is_not_acknowledged(bot, mail_config, db, worker):
