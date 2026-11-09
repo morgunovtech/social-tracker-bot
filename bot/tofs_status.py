@@ -85,13 +85,26 @@ async def _item(db: Database, config: Config, platform, errors: dict) -> dict:
     return {"name": name, "level": "ok", "text": head}
 
 
+async def _title(db: Database, enabled) -> str:
+    """«📣 Соцсети · всего 16 860» — the sum of the last known counts, the
+    way TofsDevOps heads its sites «🌐 Веб-сервисы · 4/4». A network with
+    no data yet adds nothing; its own line says so."""
+    known = []
+    for platform in enabled:
+        latest = await db.get_latest(platform.id)
+        if latest is not None:
+            known.append(latest["count"])
+    return f"{TITLE} · всего {_fmt(sum(known))}" if known else TITLE
+
+
 async def build(db: Database, config: Config, errors: dict | None = None, bot_username: str | None = None) -> dict:
     """The status payload. errors: the collection that just ran, or None to
     reuse the last one's."""
     if errors is None:
         errors = await _last_errors(db)
-    items = [await _item(db, config, p, errors) for p in platforms.enabled(config)]
-    payload: dict = {"title": TITLE, "items": items}
+    enabled = platforms.enabled(config)
+    items = [await _item(db, config, p, errors) for p in enabled]
+    payload: dict = {"title": await _title(db, enabled), "items": items}
     if bot_username:
         payload["open_url"] = f"https://t.me/{bot_username}"
     return payload
