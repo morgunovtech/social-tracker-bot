@@ -15,7 +15,7 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from telegram import Bot
 
-from bot import monitors, platforms
+from bot import monitors, platforms, tofs_status
 from bot.chart import render_chart
 from bot.config import DOW_ORDER, Config, normalize_tz
 from bot.db import Database, parse_utc, utcnow
@@ -258,10 +258,23 @@ async def _send_backup(bot: Bot, config: Config, db: Database) -> None:
         logger.exception("DB backup failed")
 
 
-async def _ping_healthcheck(config: Config) -> None:
+def _bot_username(bot) -> str | None:
+    try:
+        return bot.username if bot is not None else None
+    except Exception:   # not initialised yet (tests, early start)
+        return None
+
+
+async def _ping_healthcheck(config: Config, db: Database | None = None, bot=None,
+                            errors: dict | None = None) -> None:
     """Dead man's switch: no ping today → the watchdog (healthchecks.io, a
-    TofsDevOps heartbeat) notifies the admin."""
+    TofsDevOps heartbeat) notifies the admin. To TofsDevOps the ping carries
+    a line per network for its main screen (bot.tofs_status)."""
     if not config.healthcheck_url:
+        return
+    if db is not None and tofs_status.is_tofs_url(config.healthcheck_url):
+        payload = await tofs_status.build(db, config, errors, _bot_username(bot))
+        await tofs_status.send(config.healthcheck_url, payload, mark=True)
         return
     try:
         async with aiohttp.ClientSession() as session:
@@ -297,6 +310,7 @@ async def _scheduled_job(
     local_now = now.astimezone(await get_report_tz(db, config))
     if attempt == 1:
         await db.set_setting(LAST_DAILY_RUN_KEY, local_now.date().isoformat())
+    await tofs_status.remember_errors(db, outcome.errors)
 
     # Proactive alerts: sent immediately, not held for the report day.
     await send_alerts(bot, config, db, outcome)
@@ -375,7 +389,7 @@ async def _scheduled_job(
         except Exception:
             logger.exception("Dependency watch failed")
 
-    await _ping_healthcheck(config)
+    await _ping_healthcheck(config, db, bot, outcome.errors)
 
 
 async def _profile_job(bot: Bot, config: Config, db: Database) -> None:
@@ -389,6 +403,12 @@ async def _profile_job(bot: Bot, config: Config, db: Database) -> None:
             logger.info("Sent %d profile alert(s)", sent)
     except Exception:
         logger.exception("Profile check failed")
+        return
+    # A channel that stopped being readable shows on the TofsDevOps screen
+    # within half an hour, not at tomorrow's collection; not a mark.
+    if tofs_status.is_tofs_url(config.healthcheck_url):
+        payload = await tofs_status.build(db, config, None, _bot_username(bot))
+        await tofs_status.send(config.healthcheck_url, payload, mark=False)
 
 
 async def _mail_job(bot: Bot, config: Config, db: Database) -> None:

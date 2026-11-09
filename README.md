@@ -15,7 +15,7 @@ The bot is modular: connect only the platforms you have, and switch monitors on 
 - **Daily collection, weekly report**: deltas for the day / week / month, a 14-day sparkline, a 30-day PNG chart, the week's leader by growth, a monthly digest on the 1st. Every platform is optional.
 - **Signals, not noise**: milestones (1k, 5k, 10k…) on the day they're crossed, a forecast to the next one, growth speeding up or slowing down, a bot-influx detector (a jump ×5 above the usual daily gain).
 - **Problems arrive at once**: an expired LinkedIn cookie, collection failing 2+ days in a row, a drop in followers, data that has gone stale.
-- **Self-recovering**: failed platforms are retried hourly (up to 3 times), a run missed while the bot was down is caught up on start, a dead man's switch (`HEALTHCHECK_URL`) tells you when the bot itself dies.
+- **Self-recovering**: failed platforms are retried hourly (up to 3 times), a run missed while the bot was down is caught up on start, a dead man's switch (`HEALTHCHECK_URL`) tells you when the bot itself dies. Point it at a [TofsDevOps](https://github.com/morgunovtech/Tofs_DevOps_bot) heartbeat address and the ping also carries a line per network («✅ Telegram · 12 340, +18 за сутки», «🔴 LinkedIn · профиль не читается») to TofsDevOps's main screen, next to your sites; refreshed after every profile check.
 - **Your data stays yours**: SQLite on your volume, a weekly backup sent to your chat (without the LinkedIn cookie), and `/restore` to merge a backup back without overwriting anything collected since.
 - **Quiet mode**: a one-liner instead of the full report when nothing changed.
 
