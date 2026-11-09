@@ -42,7 +42,9 @@ async def test_a_line_per_network_says_how_it_is(config, db, insert):
     insert("telegram", 12340)
     insert("linkedin", 4520, days_ago=10, source="manual")
     payload = await tofs_status.build(db, config, {}, "social_tracker_bot")
-    assert payload["title"] == "📣 Соцсети" and payload["open_url"] == "https://t.me/social_tracker_bot"
+    # The total of the last known counts heads the block, like «🌐 Веб-сервисы · 4/4».
+    assert payload["title"] == f"📣 Соцсети · всего 16{NBSP}860"
+    assert payload["open_url"] == "https://t.me/social_tracker_bot"
     items = _by_name(payload)
     assert list(items) == ["Telegram", "YouTube", "LinkedIn"]
     assert items["Telegram"] == {"name": "Telegram", "level": "ok", "text": f"12{NBSP}340, +18 за сутки"}
@@ -111,3 +113,9 @@ async def test_the_profile_check_refreshes_the_lines_without_a_mark(bot, config,
     insert("telegram", 12340)
     await scheduler._profile_job(bot, cfg, db)
     assert received[-1]["method"] == "POST" and received[-1]["body"]["heartbeat"] is False
+
+
+async def test_no_data_no_total(config, db):
+    payload = await tofs_status.build(db, config, {})
+    assert payload["title"] == "📣 Соцсети"                # nothing to add up yet
+    assert len(payload["title"]) <= 40                     # TofsDevOps cuts a longer title
