@@ -57,6 +57,14 @@ async def test_problems_are_lines_too(config, db, insert):
     await db.set_setting("profile_fail_linkedin", "3")
     items = _by_name(await tofs_status.build(db, config, {"youtube": True}))
     assert items["Telegram"]["level"] == "warning" and f"{chr(0x2212)}400 за сутки" in items["Telegram"]["text"]
+    # A small daily dip is not a problem: the same bar as the drop alert.
+    insert("telegram", 11998)
+    items = _by_name(await tofs_status.build(db, config, {}))
+    assert items["Telegram"]["level"] == "warning"                      # still −402 vs yesterday
+    insert("youtube", 1159, days_ago=1)
+    insert("youtube", 1157)
+    assert _by_name(await tofs_status.build(db, config, {}))["YouTube"] == {
+        "name": "YouTube", "level": "ok", "text": f"1{NBSP}157, {chr(0x2212)}2 за сутки"}
     assert items["YouTube"]["level"] == "warning" and "свежие данные собрать не удаётся" in items["YouTube"]["text"]
     assert items["LinkedIn"]["level"] == "critical" and "профиль не читается" in items["LinkedIn"]["text"]
     assert "open_url" not in await tofs_status.build(db, config, {})

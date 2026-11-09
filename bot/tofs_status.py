@@ -20,7 +20,7 @@ import aiohttp
 from bot import platforms
 from bot.config import Config
 from bot.db import Database, parse_utc, utcnow
-from bot.monitors import profile
+from bot.monitors import followers, profile
 from bot.reporter import AUTO_STALE_DAYS, _fmt, _signed
 
 logger = logging.getLogger(__name__)
@@ -79,7 +79,8 @@ async def _item(db: Database, config: Config, platform, errors: dict) -> dict:
     if platform.id == "linkedin" and errors.get("linkedin_cookie_aging"):
         return {"name": name, "level": "warning",
                 "text": f"{head} — cookie живёт {errors['linkedin_cookie_aging']} дн., пора обновить"}
-    if yesterday and count < yesterday["count"]:
+    # The same bar as this bot's own drop alert: −2 of 1 157 is daily noise.
+    if yesterday and followers.is_drop(yesterday["count"], count):
         return {"name": name, "level": "warning", "text": head}
     return {"name": name, "level": "ok", "text": head}
 
