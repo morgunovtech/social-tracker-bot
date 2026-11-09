@@ -25,7 +25,7 @@ from bot.reporter import AUTO_STALE_DAYS, _fmt, _signed
 
 logger = logging.getLogger(__name__)
 
-TITLE = "📣 Соцсети"
+TITLE = "Соцсети"
 # The last collection's problems (a failed platform, LinkedIn cookie age):
 # the profile check between two collections must not forget them.
 LAST_ERRORS_KEY = "tofs_last_errors"
@@ -64,7 +64,9 @@ async def _item(db: Database, config: Config, platform, errors: dict) -> dict:
 
     count = latest["count"]
     yesterday = await db.get_by_date(platform.id, utcnow().date() - timedelta(days=1))
-    head = _fmt(count) + (f", {_signed(count - yesterday['count'])} за сутки" if yesterday else "")
+    # No change, nothing to say: «129, 0 за сутки» is a number that adds nothing.
+    change = count - yesterday["count"] if yesterday else 0
+    head = _fmt(count) + (f", {_signed(change)} за сутки" if change else "")
     try:
         age_days = (utcnow() - parse_utc(latest["collected_at"])).days
     except (ValueError, TypeError):
@@ -85,16 +87,29 @@ async def _item(db: Database, config: Config, platform, errors: dict) -> dict:
     return {"name": name, "level": "ok", "text": head}
 
 
+def _followers(n: int) -> str:
+    """подписчик / подписчика / подписчиков — as Russian counts them."""
+    if n % 10 == 1 and n % 100 != 11:
+        return "подписчик"
+    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        return "подписчика"
+    return "подписчиков"
+
+
 async def _title(db: Database, enabled) -> str:
-    """«📣 Соцсети · всего 16 860» — the sum of the last known counts, the
-    way TofsDevOps heads its sites «🌐 Веб-сервисы · 4/4». A network with
-    no data yet adds nothing; its own line says so."""
+    """«Соцсети · 16 860 подписчиков» — the sum of the last known counts:
+    the one thing the lines under the title do not say (TofsDevOps puts in
+    a block title only that, and shows status icons only). A network with no
+    data yet adds nothing; its own line says so."""
     known = []
     for platform in enabled:
         latest = await db.get_latest(platform.id)
         if latest is not None:
             known.append(latest["count"])
-    return f"{TITLE} · всего {_fmt(sum(known))}" if known else TITLE
+    if not known:
+        return TITLE
+    total = sum(known)
+    return f"{TITLE} · {_fmt(total)} {_followers(total)}"
 
 
 async def build(db: Database, config: Config, errors: dict | None = None, bot_username: str | None = None) -> dict:

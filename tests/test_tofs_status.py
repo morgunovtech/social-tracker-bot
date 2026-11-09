@@ -42,8 +42,8 @@ async def test_a_line_per_network_says_how_it_is(config, db, insert):
     insert("telegram", 12340)
     insert("linkedin", 4520, days_ago=10, source="manual")
     payload = await tofs_status.build(db, config, {}, "social_tracker_bot")
-    # The total of the last known counts heads the block, like «🌐 Веб-сервисы · 4/4».
-    assert payload["title"] == f"📣 Соцсети · всего 16{NBSP}860"
+    # The total of the last known counts heads the block — words only: TofsDevOps shows status icons only.
+    assert payload["title"] == f"Соцсети · 16{NBSP}860 подписчиков"
     assert payload["open_url"] == "https://t.me/social_tracker_bot"
     items = _by_name(payload)
     assert list(items) == ["Telegram", "YouTube", "LinkedIn"]
@@ -117,5 +117,18 @@ async def test_the_profile_check_refreshes_the_lines_without_a_mark(bot, config,
 
 async def test_no_data_no_total(config, db):
     payload = await tofs_status.build(db, config, {})
-    assert payload["title"] == "📣 Соцсети"                # nothing to add up yet
+    assert payload["title"] == "Соцсети"                   # nothing to add up yet
     assert len(payload["title"]) <= 40                     # TofsDevOps cuts a longer title
+
+
+def test_followers_are_counted_in_russian():
+    assert [tofs_status._followers(n) for n in (1, 2, 5, 11, 21, 22, 112, 6227)] == [
+        "подписчик", "подписчика", "подписчиков", "подписчиков", "подписчик", "подписчика", "подписчиков",
+        "подписчиков"]
+
+
+async def test_no_change_no_zero(config, db, insert):
+    """«129, 0 за сутки» says nothing the number does not."""
+    insert("youtube", 129, days_ago=1)
+    insert("youtube", 129)
+    assert _by_name(await tofs_status.build(db, config, {}))["YouTube"]["text"] == "129"
