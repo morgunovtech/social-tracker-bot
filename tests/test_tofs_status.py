@@ -58,7 +58,7 @@ async def test_problems_are_lines_too(config, db, insert):
     items = _by_name(await tofs_status.build(db, config, {"youtube": True}))
     assert items["Telegram"]["level"] == "warning" and f"{chr(0x2212)}400 за сутки" in items["Telegram"]["text"]
     # A small daily dip is not a problem: the same bar as the drop alert.
-    insert("telegram", 11998)
+    await db.upsert("telegram", 11998)                                   # one row per day: update today
     items = _by_name(await tofs_status.build(db, config, {}))
     assert items["Telegram"]["level"] == "warning"                      # still −402 vs yesterday
     insert("youtube", 1159, days_ago=1)
