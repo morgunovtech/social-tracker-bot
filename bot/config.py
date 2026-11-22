@@ -106,6 +106,11 @@ class Config:
     youtube_api_key: str | None
     youtube_channel_id: str | None
 
+    # Instagram (optional: off without a username). The access token comes
+    # from /igtoken (stored and refreshed in the DB) or from env.
+    instagram_username: str | None
+    instagram_access_token: str | None
+
     # LinkedIn (optional: off without a profile URL)
     linkedin_profile_url: str | None
     linkedin_li_at: str | None  # 'li_at' cookie from logged-in browser session
@@ -148,6 +153,8 @@ class Config:
             telegram_channel_id=os.getenv("TELEGRAM_CHANNEL_ID") or None,
             youtube_api_key=os.getenv("YOUTUBE_API_KEY") or None,
             youtube_channel_id=os.getenv("YOUTUBE_CHANNEL_ID") or None,
+            instagram_username=(os.getenv("INSTAGRAM_USERNAME") or "").strip().lstrip("@") or None,
+            instagram_access_token=os.getenv("INSTAGRAM_ACCESS_TOKEN") or None,
             linkedin_profile_url=os.getenv("LINKEDIN_PROFILE_URL") or None,
             linkedin_li_at=os.getenv("LINKEDIN_LI_AT"),
             linkedin_stale_days=int(os.getenv("LINKEDIN_STALE_DAYS", "7")),

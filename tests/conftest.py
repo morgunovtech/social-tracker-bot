@@ -12,6 +12,8 @@ os.environ.update({
     "TELEGRAM_CHANNEL_ID": "@test_channel",
     "YOUTUBE_API_KEY": "test-key",
     "YOUTUBE_CHANNEL_ID": "UCtest",
+    "INSTAGRAM_USERNAME": "",
+    "INSTAGRAM_ACCESS_TOKEN": "",
     "LINKEDIN_PROFILE_URL": "https://www.linkedin.com/in/test/",
     "LINKEDIN_LI_AT": "",
     "LINKEDIN_STALE_DAYS": "7",

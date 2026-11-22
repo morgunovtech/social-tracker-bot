@@ -56,7 +56,12 @@ CREATE TABLE IF NOT EXISTS security_events (
 """
 
 # Settings that must never leave the server (wiped from off-site backups).
-_SECRET_SETTINGS = ("linkedin_li_at",)
+_SECRET_SETTINGS = ("linkedin_li_at", "instagram_token")
+# Each secret with the settings that describe it (when it was set, when it dies).
+_SECRET_KEYS: dict[str, tuple[str, ...]] = {
+    "linkedin_li_at": ("linkedin_li_at", "linkedin_li_at_set_at"),
+    "instagram_token": ("instagram_token", "instagram_token_set_at", "instagram_token_expires_at"),
+}
 
 
 def _check_backup(path: str) -> None:
@@ -73,8 +78,8 @@ def _check_backup(path: str) -> None:
         raise ValueError("в файле нет таблиц бота")
 
 
-async def _scalar(db: aiosqlite.Connection, sql: str):
-    row = await (await db.execute(sql)).fetchone()
+async def _scalar(db: aiosqlite.Connection, sql: str, params: tuple = ()):
+    row = await (await db.execute(sql, params)).fetchone()
     return row[0]
 
 
@@ -132,9 +137,11 @@ class Database:
                     SELECT platform, count, source, collected_at FROM backup.followers
                     """
                 )
-                cookie_keys = ("linkedin_li_at", "linkedin_li_at_set_at")
-                has_cookie = await _scalar(db, "SELECT COUNT(*) FROM settings WHERE key = 'linkedin_li_at'")
-                skip = cookie_keys if has_cookie else ()
+                # A live secret keeps its own dates: the backup has only the dates.
+                skip: tuple[str, ...] = ()
+                for secret, keys in _SECRET_KEYS.items():
+                    if await _scalar(db, "SELECT COUNT(*) FROM settings WHERE key = ?", (secret,)):
+                        skip += keys
                 await db.execute(
                     f"""
                     INSERT OR IGNORE INTO settings (key, value)

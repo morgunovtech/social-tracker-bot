@@ -30,6 +30,7 @@ from bot.config import DOW_ORDER, Config, normalize_dow, normalize_tz
 from bot.db import Database, utcnow
 from bot.monitors import NO_PREVIEW, hygiene
 from bot.platforms import BY_ID, PLATFORM_IDS
+from bot.platforms import instagram as ig
 from bot.platforms.linkedin import collect_linkedin, plausible_count
 from bot.reporter import _fmt
 from bot.scheduler import (
@@ -502,6 +503,81 @@ async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 @_admin_only
+async def cmd_igtoken(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config, db = _deps(context)
+
+    if not context.args:
+        await update.message.reply_text(
+            "Пришли токен вместе с командой: /igtoken <токен>\n\n"
+            "Где взять: developers.facebook.com → твоё приложение → Instagram → "
+            "«API setup with Instagram login» → Generate token. Сообщение с токеном я сразу удалю."
+        )
+        return
+
+    # The token is a secret: out of the chat history before any check can bail out.
+    chat = update.effective_chat
+    deleted = True
+    try:
+        await update.message.delete()
+    except Exception:
+        deleted = False
+    note = "" if deleted else "\n⚠️ Удалить сообщение с токеном не получилось — удали его из чата вручную."
+
+    token = "".join(context.args).strip()
+    if len(token) < 50:
+        await chat.send_message(f"❌ Это не похоже на токен: значение слишком короткое.{note}")
+        return
+
+    if not config.instagram_username:
+        await chat.send_message(f"❌ Не задан INSTAGRAM_USERNAME — Instagram не подключён.{note}")
+        return
+
+    await chat.send_message("⏳ Проверяю токен…")
+
+    async with aiohttp.ClientSession() as session:
+        try:
+            user = await ig.fetch_user(session, token)
+        except ig.InstagramAuthError:
+            user = None
+            reason = "Instagram отклонил токен"
+        except Exception:
+            logger.exception("Instagram token check failed")
+            user = None
+            reason = "не удалось связаться с Instagram (подробности в логах)"
+        else:
+            reason = "Instagram не ответил (подробности в логах)"
+
+    if user is None:
+        await chat.send_message(
+            f"❌ Токен не сохранён: {reason}.\n"
+            f"Проверь, что значение скопировано целиком, без лишних символов.{note}"
+        )
+        return
+
+    username = str(user.get("username") or "")
+    if username.lower() != config.instagram_username.lower():
+        await chat.send_message(
+            f"❌ Токен не сохранён: он от аккаунта @{username or '?'}, "
+            f"а в INSTAGRAM_USERNAME указан @{config.instagram_username}.{note}"
+        )
+        return
+
+    await ig.store_token(db, token)
+    await db.set_setting("instagram_token_alerted", "0")  # a fresh token re-arms the alert
+    try:
+        count = int(user["followers_count"])
+    except (KeyError, TypeError, ValueError):
+        count = None
+    if count is not None:
+        await db.upsert("instagram", count, source="api")
+        fetched = f"Проверка прошла: @{username}, {_fmt(count)} подписчиков."
+    else:
+        fetched = f"Проверка прошла: @{username}, но число подписчиков API не вернул."
+    screen = (await ui.instagram(db, config)).noted(f"✅ Токен сохранён. {fetched}{note}")
+    await chat.send_message(screen.text, **_markup(screen))
+
+
+@_admin_only
 async def cmd_cookieage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config, db = _deps(context)
     await _reply(update, await ui.linkedin(db, config))
@@ -744,6 +820,11 @@ async def _cb_linkedin(press: _Press, context, args: list[str]) -> None:
     await _show(press.query, screen)
 
 
+async def _cb_instagram(press: _Press, context, args: list[str]) -> None:
+    config, db = _deps(context)
+    await _show(press.query, await ui.instagram(db, config))
+
+
 async def _cb_help(press: _Press, context, args: list[str]) -> None:
     await _show(press.query, ui.help_screen())
 
@@ -758,6 +839,7 @@ _ROUTES: dict[str, Route] = {
     ui.SETTINGS: _cb_settings,
     ui.MONITORS: _cb_monitors,
     ui.LINKEDIN: _cb_linkedin,
+    ui.INSTAGRAM: _cb_instagram,
     ui.HELP: _cb_help,
 }
 # Screen ids of the menu before the redesign: their buttons stay in the chat history.
@@ -865,6 +947,7 @@ COMMANDS = {
     "settz": cmd_settz,
     "setquiet": cmd_setquiet,
     "setcookie": cmd_setcookie,
+    "igtoken": cmd_igtoken,
     "cookieage": cmd_cookieage,
     "restore": cmd_restore,
 }

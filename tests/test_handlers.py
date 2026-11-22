@@ -176,7 +176,7 @@ async def test_history_command(make_update, make_context, insert):
         assert "от 1 до 90" in update.message.replies[0]
 
     update = make_update()
-    await handlers.cmd_history(update, make_context("instagram", "7"))
+    await handlers.cmd_history(update, make_context("tiktok", "7"))
     assert "Неизвестная платформа" in update.message.replies[0]
 
 

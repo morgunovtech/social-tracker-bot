@@ -38,7 +38,7 @@ SENDERS: tuple[tuple[str, str, str | None], ...] = (
     ("youtube.com", "YouTube", "youtube"),
     ("linkedin.com", "LinkedIn", "linkedin"),
     ("telegram.org", "Telegram", "telegram"),
-    ("instagram.com", "Instagram", None),
+    ("instagram.com", "Instagram", "instagram"),
     ("facebookmail.com", "Facebook", None),
     ("tiktok.com", "TikTok", None),
     ("x.com", "X", None),
