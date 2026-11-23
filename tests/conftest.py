@@ -36,8 +36,12 @@ os.environ.update({
     "GITHUB_TOKEN": "",
     "SECURITY_MAIL_URL": "",
     "SECURITY_MAIL_TOKEN": "",
+    "ANTHROPIC_API_KEY": "",
+    "COMMENTS_MODEL": "",
+    "COMMENTS_CHAT_ID": "",
 })
 
+import asyncio  # noqa: E402
 import dataclasses  # noqa: E402
 import sqlite3  # noqa: E402
 from datetime import timedelta  # noqa: E402
@@ -63,6 +67,14 @@ class FakeBot:
         self.markups: list = []
         self.photos: list[dict] = []
         self.documents: list[dict] = []
+        # The discussion group (tests/test_comments.py): what the bot did there.
+        self.deleted: list[tuple[int, int]] = []
+        self.banned: list[tuple[int, int]] = []
+        self.unbanned: list[tuple[int, int]] = []
+        self.files: dict[str, bytes] = {}
+        self.chats: dict = {}
+        self.admins: list = []
+        self.fail_with: Exception | None = None
 
     async def send_message(self, chat_id, text, **kwargs):
         self.messages.append(text)
@@ -77,6 +89,33 @@ class FakeBot:
             "document": document, "filename": filename, "caption": caption,
             "silent": bool(kwargs.get("disable_notification")),
         })
+
+    async def get_chat(self, chat_id):
+        return self.chats[chat_id]
+
+    async def get_chat_administrators(self, chat_id):
+        return self.admins
+
+    async def get_file(self, file_id):
+        data = self.files[file_id]
+
+        async def download_as_bytearray():
+            return bytearray(data)
+
+        return SimpleNamespace(file_size=len(data), download_as_bytearray=download_as_bytearray)
+
+    async def delete_message(self, chat_id, message_id):
+        if self.fail_with:
+            raise self.fail_with
+        self.deleted.append((chat_id, message_id))
+
+    async def ban_chat_member(self, chat_id, user_id, **kwargs):
+        if self.fail_with:
+            raise self.fail_with
+        self.banned.append((chat_id, user_id))
+
+    async def unban_chat_member(self, chat_id, user_id, **kwargs):
+        self.unbanned.append((chat_id, user_id))
 
 
 class FakeMessage:
@@ -113,6 +152,19 @@ class FakeSent:
     async def edit_text(self, text, **kwargs):
         self.parent.replies.append(text)
         self.parent.markups.append(kwargs.get("reply_markup"))
+
+
+class FakeApplication:
+    """application.create_task as the handlers use it: the coroutine runs as a
+    task on the loop, and a test awaits .tasks[-1] to see its effect."""
+
+    def __init__(self):
+        self.tasks: list[asyncio.Task] = []
+
+    def create_task(self, coroutine, update=None):
+        task = asyncio.ensure_future(coroutine)
+        self.tasks.append(task)
+        return task
 
 
 class FakeChat:
@@ -203,6 +255,6 @@ def make_context(bot, config, db):
         bot_data = {"config": config, "db": db}
         if scheduler is not None:
             bot_data["scheduler"] = scheduler
-        return SimpleNamespace(bot=bot, bot_data=bot_data, args=list(args))
+        return SimpleNamespace(bot=bot, bot_data=bot_data, args=list(args), application=FakeApplication())
 
     return _make

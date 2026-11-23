@@ -30,6 +30,7 @@ The bot is modular: connect only the platforms you have, and switch monitors on 
 
 - **Profile integrity**, every 30 minutes: a hijacked channel is renamed, gets a scam link in its description, a new admin or loses its videos long before the follower count moves. The bot alerts on a changed title or name, @username, description or bio, avatar, a new or removed Telegram admin, a changed owner, a mass drop in YouTube videos or Instagram posts, and a profile that stops being readable. A link that appears in a description is marked 🚨: that is the classic hijack payload.
 - **Security emails** (optional, needs the [mail-worker](mail-worker/README.md)): forward your accounts' security notifications to a Cloudflare Email Worker, and the bot alerts within 5 minutes on a new sign-in, a password, email or 2FA change, a password reset request or a login code you didn't ask for, with recovery links. Links quoted from a mail or a changed description are defanged (`hxxps://evil[.]example`), so nothing in an alert is a clickable scam link. Gmail's forwarding confirmation code is relayed to you.
+- **Comments of the channel** (optional, needs `ANTHROPIC_API_KEY`): make the bot an admin of the channel's discussion group, and it looks at every comment with a Claude model and sends you a card for anything the whole group can be blocked for — drug sales, pornography, sexualization of minors, extremism, fraud — with the text, the author, why it was flagged and three buttons: 🗑 delete, 🔨 delete and ban, ✅ all fine. Spam is reported quietly (that is Defensy's job). **The bot only reports; nothing is deleted or banned without your tap.** Your taps are the marks the accuracy table in `/comments` is built from — the measurement any automatic action would have to be calibrated on first. A dangerous category at ≥ 70 % rings (🚨); the rest waits for the digest. The group's admins and your own comments are never reviewed. When the API is down you hear once, and once when it is back; a failure is «could not check», never «fine».
 - **Hygiene checklist** (`/security`): per account — 2FA and its kind, backup codes, recovery contacts, a unique password, the last password change; for Telegram, its own list — cloud password, its recovery email, only your own sessions, a unique password. A score out of 10 in every report, and a reminder at most once a month with what to fix. No network exposes this to third-party apps, so these are your own marks: **the bot never asks for a password.**
 
 ## Privacy
@@ -46,6 +47,7 @@ What leaves your server and what does not, as the code does it:
 | Your own site (`SITE_INGEST_URL`) | The final follower counts, POSTed with a Bearer token. Only when set. |
 | OSV (`api.osv.dev`) | On Sundays, the names and versions of the bot's packages, to report known vulnerabilities. `UPDATE_WATCH=0` turns it off. |
 | Your mail-worker | The bot fetches the security emails you forwarded yourself; the worker accepts only the senders in `ALLOWED_SENDERS`. |
+| Claude API (`api.anthropic.com`) | Every new comment in the channel's discussion group — its text and picture (or a video / sticker thumbnail), the group's title, and whether it is the author's first message or a forward. No user id, name or @username. Only with `ANTHROPIC_API_KEY`, and only for a group the bot is an admin of; comments are public to begin with. Anthropic's API data retention applies to what is sent. |
 
 Everything else stays with you: follower history, profile baselines, checklist answers and security events live in SQLite on your volume. The Instagram token and the LinkedIn cookie are stored there too; the message carrying either is deleted from the chat at once, and the Sunday backup is made without them. Only the owner — the first `/start`, or `ADMIN_CHAT_ID` when set — can use the bot. Logs carry no Bot API URL with the token (the httpx logger stays at WARNING). Links quoted from mails and profile descriptions are defanged in alerts (`hxxps://evil[.]example`) and previews are off. Details: [SECURITY.md](SECURITY.md).
 
@@ -58,6 +60,7 @@ Everything else stays with you: follower history, profile baselines, checklist a
 4. **LinkedIn (optional).** Your profile URL → `LINKEDIN_PROFILE_URL`. Then either send the bot `/setcookie <li_at>` with the `li_at` cookie of a logged-in browser (DevTools → Application → Cookies → linkedin.com) — the bot checks it, deletes your message and watches the cookie's age — or enter the number by hand with the «✏️ Enter LinkedIn count» button on the home screen.
 
 5. **Security emails (optional).** Deploy the [mail-worker](mail-worker/README.md) → `SECURITY_MAIL_URL`, `SECURITY_MAIL_TOKEN`, and set up forwarding in your mailbox.
+6. **Comments of the channel (optional).** An API key from [console.anthropic.com](https://console.anthropic.com/) → `ANTHROPIC_API_KEY`; add the bot to the channel's discussion group as an **admin with the rights to delete messages and ban members** (the group is found through the channel; `COMMENTS_CHAT_ID` names one explicitly). The model is `claude-opus-5-5` unless `COMMENTS_MODEL` says otherwise. Switch it off any time in `/modules`.
 
 > ⚠️ **About LinkedIn.** There is no official API for a personal profile's follower count, so the bot opens your profile page with your cookie, once a day. LinkedIn's User Agreement prohibits automated access: use it at your own risk, LinkedIn may restrict the account. Leave the cookie out and type the number in by hand if you'd rather not take that risk.
 
@@ -89,7 +92,8 @@ Everything is a button away; the «🏠 Menu» button under the input field alwa
 │   ├── 🖼 30-day chart
 │   └── 📋 Day by day — platform and period switched on the same screen
 ├── 🛡 Security — score, each account, what to do first, recent events
-│   └── an account's checklist → one question at a time, with why it matters
+│   ├── an account's checklist → one question at a time, with why it matters
+│   └── 💬 Channel comments — mode, how many were checked, the accuracy of your marks
 ├── ✏️ Enter LinkedIn — only while the number is typed in by hand
 ├── ⚙️ Settings — report days (checkboxes), report hour (a grid), time zone, quiet mode
 │   ├── 🔔 When to write — quiet hours (presets), «🔕 Mute» for an hour, four, eight or a day
@@ -115,6 +119,7 @@ The `/` menu lists the six entry points; the rest are for typing.
 | `/help` | How the bot works, the icons, every command |
 | `/stats` | The home screen without the greeting |
 | `/modules` | Connected platforms; switch monitors on and off |
+| `/comments` | The channel's comments: mode, how many were checked, the accuracy table of your marks |
 | `/history [platform] [days]` | Day-by-day table for one platform or `all`, up to 90 days (the combined table keeps the latest days that fit one message) |
 | `/linkedin <number>` | Enter the LinkedIn number by hand |
 | `/settime HH:MM`, `/setday <days>` | Report time and day(s) in your time zone: `sat`, `mon,thu`, `mon-fri`, `daily`; without an argument, the picker |
@@ -163,8 +168,8 @@ Every message to you goes through one door (`bot/notifier.py`) with three priori
 
 | | Rings | Examples |
 |---|---|---|
-| **Critical** — 🚨 🔴 | yes, through quiet hours and `/mute` | a new admin or owner, a link in the description, a drop in videos or posts, a profile that stopped being readable; a new sign-in, a changed or reset password, a changed email or 2FA |
-| **Normal** — 🟠 ⚠️ 🎯 📨 | no; waits during quiet hours and a mute | a changed title, description or avatar; a login code, an unrecognised mail; a drop in followers, a bot influx, a milestone; an expired cookie or rejected token, a failure streak, the mail worker down; a failed deploy; «🔄 The bot has been updated» |
+| **Critical** — 🚨 🔴 | yes, through quiet hours and `/mute` | a new admin or owner, a link in the description, a drop in videos or posts, a profile that stopped being readable; a new sign-in, a changed or reset password, a changed email or 2FA; a comment the group gets blocked for, at ≥ 70 % confidence |
+| **Normal** — 🟠 ⚠️ 🎯 📨 | no; waits during quiet hours and a mute | a changed title, description or avatar; a login code, an unrecognised mail; a drop in followers, a bot influx, a milestone; an expired cookie or rejected token, a failure streak, the mail worker down; a spam comment or a low-confidence card, the comment check down or back; a failed deploy; «🔄 The bot has been updated» |
 | **Digest** — 📊 | no; waits only during a mute | the weekly report and its chart, the monthly digest, the hygiene reminder, the backup, the Sunday vulnerabilities notice |
 
 - **Quiet hours** are off by default: ⚙️ Settings → 🔔 When to write, presets 23:00–08:00 and 00:00–09:00 in your time zone. The weekly report is a digest itself, so it still comes at its time.
@@ -190,6 +195,7 @@ The bot keeps itself up to date without touching its own container:
 - For Instagram: a Meta app with the Instagram API use case, a business portfolio it belongs to, a «Facebook Login for Business» configuration and the Instagram Tester role on your account. Teardown: remove the app on [developers.facebook.com](https://developers.facebook.com/apps/) (Settings → Basic → Remove app), the portfolio in Meta Business Suite → Business settings → Business info, and the app under Instagram → Settings → Website permissions.
 - Optionally a [healthchecks.io](https://healthchecks.io) check (`HEALTHCHECK_URL`) and your own site's ingest endpoint (`SITE_INGEST_URL`).
 - Optionally, for security emails: a Cloudflare Worker, a KV namespace, an Email Routing rule with its DNS records, and a forwarding address + filter in your mailbox — listed with teardown steps in [mail-worker/README.md](mail-worker/README.md).
+- Optionally, for the comments: an API key in an Anthropic Console organization (`ANTHROPIC_API_KEY`), billed per comment checked; revoke it in the Console to tear down.
 
 ## Development
 
