@@ -195,6 +195,20 @@ The bot keeps itself up to date without touching its own container:
 
 `UPDATE_WATCH=0` turns the notices off. On Railway the commit and the repository come from its own variables; elsewhere set `GITHUB_REPOSITORY` and build with `--build-arg APP_COMMIT=$(git rev-parse HEAD)`.
 
+## Deleted accounts among the subscribers
+
+Telegram says deleted accounts leave member lists by themselves; in practice they stay for months and pad the count. The Bot API cannot list members, so the cleanup is a separate script on MTProto, run by hand from your laptop, never by the bot:
+
+```bash
+pip install telethon
+export TELEGRAM_API_ID=… TELEGRAM_API_HASH=…   # my.telegram.org → API development tools
+export BOT_TOKEN=…                             # for --session bot
+python scripts/clean_deleted.py @your_channel          # dry run: how many
+python scripts/clean_deleted.py @your_channel --yes    # remove them
+```
+
+`--session bot` uses the bot's own account (it must be a channel admin); if Telegram refuses to list a channel's subscribers to a bot, `--session user` logs in with your own account once and keeps the session in `~/.social-tracker-clean-user.session`. One kick at a time with a pause; a long FloodWait stops the run, rerun later. The next day's report shows the drop — a true one — as a quiet 🟠 alert.
+
 ## What it creates outside the repo
 
 - A Telegram bot (@BotFather) and, if you use it, a YouTube Data API key in a Google Cloud project.

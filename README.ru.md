@@ -243,6 +243,20 @@ LinkedIn — 4 981
 
 `UPDATE_WATCH=0` выключает уведомления. На Railway коммит и репозиторий берутся из его собственных переменных; в другом месте задайте `GITHUB_REPOSITORY` и собирайте с `--build-arg APP_COMMIT=$(git rev-parse HEAD)`.
 
+## Удалённые аккаунты в подписчиках
+
+Telegram обещает, что удалённые аккаунты сами уходят из списков; на деле они висят месяцами и раздувают число. Bot API список участников не отдаёт, поэтому чистка — отдельный скрипт на MTProto, который вы запускаете руками с ноутбука, а не бот:
+
+```bash
+pip install telethon
+export TELEGRAM_API_ID=… TELEGRAM_API_HASH=…   # my.telegram.org → API development tools
+export BOT_TOKEN=…                             # для --session bot
+python scripts/clean_deleted.py @your_channel          # прогон без изменений: сколько их
+python scripts/clean_deleted.py @your_channel --yes    # удалить
+```
+
+`--session bot` работает от аккаунта бота (он должен быть админом канала); если Telegram не отдаёт боту список подписчиков канала, `--session user` один раз входит под вашим аккаунтом и держит сессию в `~/.social-tracker-clean-user.session`. По одному удалению с паузой; длинный FloodWait останавливает прогон, повторите позже. В отчёте на следующий день будет падение — честное — тихим 🟠 алертом.
+
 ## Что создаётся вне репозитория
 
 - Telegram-бот (@BotFather) и, если нужен YouTube, API-ключ в проекте Google Cloud.

@@ -2,6 +2,11 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.3.1 — unreleased
+
+**Deleted accounts among the subscribers**
+- `scripts/clean_deleted.py`: remove deleted accounts from the channel's subscribers over MTProto (Telethon), by hand from a laptop, dry run by default; `--session bot` or `--session user`. Not part of the bot: the Bot API cannot list members.
+
 ## 1.3.0 — 2026-11-23
 
 Life of the channel without TGStat in the admins, and the group router that #43 left unreachable.
