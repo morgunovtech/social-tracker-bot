@@ -2,6 +2,11 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.3.1 — unreleased
+
+**Deleted accounts among the subscribers**
+- `scripts/clean_deleted.py`: remove deleted accounts from the channel's subscribers over MTProto (Telethon), by hand from a laptop, dry run by default; `--session bot` or `--session user`. Not part of the bot: the Bot API cannot list members.
+
 ## 1.3.0 — 2026-11-23
 
 Life of the channel without TGStat in the admins, and the group router that #43 left unreachable.
@@ -12,9 +17,6 @@ Life of the channel without TGStat in the admins, and the group router that #43 
 - Nothing new is alerted (a drop in followers is still the followers monitor's job). Switched off in `/modules`, nothing is recorded — a join names a person. The Sunday backup carries the history and `/restore` merges it back.
 - Views, forwards and the citation index are not in the Bot API; the screen says so and points at Telegram's own statistics.
 - The bot now asks Telegram for `chat_member` and `message_reaction_count` updates explicitly: they are not delivered unless requested.
-
-**Deleted accounts among the subscribers**
-- `scripts/clean_deleted.py`: remove deleted accounts from the channel's subscribers over MTProto (Telethon), by hand from a laptop, dry run by default; `--session bot` or `--session user`. Not part of the bot: the Bot API cannot list members.
 
 **Fixed**
 - The handler that keeps group and channel traffic away from the owner-only handlers (#43) shared a handler group with the stale-message filter; python-telegram-bot runs one handler per group, so it never ran: comments were not reviewed and every stranger's message in the group got «⛔ Access denied». Each early handler now has a group of its own, and a test checks what runs first.
