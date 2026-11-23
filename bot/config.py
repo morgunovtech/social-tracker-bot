@@ -107,7 +107,7 @@ class Config:
     youtube_channel_id: str | None
 
     # Instagram (optional: off without a username). The access token comes
-    # from /igtoken (stored and refreshed in the DB) or from env.
+    # from /igtoken (stored in the DB) or from env.
     instagram_username: str | None
     instagram_access_token: str | None
 

@@ -509,8 +509,8 @@ async def cmd_igtoken(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not context.args:
         await update.message.reply_text(
             "Пришли токен вместе с командой: /igtoken <токен>\n\n"
-            "Где взять: developers.facebook.com → твоё приложение → Instagram → "
-            "«API setup with Instagram login» → Generate token. Сообщение с токеном я сразу удалю."
+            "Где взять: developers.facebook.com → твоё приложение → Instagram API → "
+            "«API setup with Unified login» → Generate token. Сообщение с токеном я сразу удалю."
         )
         return
 
@@ -536,33 +536,32 @@ async def cmd_igtoken(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     async with aiohttp.ClientSession() as session:
         try:
-            user = await ig.fetch_user(session, token)
+            user_id = await ig.resolve_account(session, token, config.instagram_username)
+            user = await ig.fetch_user(session, token, user_id) if user_id else None
         except ig.InstagramAuthError:
-            user = None
+            user_id = user = None
             reason = "Instagram отклонил токен"
         except Exception:
             logger.exception("Instagram token check failed")
-            user = None
+            user_id = user = None
             reason = "не удалось связаться с Instagram (подробности в логах)"
         else:
-            reason = "Instagram не ответил (подробности в логах)"
+            reason = (
+                f"токен выдан не для @{config.instagram_username} — проверь INSTAGRAM_USERNAME "
+                "и какой аккаунт добавлен в приложение Meta"
+                if user_id is None
+                else "Instagram не ответил (подробности в логах)"
+            )
 
-    if user is None:
+    if user_id is None or user is None:
         await chat.send_message(
             f"❌ Токен не сохранён: {reason}.\n"
             f"Проверь, что значение скопировано целиком, без лишних символов.{note}"
         )
         return
 
-    username = str(user.get("username") or "")
-    if username.lower() != config.instagram_username.lower():
-        await chat.send_message(
-            f"❌ Токен не сохранён: он от аккаунта @{username or '?'}, "
-            f"а в INSTAGRAM_USERNAME указан @{config.instagram_username}.{note}"
-        )
-        return
-
-    await ig.store_token(db, token)
+    username = str(user.get("username") or config.instagram_username)
+    await ig.store_token(db, token, user_id)
     await db.set_setting("instagram_token_alerted", "0")  # a fresh token re-arms the alert
     try:
         count = int(user["followers_count"])

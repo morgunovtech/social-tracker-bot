@@ -132,9 +132,6 @@ async def build_report(
         lines += ["", "⚠️ Instagram подключён, но токена нет — пришли его через /igtoken"]
     elif errors.get("instagram_token_expired"):
         lines += ["", "⚠️ Instagram отклонил токен — пришли новый через /igtoken"]
-    elif errors.get("instagram_token_expiring") is not None:
-        left = errors["instagram_token_expiring"]
-        lines += ["", f"⏰ Токен Instagram истекает через {left} дн., продлить не удаётся — пришли новый: /igtoken"]
 
     total_current = 0
     total_yesterday: int | None = 0
