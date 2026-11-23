@@ -312,6 +312,19 @@ async def test_monthly_digest_and_sunday_backup(bot, config, db, insert, fake_co
     assert bot.documents and bot.documents[0]["filename"] == "followers-2026-11-01.db"
 
 
+async def test_the_backup_and_the_report_date_follow_the_owners_zone(bot, config, db, insert, fake_collect, job_scheduler, monkeypatch):
+    """Saturday 20:30 UTC is Sunday 01:30 in Tashkent: the backup goes out, and
+    the report is dated Sunday — the follower rows alone stay on UTC days."""
+    insert("telegram", 1000, 0)
+    await db.set_setting("report_tz", "Asia/Tashkent")
+    await db.set_setting("report_dow", "*")
+    monkeypatch.setattr(scheduler, "utcnow", lambda: datetime(2026, 11, 7, 20, 30, tzinfo=UTC))
+    await _scheduled_job(bot, config, db, job_scheduler)
+    assert bot.documents and bot.documents[0]["filename"] == "followers-2026-11-08.db"
+    report, _ = await scheduler.build_stats(db, config)
+    assert report.startswith("📊 Подписчики · 08.11.2026")
+
+
 async def test_backup_has_no_cookie(bot, config, db):
     await db.set_setting("linkedin_li_at", COOKIE)
     await db.upsert("telegram", 1000)

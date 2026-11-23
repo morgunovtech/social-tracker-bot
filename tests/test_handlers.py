@@ -244,6 +244,13 @@ async def test_chart_button_without_data_explains_why(make_update, make_context,
     assert "мало данных" in query.answers[0]["text"] and bot.photos == []
 
 
+async def test_an_event_without_a_detail_does_not_break_the_security_screen(make_update, make_context, db):
+    await db.add_event("mail:empty", "Google", "new_login", "")
+    update = make_update()
+    await handlers.cmd_security(update, make_context())
+    assert "Последние события" in update.message.replies[0]
+
+
 async def test_stats_show_the_security_score_while_hygiene_is_on(make_update, make_context, db, insert):
     insert("telegram", 1000, 0)
     update = make_update()

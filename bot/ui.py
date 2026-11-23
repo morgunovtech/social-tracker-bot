@@ -393,7 +393,7 @@ async def security(db: Database, config: Config, top: int = 5) -> Screen:
         lines += ["", t("<b>Последние события</b>")]
         for e in events:
             day = parse_utc(e["occurred_at"]).strftime("%d.%m")
-            lines.append(f"• {day} {esc(e['detail'].splitlines()[0])}")
+            lines.append(f"• {day} {esc((e['detail'].splitlines() or [''])[0])}")
     lines += ["", t("Нажми на аккаунт, чтобы отметить пункты. Пароли я не спрашиваю и не храню.")]
     rows.append([_button(t("💬 Комментарии канала"), COMMENTS)])
     rows.append(_back(HOME, t("Главная")))

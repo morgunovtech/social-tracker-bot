@@ -5,7 +5,7 @@ import logging
 import os
 import tempfile
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import aiohttp
@@ -133,11 +133,13 @@ async def build_stats(
 ) -> tuple[str, bool]:
     """The follower report, the channel's week (when the channel monitor is
     on and has data) and the security score line (when hygiene is on)."""
+    tz = await get_report_tz(db, config)
     report, has_change = await build_report(
         db,
         errors=errors,
         linkedin_stale_days=config.linkedin_stale_days,
         platforms=config.enabled_platforms,
+        shown_date=utcnow().astimezone(tz).date(),
     )
     channel_line = await channel.report_line(db, config)
     if channel_line:
@@ -237,8 +239,9 @@ async def _build_chart_png(db: Database, days: int = 30) -> bytes | None:
     return await asyncio.to_thread(render_chart, series)
 
 
-async def _send_backup(bot: Bot, config: Config, db: Database) -> None:
-    """Weekly DB backup straight into the admin chat — free offsite storage.
+async def _send_backup(bot: Bot, config: Config, db: Database, today: date | None = None) -> None:
+    """Weekly DB backup straight into the admin chat — free offsite storage;
+    today (the owner's local date) names the file.
 
     The LinkedIn cookie and the Instagram token are wiped from the copy:
     /setcookie and /igtoken delete them from the chat, so the backup must not
@@ -250,9 +253,8 @@ async def _send_backup(bot: Bot, config: Config, db: Database) -> None:
             await db.snapshot_without_secrets(path)
             with open(path, "rb") as f:
                 data = f.read()
-        today = utcnow().date().isoformat()
         await notifier.send_document(
-            bot, config, db, data, f"followers-{today}.db",
+            bot, config, db, data, f"followers-{(today or utcnow().date()).isoformat()}.db",
             t(
                 "📦 Еженедельный бэкап базы. Чтобы вернуть из него историю, ответь на это сообщение "
                 "командой /restore. LinkedIn cookie и токен Instagram в копию не входят: после "
@@ -343,10 +345,10 @@ async def _scheduled_job(
                 logger.exception("Collection failure notice failed")
         return
 
-    now = utcnow()
-    today = now.date()  # follower days, the monthly digest and the backup stay in UTC
-    # The report time and days are in the owner's zone.
-    local_now = now.astimezone(await get_report_tz(db, config))
+    # The report time and days, the 1st of the month and the Sunday of the
+    # backup are in the owner's zone; the follower rows stay on UTC days.
+    local_now = utcnow().astimezone(await get_report_tz(db, config))
+    today = local_now.date()
     if attempt == 1:
         await db.set_setting(LAST_DAILY_RUN_KEY, local_now.date().isoformat())
     await tofs_status.remember_errors(db, outcome.errors)
@@ -408,7 +410,7 @@ async def _scheduled_job(
     # Monthly digest on the 1st
     if today.day == 1:
         try:
-            digest = await build_month_report(db)
+            digest = await build_month_report(db, today)
             if digest:
                 await notifier.send(bot, config, db, digest, Priority.DIGEST)
                 logger.info("Monthly digest sent")
@@ -417,7 +419,7 @@ async def _scheduled_job(
 
     # Weekly on Sundays: DB backup, then vulnerabilities / PRs waiting for a human
     if today.weekday() == 6:
-        await _send_backup(bot, config, db)
+        await _send_backup(bot, config, db, today)
         try:
             await run_dependency_watch(bot, config, db)
         except Exception:

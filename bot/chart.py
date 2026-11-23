@@ -14,13 +14,15 @@ def render_chart(series: dict[str, list[tuple[datetime, int]]]) -> bytes | None:
 
     Returns None when matplotlib is unavailable or there is not enough data
     (fewer than 2 points everywhere), so callers can silently skip the photo.
+
+    The object API, not pyplot: this runs in a worker thread, and the
+    scheduled report and the «🖼 График» button can render at the same time;
+    pyplot keeps one global current figure and is not thread-safe.
     """
     try:
-        import matplotlib
-
-        matplotlib.use("Agg")
         import matplotlib.dates as mdates
-        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+        from matplotlib.figure import Figure
     except ImportError:
         logger.warning("matplotlib not installed — chart skipped")
         return None
@@ -29,12 +31,9 @@ def render_chart(series: dict[str, list[tuple[datetime, int]]]) -> bytes | None:
     if not plotted:
         return None
 
-    fig, axes = plt.subplots(
-        len(plotted), 1,
-        figsize=(8, 2.2 * len(plotted)),
-        sharex=True,
-        squeeze=False,
-    )
+    fig = Figure(figsize=(8, 2.2 * len(plotted)))
+    FigureCanvasAgg(fig)
+    axes = fig.subplots(len(plotted), 1, sharex=True, squeeze=False)
 
     for ax, (label, pts) in zip(axes[:, 0], plotted.items(), strict=True):
         xs = [p[0] for p in pts]
@@ -51,5 +50,4 @@ def render_chart(series: dict[str, list[tuple[datetime, int]]]) -> bytes | None:
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=150)
-    plt.close(fig)
     return buf.getvalue()

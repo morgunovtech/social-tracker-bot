@@ -328,6 +328,23 @@ class Database:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
+    async def get_on_or_before(self, platform: str, target_date: date, max_back_days: int) -> dict | None:
+        """The newest row dated target_date or up to max_back_days earlier:
+        a baseline that a single missed collection does not erase."""
+        earliest = target_date - timedelta(days=max_back_days)
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                """
+                SELECT * FROM followers
+                WHERE platform = ? AND DATE(collected_at) <= ? AND DATE(collected_at) >= ?
+                ORDER BY collected_at DESC LIMIT 1
+                """,
+                (platform, target_date.isoformat(), earliest.isoformat()),
+            )
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
     async def get_history(self, platform: str, days: int) -> list[dict]:
         since = (utcnow() - timedelta(days=days)).date()
         async with aiosqlite.connect(self._db_path) as db:

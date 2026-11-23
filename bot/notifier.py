@@ -305,11 +305,28 @@ def _markup(raw: str | None) -> InlineKeyboardMarkup | None:
         return None
 
 
+# A flush in progress: the minute job and /unmute may call flush_queue at the
+# same moment, and both would read the queue before either deleted a row.
+_flushing = False
+
+
 async def flush_queue(bot: Bot, config: Config, db: Database) -> int:
     """Deliver the deferred messages as one digest once the silence is over;
     returns how many were delivered. Several messages when the backlog is
     long or an item has buttons; only rows actually sent are deleted, so a
-    Telegram error leaves the rest for the next minute."""
+    Telegram error leaves the rest for the next minute. A second call while
+    one runs returns 0 — the running one has the whole queue."""
+    global _flushing
+    if _flushing:
+        return 0
+    _flushing = True
+    try:
+        return await _flush(bot, config, db)
+    finally:
+        _flushing = False
+
+
+async def _flush(bot: Bot, config: Config, db: Database) -> int:
     if config.admin_chat_id is None or await deferred(db, config, Priority.NORMAL):
         return 0
     rows = await db.peek_notifications()

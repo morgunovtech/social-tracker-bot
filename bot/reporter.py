@@ -14,6 +14,12 @@ _BLOCKS = "▁▂▃▄▅▆▇█"
 
 # Collected values are refreshed daily; older than this means collection is failing.
 AUTO_STALE_DAYS = 2
+# A week-ago or month-ago baseline is the row of that day or, when that
+# collection failed (LinkedIn answers 999 now and then), the newest row up to
+# this many days earlier: one missed day used to leave the report without a
+# weekly delta, a leader and a forecast at all. The day-ago delta stays exact.
+WEEK_BASELINE_SLACK_DAYS = 3
+MONTH_BASELINE_SLACK_DAYS = 7
 # Telegram's message limit is 4096 characters; the rest is headroom for HTML tags.
 HISTORY_LIMIT = 4000
 
@@ -95,8 +101,8 @@ async def _platform_snapshot(
         return {"latest": None}
 
     day_row = await db.get_by_date(platform, yesterday)
-    week_row = await db.get_by_date(platform, week_ago)
-    month_row = await db.get_by_date(platform, month_ago)
+    week_row = await db.get_on_or_before(platform, week_ago, WEEK_BASELINE_SLACK_DAYS)
+    month_row = await db.get_on_or_before(platform, month_ago, MONTH_BASELINE_SLACK_DAYS)
 
     # Sparkline: last 14 days, take all available points
     history = await db.get_history(platform, 14)
@@ -116,17 +122,20 @@ async def build_report(
     errors: dict[str, bool | int] | None = None,
     linkedin_stale_days: int = 7,
     platforms: list[str] | None = None,
+    shown_date: date | None = None,
 ) -> tuple[str, bool]:
     """Build the textual report and return (text, has_meaningful_change).
 
     platforms are the enabled ones: only they get a placeholder line while
     they have no data (a disabled platform with old data is still shown).
+    shown_date is the date in the title — the owner's local one; the rows are
+    looked up by UTC days, which is how they are stored.
     """
     # DB timestamps are UTC, so "today" must be the UTC date too.
     today = utcnow().date()
     errors = errors or {}
 
-    lines: list[str] = [t("📊 Подписчики · {date}").format(date=today.strftime("%d.%m.%Y"))]
+    lines: list[str] = [t("📊 Подписчики · {date}").format(date=(shown_date or today).strftime("%d.%m.%Y"))]
 
     # Problems first: they need an action, the numbers don't.
     if errors.get("linkedin_cookie_expired"):
@@ -368,13 +377,15 @@ _MONTH_NAMES = [
 ]
 
 
-async def build_month_report(db: Database) -> str | None:
+async def build_month_report(db: Database, today: date | None = None) -> str | None:
     """Digest for the month that just ended (intended for the 1st of the month).
 
     Compares the latest counts against the first available data point of the
-    previous month. Returns None when there is nothing to report.
+    previous month. Returns None when there is nothing to report. today is
+    the owner's local date: at 00:30 on the 1st in Tashkent it is still the
+    previous month in UTC.
     """
-    today = utcnow().date()
+    today = today or utcnow().date()
     prev_month_last = today.replace(day=1) - timedelta(days=1)
     prev_month_first = prev_month_last.replace(day=1)
 

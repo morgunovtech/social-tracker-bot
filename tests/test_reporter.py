@@ -83,6 +83,17 @@ async def test_report_deltas_totals_and_highlights(db, insert):
     assert f"1{NBSP}138" in total and "за неделю" in total and "за день" not in total
 
 
+async def test_a_missed_day_does_not_erase_the_weekly_baseline(db, insert):
+    insert("telegram", 990, 8)                               # the collection 7 days ago failed
+    insert("telegram", 1010, 0)
+    text, _ = await build_report(db)
+    assert "+20 за неделю" in text and "🏆 Лидер недели: Telegram" in text
+    insert("youtube", 100, 11)                               # too far back for a week, fine for a month
+    insert("youtube", 130, 0)
+    text, _ = await build_report(db)
+    assert "за неделю" not in _block(text, "YouTube")
+
+
 async def test_report_marks_stale_data_of_any_source(db, insert):
     insert("telegram", 1000, 5)                              # collection failing for days
     insert("youtube", 128, 0)
