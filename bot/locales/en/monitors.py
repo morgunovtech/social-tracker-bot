@@ -163,10 +163,10 @@ STRINGS: dict[str, str] = {
     "Восстановление доступа: {url}": "Recover access: {url}",
     "✅ Почтовый воркер снова отвечает": "✅ The mail worker is responding again",
     (
-        "🔴 Почтовый воркер не отвечает ~30 мин — письма безопасности не доходят. "
+        "🟠 Почтовый воркер не отвечает ~30 мин — письма безопасности не доходят. "
         "Проверь SECURITY_MAIL_URL, SECURITY_MAIL_TOKEN и деплой воркера."
     ): (
-        "🔴 The mail worker has not responded for ~30 min — security emails are not getting through. "
+        "🟠 The mail worker has not responded for ~30 min — security emails are not getting through. "
         "Check SECURITY_MAIL_URL, SECURITY_MAIL_TOKEN and the worker's deployment."
     ),
     "✍️ Дата смены пароля отмечена в чек-листе /security.": (
@@ -174,21 +174,21 @@ STRINGS: dict[str, str] = {
     ),
     # bot/monitors/followers.py — follower anomalies
     "🟠 {label}: −{drop} подписчиков за день ({prev} → {new})": "🟠 {label}: −{drop} followers in a day ({prev} → {new})",
-    "🚨 {label}: +{gain} за день ({prev} → {new}) — аномально резкий рост, возможен наплыв ботов": (
-        "🚨 {label}: +{gain} in a day ({prev} → {new}) — abnormally sharp growth, possibly a bot wave"
+    "🟠 {label}: +{gain} за день ({prev} → {new}) — аномально резкий рост, возможен наплыв ботов": (
+        "🟠 {label}: +{gain} in a day ({prev} → {new}) — abnormally sharp growth, possibly a bot wave"
     ),
     "🎯 {label} перешагнул {milestone}!": "🎯 {label} passed {milestone}!",
     # bot/monitors/collection.py — collection health
-    "🔴 LinkedIn cookie истёк или отклонён — обнови через /setcookie": (
-        "🔴 The LinkedIn cookie has expired or was rejected — update it with /setcookie"
+    "🟠 LinkedIn cookie истёк или отклонён — обнови через /setcookie": (
+        "🟠 The LinkedIn cookie has expired or was rejected — update it with /setcookie"
     ),
-    "🔴 Instagram отклонил токен: истёк или отозван — пришли новый через /igtoken": (
-        "🔴 Instagram rejected the token: expired or revoked — send a new one with /igtoken"
+    "🟠 Instagram отклонил токен: истёк или отозван — пришли новый через /igtoken": (
+        "🟠 Instagram rejected the token: expired or revoked — send a new one with /igtoken"
     ),
     "⚠️ Instagram подключён, но токена нет — пришли его через /igtoken": (
         "⚠️ Instagram is connected but there is no token — send it with /igtoken"
     ),
-    "🔴 {label}: не удаётся собрать данные {streak} дн. подряд": "🔴 {label}: data collection has failed {streak} days in a row",
+    "🟠 {label}: не удаётся собрать данные {streak} дн. подряд": "🟠 {label}: data collection has failed {streak} days in a row",
 }
 
 PLURALS: dict[str, tuple[str, str]] = {

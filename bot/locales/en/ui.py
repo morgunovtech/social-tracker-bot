@@ -149,8 +149,8 @@ STRINGS: dict[str, str] = {
     "собрано по cookie": "collected via cookie",
     "Последнее значение: {count} — {how} {when}": "Last value: {count} — {how} {when}",
     "Последнее значение: пока нет": "Last value: none yet",
-    "🔴 LinkedIn отклонил cookie: пришли новый через /setcookie или вводи число вручную.":
-        "🔴 LinkedIn rejected the cookie: send a new one with /setcookie or enter the count by hand.",
+    "🟠 LinkedIn отклонил cookie: пришли новый через /setcookie или вводи число вручную.":
+        "🟠 LinkedIn rejected the cookie: send a new one with /setcookie or enter the count by hand.",
     "⚠️ Cookie установлен {age} {d} назад и скоро истечёт — пора обновить.":
         "⚠️ The cookie was set {age} {d} ago and expires soon — time to renew it.",
     "✅ Число собирается само по cookie. Он установлен {age} {d} назад, "
@@ -173,8 +173,8 @@ STRINGS: dict[str, str] = {
     "Аккаунт: {account}": "Account: {account}",
     "Последнее значение: {count} — собрано {when}": "Last value: {count} — collected {when}",
     "⚠️ Токена нет: без него число не собирается.": "⚠️ No token: without it the count is not collected.",
-    "🔴 Instagram отклонил токен: отозван или истёк — пришли новый через /igtoken.":
-        "🔴 Instagram rejected the token: revoked or expired — send a new one with /igtoken.",
+    "🟠 Instagram отклонил токен: отозван или истёк — пришли новый через /igtoken.":
+        "🟠 Instagram rejected the token: revoked or expired — send a new one with /igtoken.",
     "✅ Число собирается само по токену из переменных окружения.":
         "✅ The count is collected automatically with the token from the environment variables.",
     "✅ Число собирается само по токену. Он задан {age} {d} назад и бессрочный: "
@@ -215,7 +215,10 @@ STRINGS: dict[str, str] = {
     "<b>Значки</b>": "<b>Icons</b>",
     "✅ в порядке или включено · ⬜ выключено · ➖ не подключено": "✅ fine or on · ⬜ off · ➖ not connected",
     "⚠️ нужно внимание · ❓ не отмечено": "⚠️ needs attention · ❓ not marked",
-    "🟠 изменение · 🔴 сбой · 🚨 похоже на взлом": "🟠 change · 🔴 failure · 🚨 looks like a break-in",
+    "🚨 похоже на взлом · 🔴 аккаунт недоступен — звонят сразу, даже ночью":
+        "🚨 looks like a break-in · 🔴 account unreachable — ring at once, even at night",
+    "🟠 изменение или сбой — тихо; ночью и в тишине ждёт сводки":
+        "🟠 change or failure — silent; at night and while muted it waits for the digest",
     "<b>Команды</b>": "<b>Commands</b>",
     "/start — главная": "/start — home",
     "/now — обновить данные": "/now — refresh data",
@@ -230,6 +233,38 @@ STRINGS: dict[str, str] = {
     "/setday &lt;дни&gt; — дни отчёта: sat, mon-fri, mon,thu, daily": "/setday &lt;days&gt; — report days: sat, mon-fri, mon,thu, daily",
     "/settz &lt;пояс&gt; — часовой пояс, например Europe/Moscow": "/settz &lt;zone&gt; — time zone, e.g. Europe/Moscow",
     "/setquiet on|off — тихий режим": "/setquiet on|off — quiet mode",
+    "/mute &lt;время&gt; — помолчать: 1h, 8h, 1d (по умолчанию 8h); /unmute — снять":
+        "/mute &lt;time&gt; — pause notifications: 1h, 8h, 1d (default 8h); /unmute — resume",
+    # 🔔 Когда писать: quiet hours and /mute (bot/ui.py when_to_write, bot/notifier.py)
+    "🔔 Когда писать: {when}": "🔔 When to write: {when}",
+    "🔔 Когда писать": "🔔 When to write",
+    "тихие часы {hours}": "quiet hours {hours}",
+    "всегда": "always",
+    "тишина до {until}": "muted until {until}",
+    "<b>🔔 Когда писать</b>": "<b>🔔 When to write</b>",
+    "🌙 Тихие часы: {state}": "🌙 Quiet hours: {state}",
+    "выключены": "off",
+    "Ночью некритичное ждёт до утра и приходит одной сводкой. Часы — по поясу {tz}.":
+        "At night anything non-critical waits for the morning and comes as one digest. Hours in {tz}.",
+    "🔕 Помолчать: {state}": "🔕 Mute: {state}",
+    "до {until}": "until {until}",
+    "сейчас не молчу": "not muted now",
+    "На время: всё, кроме критичного, ждёт и приходит сводкой, когда тишина закончится. "
+    "Команда: /mute 8h, снять — /unmute.":
+        "For a while: everything but the critical waits and comes as a digest when the silence ends. "
+        "Command: /mute 8h, lift it with /unmute.",
+    "🌙 выкл": "🌙 off",
+    "🔔 Снять тишину": "🔔 Unmute",
+    "🔕 Молчу до {until}.": "🔕 Muted until {until}.",
+    "Снова писать обо всём: /unmute": "To hear about everything again: /unmute",
+    "🔕 Тишина до {until}": "🔕 Muted until {until}",
+    "🌙 Тихие часы до {end:02d}:00": "🌙 Quiet hours until {end:02d}:00",
+    "🚨 и 🔴 — похоже на взлом, новый вход, смена пароля, пропавший профиль — придут сразу, со звуком. "
+    "Остальное пришлю сводкой, когда тишина закончится.":
+        "🚨 and 🔴 — a likely break-in, a new sign-in, a changed password, a vanished profile — come at once, "
+        "with sound. Everything else comes as a digest when the silence ends.",
+    "🌙 Накопилось, пока было тихо:": "🌙 Piled up while it was quiet:",
+    "🌙 (продолжение)": "🌙 (continued)",
     "/modules — мониторинги": "/modules — monitors",
     "<b>Бэкап</b>": "<b>Backup</b>",
     "По воскресеньям я присылаю файл с базой. Чтобы вернуть историю, ответь на него "
@@ -241,4 +276,7 @@ STRINGS: dict[str, str] = {
 # Russian singular → (English singular, English plural).
 PLURALS: dict[str, tuple[str, str]] = {
     "дн.": ("day", "days"),
+    "день": ("day", "days"),
+    "час": ("hour", "hours"),
+    "минута": ("minute", "minutes"),
 }

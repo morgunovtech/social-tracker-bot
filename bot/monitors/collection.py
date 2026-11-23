@@ -26,7 +26,7 @@ async def alert_lines(db: Database, outcome: CollectOutcome) -> list[str]:
     if outcome.errors.get("linkedin_cookie_expired"):
         if await db.get_setting("cookie_expired_alerted") != "1":
             await db.set_setting("cookie_expired_alerted", "1")
-            lines.append(t("🔴 LinkedIn cookie истёк или отклонён — обнови через /setcookie"))
+            lines.append(t("🟠 LinkedIn cookie истёк или отклонён — обнови через /setcookie"))
     elif outcome.collected.get("linkedin", (None, None))[1] == "cookie":
         await db.set_setting("cookie_expired_alerted", "0")
 
@@ -34,7 +34,7 @@ async def alert_lines(db: Database, outcome: CollectOutcome) -> list[str]:
         if await db.get_setting("instagram_token_alerted") != "1":
             await db.set_setting("instagram_token_alerted", "1")
             if outcome.errors.get("instagram_token_expired"):
-                lines.append(t("🔴 Instagram отклонил токен: истёк или отозван — пришли новый через /igtoken"))
+                lines.append(t("🟠 Instagram отклонил токен: истёк или отозван — пришли новый через /igtoken"))
             else:
                 lines.append(t("⚠️ Instagram подключён, но токена нет — пришли его через /igtoken"))
     elif "instagram" in outcome.collected:
@@ -49,7 +49,7 @@ async def alert_lines(db: Database, outcome: CollectOutcome) -> list[str]:
                 await db.set_setting(f"fail_last_date_{platform.id}", today_iso)
                 if streak == 2 or (streak > 2 and streak % 7 == 0):
                     lines.append(
-                        t("🔴 {label}: не удаётся собрать данные {streak} дн. подряд").format(
+                        t("🟠 {label}: не удаётся собрать данные {streak} дн. подряд").format(
                             label=platform.label, streak=streak
                         )
                     )

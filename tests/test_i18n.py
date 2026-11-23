@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from conftest import COOKIE, FakeBot
 
-from bot import i18n, main, reporter, tofs_status, ui
+from bot import i18n, main, notifier, reporter, tofs_status, ui
 from bot.config import Config
 from bot.db import utcnow
 from bot.i18n import plural, t
@@ -110,6 +110,7 @@ async def test_every_screen(config, db, insert):
         ui.linkedin_retry(),
         ui.linkedin_confirm(4500, 9000),
         ui.help_screen(),
+        await ui.when_to_write(db, config),
     ]
     for platform in PLATFORMS:
         screens.append(await ui.checklist(db, platform))
@@ -131,6 +132,17 @@ async def test_every_screen(config, db, insert):
     screen_english(await ui.home(db, config))
     screen_english(await ui.linkedin(db, config))
     screen_english(await ui.instagram(db, config))
+    # Quiet hours and a mute: the when screen, the home chip, the mute note.
+    await notifier.set_quiet_hours(db, "0-23")
+    await notifier.set_mute(db, timedelta(hours=1))
+    screen_english(await ui.when_to_write(db, config))
+    screen_english(await ui.settings(db, config))
+    screen_english(await ui.home(db, config))
+    english_only(await notifier.silence_status(db, config))
+    english_only(ui.mute_note("08:00"))
+    english_only(notifier.what_rings_through())
+    await notifier.set_mute(db, None)
+    english_only(await notifier.silence_status(db, config))
 
 
 async def test_reports_and_tables(config, db, insert):
@@ -226,6 +238,15 @@ async def test_alerts(config, db):
     for kind in mail.KINDS:
         english_only(t(kind.title))
         english_only(t(kind.advice))
+
+
+async def test_digest(config, db):
+    bot = FakeBot()
+    await notifier.set_mute(db, timedelta(hours=1))
+    await notifier.send(bot, config, db, "x")
+    await notifier.set_mute(db, None)
+    assert await notifier.flush_queue(bot, config, db) == 1
+    english_only(bot.messages[0])
 
 
 async def test_backup_caption(config, db):

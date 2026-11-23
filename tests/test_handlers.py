@@ -10,7 +10,7 @@ from telegram import Chat, Message, Update, User
 from telegram.error import BadRequest, Conflict, NetworkError
 from telegram.ext import ApplicationHandlerStop, ConversationHandler
 
-from bot import handlers, ui
+from bot import handlers, notifier, ui
 from bot.db import Database, utcnow
 from bot.scheduler import CollectOutcome, setup_scheduler
 
@@ -528,6 +528,56 @@ async def test_quiet_mode_command_and_toggle(make_update, make_context, db):
     assert await db.get_setting("quiet_if_no_change") == "0"
     assert "Настройки" in query.edits[0] and query.answers[0]["text"] == "Тихий режим выключен"
     assert buttons(query.markups[0])["set:quiet"] == "⬜ Тихий режим"
+
+
+async def test_mute_and_unmute_commands(make_update, make_context, db, bot):
+    update = make_update()
+    await handlers.cmd_mute(update, make_context("junk"))
+    assert update.message.replies[0].startswith("Использование: /mute")
+    await handlers.cmd_mute(update, make_context("30d"))
+    assert update.message.replies[1].startswith("Максимум — 7 дней")
+    assert await notifier.mute_until(db) is None
+    await handlers.cmd_mute(update, make_context())                  # the default: 8 hours
+    assert update.message.replies[2].startswith("🔕 Молчу до ") and "/unmute" in update.message.replies[2]
+    assert "🔔 Когда писать" in update.message.replies[2]
+    deadline = await notifier.mute_until(db)
+    assert deadline is not None and timedelta(hours=7, minutes=59) < deadline - utcnow() <= timedelta(hours=8)
+
+    await notifier.send(bot, make_context().bot_data["config"], db, "🟠 held")
+    assert bot.messages == []
+    await handlers.cmd_unmute(update, make_context())
+    assert update.message.replies[3].startswith("🔔 Снова пишу обо всём.")
+    assert await notifier.mute_until(db) is None
+    assert bot.messages and "🟠 held" in bot.messages[0]            # delivered at once, not in a minute
+
+
+async def test_when_to_write_screen(make_update, make_context, db, bot):
+    query = await press(make_update, make_context, "set:when")
+    assert "🔔 Когда писать" in query.edits[0] and "Тихие часы: выключены" in query.edits[0]
+    targets = buttons(query.markups[0])
+    assert targets["set:qh:23-8"] == "🌙 23:00–08:00" and targets["set:qh:off"] == "✅ 🌙 выкл"
+    assert "set:mute:off" not in targets
+
+    query = await press(make_update, make_context, "set:qh:23-8")
+    assert await db.get_setting("quiet_hours") == "23-8" and query.answers[0]["text"] == "Сохранено"
+    assert buttons(query.markups[0])["set:qh:23-8"] == "✅ 🌙 23:00–08:00"
+    assert "Тихие часы: 23:00–08:00" in query.edits[0]
+    query = await press(make_update, make_context, "set:qh:25-3")       # not offered: ignored
+    assert query.edits == [] and await db.get_setting("quiet_hours") == "23-8"
+
+    query = await press(make_update, make_context, "set:mute:1h")
+    assert await notifier.mute_until(db) is not None
+    assert query.edits[0].startswith("🔕 Молчу до ") and "set:mute:off" in buttons(query.markups[0])
+    home = make_update()
+    await handlers.cmd_home(home, make_context())
+    assert "🔕 Тишина до " in home.message.replies[0]
+    query = await press(make_update, make_context, "set:mute:off")
+    assert await notifier.mute_until(db) is None and query.edits[0].startswith("🔔 Снова пишу обо всём.")
+
+    query = await press(make_update, make_context, "set:qh:off")
+    assert await db.get_setting("quiet_hours") == "off"
+    settings = await press(make_update, make_context, "set")
+    assert "🔔 Когда писать: всегда" in settings.edits[0]
 
 
 # --- cookie ------------------------------------------------------------------

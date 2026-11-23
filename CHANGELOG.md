@@ -2,6 +2,14 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## Unreleased
+
+**When it writes** — the TofsDevOps notification model
+- One door for every message to the owner (`bot/notifier.py`) with three priorities: 🚨 and 🔴 ring through everything (hijack signs, a new sign-in, a changed password, a vanished profile); 🟠 ⚠️ 🎯 messages are silent and wait during quiet hours or a mute; the weekly report, the monthly digest, the backup and the Sunday notices are silent and wait only during a mute.
+- Quiet hours (off by default) with presets in ⚙️ Settings → 🔔 When to write, in your time zone; `/mute <time>` and `/unmute`, also as 🔕 buttons; «🔕 Тишина до …» on the home screen while a mute lasts.
+- What was held arrives as one numbered digest with the time of each item when the silence ends.
+- A rejected token or cookie, a failure streak, a bot influx and a mail worker that stopped answering are now 🟠 (they wait for the digest), so the icon and the way a message arrives agree.
+
 ## 1.0.0 — 2026-11-23
 
 The first release worth a number: four networks, account protection, English, one-click deploy.

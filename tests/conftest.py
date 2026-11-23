@@ -54,21 +54,29 @@ COOKIE = "AQEDA" + "x" * 80
 
 
 class FakeBot:
-    """Records what the bot would have sent."""
+    """Records what the bot would have sent; .silent says whether each message
+    came without a sound (disable_notification), in the order of .messages."""
 
     def __init__(self):
         self.messages: list[str] = []
+        self.silent: list[bool] = []
+        self.markups: list = []
         self.photos: list[dict] = []
         self.documents: list[dict] = []
 
     async def send_message(self, chat_id, text, **kwargs):
         self.messages.append(text)
+        self.silent.append(bool(kwargs.get("disable_notification")))
+        self.markups.append(kwargs.get("reply_markup"))
 
     async def send_photo(self, chat_id, photo, caption=None, **kwargs):
-        self.photos.append({"photo": photo, "caption": caption})
+        self.photos.append({"photo": photo, "caption": caption, "silent": bool(kwargs.get("disable_notification"))})
 
     async def send_document(self, chat_id, document, filename=None, caption=None, **kwargs):
-        self.documents.append({"document": document, "filename": filename, "caption": caption})
+        self.documents.append({
+            "document": document, "filename": filename, "caption": caption,
+            "silent": bool(kwargs.get("disable_notification")),
+        })
 
 
 class FakeMessage:

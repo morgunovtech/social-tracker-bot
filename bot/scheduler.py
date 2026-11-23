@@ -15,12 +15,13 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from telegram import Bot
 
-from bot import monitors, platforms, tofs_status
+from bot import monitors, notifier, platforms, tofs_status
 from bot.chart import render_chart
 from bot.config import DOW_ORDER, Config, normalize_tz
 from bot.db import Database, parse_utc, utcnow
 from bot.i18n import t
 from bot.monitors import collection, followers, hygiene, mail, profile
+from bot.notifier import Priority
 from bot.platforms import LABELS, PLATFORM_IDS
 from bot.platforms.base import Context
 from bot.reporter import _crossed_milestone, build_month_report, build_report
@@ -211,7 +212,7 @@ async def send_alerts(bot: Bot, config: Config, db: Database, outcome: CollectOu
     try:
         alerts = await _build_alerts(db, config, outcome)
         if alerts:
-            await bot.send_message(chat_id=config.admin_chat_id, text="\n".join(alerts))
+            await notifier.send(bot, config, db, "\n".join(alerts), notifier.priority_for(alerts))
             logger.info("Sent %d proactive alert(s)", len(alerts))
     except Exception:
         logger.exception("Alert send failed")
@@ -246,11 +247,9 @@ async def _send_backup(bot: Bot, config: Config, db: Database) -> None:
             with open(path, "rb") as f:
                 data = f.read()
         today = utcnow().date().isoformat()
-        await bot.send_document(
-            chat_id=config.admin_chat_id,
-            document=data,
-            filename=f"followers-{today}.db",
-            caption=t(
+        await notifier.send_document(
+            bot, config, db, data, f"followers-{today}.db",
+            t(
                 "📦 Еженедельный бэкап базы. Чтобы вернуть из него историю, ответь на это сообщение "
                 "командой /restore. LinkedIn cookie и токен Instagram в копию не входят: после "
                 "восстановления пришли их заново через /setcookie и /igtoken."
@@ -344,20 +343,15 @@ async def _scheduled_job(
         quiet = await is_quiet_mode(db, config)
         try:
             if quiet and not outcome.has_change:
-                await bot.send_message(
-                    chat_id=config.admin_chat_id,
-                    text=t("😴 Без изменений за неделю — всё стабильно ✅"),
-                )
+                await notifier.send(bot, config, db, t("😴 Без изменений за неделю — всё стабильно ✅"), Priority.DIGEST)
                 logger.info("Quiet mode: sent no-change one-liner")
             else:
-                await bot.send_message(chat_id=config.admin_chat_id, text=outcome.report)
-                chart = await _build_chart_png(db)
+                # The chart only follows a report delivered now: a digest can't hold it.
+                held = await notifier.deferred(db, config, Priority.DIGEST)
+                await notifier.send(bot, config, db, outcome.report, Priority.DIGEST)
+                chart = None if held else await _build_chart_png(db)
                 if chart:
-                    await bot.send_photo(
-                        chat_id=config.admin_chat_id,
-                        photo=chart,
-                        caption=t(CHART_CAPTION),
-                    )
+                    await notifier.send_photo(bot, config, db, chart, t(CHART_CAPTION))
                 logger.info("Scheduled report sent to admin")
         except Exception:
             logger.exception("Scheduled report send failed")
@@ -367,7 +361,7 @@ async def _scheduled_job(
             try:
                 nudge = await hygiene.nudge(db, config)
                 if nudge:
-                    await bot.send_message(chat_id=config.admin_chat_id, text=nudge)
+                    await notifier.send(bot, config, db, nudge, Priority.DIGEST)
                     logger.info("Hygiene reminder sent")
             except Exception:
                 logger.exception("Hygiene reminder failed")
@@ -379,7 +373,7 @@ async def _scheduled_job(
         try:
             digest = await build_month_report(db)
             if digest:
-                await bot.send_message(chat_id=config.admin_chat_id, text=digest)
+                await notifier.send(bot, config, db, digest, Priority.DIGEST)
                 logger.info("Monthly digest sent")
         except Exception:
             logger.exception("Monthly digest failed")
@@ -508,6 +502,16 @@ async def setup_scheduler(bot: Bot, config: Config, db: Database) -> AsyncIOSche
         args=[bot, config, db],
         id="deploy_watch",
         replace_existing=True,
+    )
+    # Every minute: what quiet hours or /mute held back goes out as one digest.
+    scheduler.add_job(
+        notifier.flush_queue,
+        trigger=IntervalTrigger(minutes=1, timezone=UTC),
+        args=[bot, config, db],
+        id="flush_queue",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
     )
     logger.info("Scheduler started: daily collect at %02d:%02d %s, push on %s", hour, minute, tz.key, dow)
 

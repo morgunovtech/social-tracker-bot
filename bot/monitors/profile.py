@@ -16,11 +16,11 @@ from datetime import timedelta
 import aiohttp
 from telegram import Bot
 
-from bot import platforms
+from bot import notifier, platforms
 from bot.config import Config
 from bot.db import Database, utcnow
 from bot.i18n import plural, t
-from bot.monitors import NO_PREVIEW, defang
+from bot.monitors import defang
 from bot.platforms.base import ADMINS, COUNT, IMAGE, TEXT, Context, Platform
 
 logger = logging.getLogger(__name__)
@@ -134,14 +134,15 @@ def _reachability(platform: Platform, fails: int, reachable: bool) -> tuple[list
     return [], fails
 
 
-async def _send(bot: Bot, config: Config, lines: list[str]) -> bool:
+async def _send(bot: Bot, config: Config, db: Database, lines: list[str]) -> bool:
     text = t("🛡 Профиль") + "\n\n" + "\n".join(lines)
     if any(line.startswith(("🚨", "🟠")) for line in lines):
         text += f"\n\n{t(ADVICE)}"
     if len(text) > MESSAGE_LIMIT:
         text = text[: MESSAGE_LIMIT - 1] + "…"
     try:
-        await bot.send_message(chat_id=config.admin_chat_id, text=text, link_preview_options=NO_PREVIEW)
+        # A 🚨 or 🔴 line rings through quiet hours and /mute; 🟠 changes wait for the digest.
+        await notifier.send(bot, config, db, text, notifier.priority_for(lines), no_preview=True)
         return True
     except Exception:
         logger.exception("Profile alert send failed — will retry on the next check")
@@ -170,7 +171,7 @@ async def check(bot: Bot, config: Config, db: Database, session: aiohttp.ClientS
         changes = diff(platform, baseline, current) if current is not None and baseline is not None else []
         lines += changes
         if lines:
-            if not await _send(bot, config, lines):
+            if not await _send(bot, config, db, lines):
                 continue
             sent += 1
 

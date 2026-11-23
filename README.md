@@ -24,6 +24,7 @@ The bot is modular: connect only the platforms you have, and switch monitors on 
 - **Self-recovering**: failed platforms are retried hourly (up to 3 times), a run missed while the bot was down is caught up on start, a dead man's switch (`HEALTHCHECK_URL`) tells you when the bot itself dies. Point it at a [TofsDevOps](https://github.com/morgunovtech/Tofs_DevOps_bot) heartbeat address and the ping also carries a line per network («✅ Telegram · 12 340, +18 за сутки», «🔴 LinkedIn · профиль не читается») to TofsDevOps's main screen, next to your sites; refreshed after every profile check.
 - **Your data stays yours**: SQLite on your volume, a weekly backup sent to your chat (without the LinkedIn cookie and the Instagram token), and `/restore` to merge a backup back without overwriting anything collected since.
 - **Quiet mode**: a one-liner instead of the full report when nothing changed.
+- **Rings only when it matters**: 🚨 and 🔴 — a likely hijack, a new sign-in, a changed password, a vanished profile — ring at once, even at night; everything else arrives silently, and during quiet hours or a `/mute` it waits and comes as one digest. See [When it writes](#when-it-writes).
 
 **Security**
 
@@ -72,6 +73,7 @@ Everything is a button away; the «🏠 Меню» button under the input field 
 │   └── an account's checklist → one question at a time, with why it matters
 ├── ✏️ Enter LinkedIn — only while the number is typed in by hand
 ├── ⚙️ Settings — report days (checkboxes), report hour (a grid), time zone, quiet mode
+│   ├── 🔔 When to write — quiet hours (presets), «🔕 Mute» for an hour, four, eight or a day
 │   ├── 🧩 Monitors — switch each one on and off
 │   ├── 📸 Instagram — how the number is collected, the token's age
 │   └── 💼 LinkedIn — how the number is collected, the cookie's age
@@ -90,7 +92,7 @@ The `/` menu lists the six entry points; the rest are for typing.
 | `/now` | Collect now and show the report |
 | `/week` | This week vs last week, with the chart |
 | `/security` | Security score, the checklist per account, recent security events |
-| `/settings` | Report schedule, quiet mode, monitors, Instagram, LinkedIn |
+| `/settings` | Report schedule, quiet mode, when to write, monitors, Instagram, LinkedIn |
 | `/help` | How the bot works, the icons, every command |
 | `/stats` | The home screen without the greeting |
 | `/modules` | Connected platforms; switch monitors on and off |
@@ -99,6 +101,7 @@ The `/` menu lists the six entry points; the rest are for typing.
 | `/settime HH:MM`, `/setday <days>` | Report time and day(s) in your time zone: `sat`, `mon,thu`, `mon-fri`, `daily`; without an argument, the picker |
 | `/settz <zone>` | Your time zone, an IANA name such as `Europe/Moscow`; without an argument, a list of common ones |
 | `/setquiet on\|off` | Quiet mode |
+| `/mute <time>`, `/unmute` | Pause everything but the critical for `1h`, `8h` (the default), `30m`, `1d`, up to 7 days; what was held arrives as one digest when it ends |
 | `/setcookie <li_at>`, `/cookieage` | Set the LinkedIn cookie, check its age |
 | `/igtoken <token>` | Set the Instagram token (checked against the API, the message is deleted) |
 | `/restore` | Reply it to a backup message (or send a `.db` captioned `/restore`) to merge the history back |
@@ -134,6 +137,21 @@ Problems come first («⚠️ Instagram отклонил токен — приш
 Data is collected every day at the report time, and the report goes out on the report day(s). Time and days are in your time zone: pick it with the «🌍 Часовой пояс» button in ⚙️ Settings or with `/settz`, and `/settime 09:00` means 09:00 on your clock, summer time included. Switching the zone keeps the report at the same moment and shows it on the new clock (08:00 UTC becomes 11:00 in Moscow).
 
 `REPORT_TZ`, `REPORT_HOUR`, `REPORT_MINUTE` and `REPORT_DOW` are the defaults until you change them in the bot: Saturday, 08:00 UTC. A schedule saved by a version without the zone setting stays in UTC until you pick a zone. Follower history, the monthly digest and the Sunday backup keep UTC days.
+
+## When it writes
+
+Every message to you goes through one door (`bot/notifier.py`) with three priorities, the same model as [TofsDevOps](https://github.com/morgunovtech/Tofs_DevOps_bot). The icon at the start of a line says how the message arrives:
+
+| | Rings | Examples |
+|---|---|---|
+| **Critical** — 🚨 🔴 | yes, through quiet hours and `/mute` | a new admin or owner, a link in the description, a drop in videos or posts, a profile that stopped being readable; a new sign-in, a changed or reset password, a changed email or 2FA |
+| **Normal** — 🟠 ⚠️ 🎯 📨 | no; waits during quiet hours and a mute | a changed title, description or avatar; a login code, an unrecognised mail; a drop in followers, a bot influx, a milestone; an expired cookie or rejected token, a failure streak, the mail worker down; a failed deploy; «🔄 Бот обновился» |
+| **Digest** — 📊 | no; waits only during a mute | the weekly report and its chart, the monthly digest, the hygiene reminder, the backup, the Sunday vulnerabilities notice |
+
+- **Quiet hours** are off by default: ⚙️ Settings → 🔔 When to write, presets 23:00–08:00 and 00:00–09:00 in your time zone. The weekly report is a digest itself, so it still comes at its time.
+- **`/mute 8h`** (or the 🔕 buttons on the same screen) pauses everything but the critical; `/unmute` lifts it. The home screen says «🔕 Тишина до 08:00» while it lasts.
+- When the silence ends, what was held arrives as **one numbered digest** with the time of each item; a message with buttons or one too long for the digest comes on its own. Replies to your own taps and commands are not notifications and never wait.
+- «Silent when healthy» stays: nothing repeats until it changes, and a recovery is told once.
 
 ## Updates
 

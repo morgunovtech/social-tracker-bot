@@ -7,7 +7,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestServer
 from conftest import COOKIE
 
-from bot import scheduler
+from bot import notifier, scheduler
 from bot.db import utcnow
 from bot.platforms import linkedin as linkedin_platform
 from bot.platforms import telegram as telegram_platform
@@ -458,3 +458,52 @@ async def test_collection_streak_stays_current_while_switched_off(config, db):
 async def test_profile_watch_is_scheduled_soon_after_start(bot, config, db):
     job = (await setup_scheduler(bot, config, db)).get_job("profile_check")
     assert job is not None and job.next_run_time <= utcnow() + timedelta(minutes=1)
+
+
+# --- priorities: what rings, what waits -----------------------------------------
+
+async def test_alerts_are_silent_and_the_report_is_a_digest(bot, config, db, insert, fake_collect, job_scheduler):
+    insert("telegram", 1000, 1)
+    insert("telegram", 950, 0)
+    await db.set_setting("report_dow", "*")
+    await db.set_setting("hygiene_nudged_at", utcnow().date().isoformat())  # no reminder due
+    outcome = CollectOutcome(report="", has_change=True, drops={"telegram": (1000, 950)})
+    await send_alerts(bot, config, db, outcome)
+    await _scheduled_job(bot, config, db, job_scheduler)
+    assert bot.messages[0].startswith("🟠 Telegram: −50") and bot.silent == [True, True]
+    assert bot.photos[0]["silent"]
+
+
+async def test_mute_holds_the_report_and_skips_the_chart(bot, config, db, insert, fake_collect, job_scheduler):
+    insert("telegram", 1000, 1)
+    insert("telegram", 1010, 0)
+    await db.set_setting("report_dow", "*")
+    await db.set_setting("hygiene_nudged_at", utcnow().date().isoformat())  # no reminder due
+    await notifier.set_mute(db, timedelta(hours=1))
+    await _scheduled_job(bot, config, db, job_scheduler)
+    assert bot.messages == [] and bot.photos == []
+    (held,) = await db.peek_notifications()
+    assert held["text"].startswith("📊 Подписчики")
+    # Lifting the mute delivers it as the digest.
+    await notifier.set_mute(db, None)
+    assert await notifier.flush_queue(bot, config, db) == 1
+    assert bot.messages[0].startswith("🌙 Накопилось") and "📊 Подписчики" in bot.messages[0]
+
+
+async def test_quiet_hours_do_not_hold_the_report(bot, config, db, insert, fake_collect, job_scheduler, monkeypatch):
+    insert("telegram", 1000, 1)
+    insert("telegram", 1010, 0)
+    await db.set_setting("report_dow", "*")
+    await db.set_setting("hygiene_nudged_at", utcnow().date().isoformat())  # no reminder due
+    await notifier.set_quiet_hours(db, "0-23")                      # all day long, for the test
+    assert await notifier.in_quiet_hours(db, config)
+    await _scheduled_job(bot, config, db, job_scheduler)
+    assert bot.messages[0].startswith("📊 Подписчики") and bot.photos
+    # …but a collection alert at the same hour waits for the digest.
+    await send_alerts(bot, config, db, CollectOutcome(report="", has_change=True, drops={"telegram": (1000, 950)}))
+    assert len(bot.messages) == 1 and len(await db.peek_notifications()) == 1
+
+
+async def test_flush_job_is_scheduled(bot, config, db):
+    sched = await setup_scheduler(bot, config, db)
+    assert sched.get_job("flush_queue") is not None

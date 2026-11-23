@@ -57,6 +57,20 @@ CREATE TABLE IF NOT EXISTS security_events (
 );
 """
 
+# Notifications held back by quiet hours or /mute (bot/notifier.py), delivered
+# as one digest when the silence ends. markup is the inline keyboard as JSON.
+_CREATE_PENDING = """
+CREATE TABLE IF NOT EXISTS pending_notifications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL,
+    markup TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+# The queue keeps the newest this many rows: a week of /mute must not turn
+# into a hundred-message morning.
+PENDING_MAX = 100
+
 # Settings that must never leave the server (wiped from off-site backups).
 _SECRET_SETTINGS = ("linkedin_li_at", "instagram_token")
 # Each secret with the settings that describe it (when it was set, when it dies).
@@ -103,6 +117,7 @@ class Database:
             await db.execute(_CREATE_UNIQUE_INDEX)
             await db.execute(_CREATE_SETTINGS)
             await db.execute(_CREATE_EVENTS)
+            await db.execute(_CREATE_PENDING)
             await db.commit()
         logger.info("Database initialized at %s", self._db_path)
 
@@ -113,6 +128,8 @@ class Database:
         async with aiosqlite.connect(dest_path) as db:
             placeholders = ",".join("?" * len(_SECRET_SETTINGS))
             await db.execute(f"DELETE FROM settings WHERE key IN ({placeholders})", _SECRET_SETTINGS)
+            # Held-back alerts are live state, not history.
+            await db.execute("DELETE FROM pending_notifications")
             await db.commit()
             # Rebuild the file so deleted values don't linger in free pages.
             await db.execute("VACUUM")
@@ -264,3 +281,39 @@ class Database:
                 (limit,),
             )
             return [dict(r) for r in await cursor.fetchall()]
+
+    # --- the quiet queue (bot/notifier.py) ---------------------------------
+
+    async def queue_notification(self, text: str, markup: str | None = None, created_at: str | None = None) -> None:
+        """Hold a message for the digest, stamped with when it happened; the
+        oldest rows beyond PENDING_MAX are dropped."""
+        created_at = created_at or utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                "INSERT INTO pending_notifications (text, markup, created_at) VALUES (?, ?, ?)",
+                (text, markup, created_at),
+            )
+            await db.execute(
+                """
+                DELETE FROM pending_notifications WHERE id NOT IN (
+                    SELECT id FROM pending_notifications ORDER BY id DESC LIMIT ?
+                )
+                """,
+                (PENDING_MAX,),
+            )
+            await db.commit()
+
+    async def peek_notifications(self) -> list[dict]:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("SELECT * FROM pending_notifications ORDER BY id ASC")
+            return [dict(r) for r in await cursor.fetchall()]
+
+    async def delete_notifications(self, ids: list[int]) -> None:
+        if not ids:
+            return
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                f"DELETE FROM pending_notifications WHERE id IN ({','.join('?' * len(ids))})", ids
+            )
+            await db.commit()
