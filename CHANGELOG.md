@@ -2,12 +2,40 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
-## 1.3.1 — unreleased
+## 1.4.0 — unreleased
+
+A code review, fixed end to end: what could give a wrong answer, what could cost money or leave a secret in the chat, and the small things.
+
+**Comments of the channel**
+- At most three comments are classified at once, and at most `COMMENTS_DAILY_LIMIT` a day (300 by default, 0 = no limit): a spam wave of two hundred messages used to be two hundred parallel API calls with pictures. When the day's limit is reached the bot says so once and leaves the rest unchecked — in as many words.
+- A comment the model called fine keeps only the author's id and the verdict; the name is stored for a card alone, as SECURITY.md said all along.
+- `tests/test_classifier_live.py`: one real classification, opt-in (`LIVE_ANTHROPIC_API_KEY`), for the release checklist — a request shape the API refuses passes every fake.
+
+**Retention**
+- Once a day the bot drops what no screen reads any more: joins and leaves after 90 days, fine comments after 30, flagged ones with their card after 180. Both named a person and stayed for ever, and the Sunday backup carried all of it to the chat.
+
+**LinkedIn**
+- The first number read by cookie is confirmed by hand, not stored: the profile page carries other profiles' counters too, and without a stored value the bot picked the largest and then defended it against every later value. The report, a one-time 🟠 alert and `/setcookie` all say «/linkedin N» to confirm; the manual-entry button stays on the home screen until a number exists.
+
+**Fixed**
+- Comments: the classifier's `max_tokens` was 512, sized for the JSON alone; the model's thinking counts toward it and cannot be switched off, so a reply could end before any text and the check failed as if the API were down. Now 4096, and a cut-off answer is reported as such.
+- Every command and button waited while a collection ran: python-telegram-bot handled one update after another by default, and `/now` takes as long as four networks with their timeouts. Updates are handled concurrently now; the collection itself has one lock, shared with the scheduler, so the daily run and a manual one never overlap.
+- «🔄 Бот обновился» and the Sunday OSV check watched a hand-kept list of seven packages — `anthropic` and everything it brought were not on it. Every installed package is watched.
+- A `/setcookie` or `/igtoken` that waited out a deploy longer than ten minutes was dropped with the secret left in the chat; now the message is deleted and the owner asked to send it again.
+- A collection that raised as a whole (the DB, the HTTP session) was neither retried nor counted; now it is retried an hour later like a failed network, and alerted on the second day in a row.
+- `REPORT_MINUTE=` or `LINKEDIN_STALE_DAYS=` left empty crashed on `int("")`; `REPORT_HOUR=25` crashed later in the scheduler. Every whole-number variable now has a range and a plain error with its name.
+- YouTube requests had no timeout of their own (aiohttp's is five minutes); 20 seconds now, like the other networks.
+- A changed `INSTAGRAM_USERNAME` kept collecting the old account: the stored id is now tied to the username it was resolved for.
+- Display names and invite-link names in cards, alerts and the 📣 Channel screen are defanged: Telegram links a bare domain in plain text too.
+- One missed collection erased the whole weekly delta, the leader and the forecast from the report; the week and month baselines now take the newest row up to 3 and 7 days earlier.
+- The date in the report's title, the 1st of the month for the digest and the Sunday of the backup follow the report's time zone (an early-morning report in Tashkent was dated yesterday; the «Sunday» backup came on Monday).
+- The chart is drawn without pyplot, whose global state is not thread-safe when the scheduled report and the 🖼 button render at the same time; a digest can no longer go out twice when `/unmute` meets the minute job; the 🛡 Security screen survives an event without a text.
+- `scripts/clean_deleted.py`: no blocking sleep inside the event loop, a second FloodWait right after the first stops the run, the session file is named as the README names it.
 
 **Deleted accounts among the subscribers**
 - `scripts/clean_deleted.py`: remove deleted accounts from the channel's subscribers over MTProto (Telethon), by hand from a laptop, dry run by default; `--session bot` or `--session user`. Not part of the bot: the Bot API cannot list members.
 
-**Fixed**
+**Fixed earlier in this version**
 - Comments were never classified: the output schema asked the Claude API for an integer with `minimum`/`maximum`, which the API refuses (HTTP 400), so every check failed and, after three, the owner got the «проверка не работает» notice. The range is clamped in the bot instead.
 
 ## 1.3.0 — 2026-11-23
