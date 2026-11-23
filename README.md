@@ -177,7 +177,7 @@ Every message to you goes through one door (`bot/notifier.py`) with three priori
 The bot keeps itself up to date without touching its own container:
 
 1. **Dependabot** opens one grouped PR per week with every Python update (Saturday), plus monthly PRs for the base image, the Actions and the mail-worker's npm packages (the worker is deployed by hand, so a merged bump reaches Cloudflare with the next `npx wrangler deploy`).
-2. **CI** tests each one: ruff, pytest on Python 3.12–3.14, `pip-audit`, a build of the production image that must start as `appuser`, and the mail-worker's tests and `npm audit`.
+2. **CI** tests each one: ruff, pytest on Python 3.12–3.15, `pip-audit`, a build of the production image that must start as `appuser`, and the mail-worker's tests and `npm audit`.
 3. **Minor and patch updates merge themselves** once CI is green (`.github/workflows/dependabot-automerge.yml`); major ones wait for you. Branch protection on `main` requires the CI checks, otherwise auto-merge would not wait for them.
 4. **Railway redeploys** from `main`.
 5. **The bot tells you** what the pipeline can't: «🔄 The bot has been updated: aiohttp 3.14.3 → 3.14.4» after a deploy; within an hour, if the newest commit failed to deploy and it's stuck on an older build; and on Sundays, known vulnerabilities (OSV) in its packages and Dependabot PRs waiting for a human. Silent when there's nothing to do.

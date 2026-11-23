@@ -19,7 +19,7 @@ python3 -m venv .venv
 
 Direct dependencies are pinned in `requirements.in`; `requirements.txt` is the lock compiled from it with hashes, and the image installs exactly that (`--require-hashes --no-deps`). Changed a pin? Recompile the lock with `uv pip compile requirements.in --universal --python-version 3.12 --generate-hashes --no-header -o requirements.txt` (Dependabot does it in its own PRs).
 
-The tests never touch the network: Telegram is a fake bot, every API is a local HTTP server. CI runs the same on Python 3.12–3.14, plus `pip-audit`, a build of the production image and the mail-worker tests.
+The tests never touch the network: Telegram is a fake bot, every API is a local HTTP server. CI runs the same on Python 3.12–3.15 (3.15 is the image's Python), plus `pip-audit`, a build of the production image and the mail-worker tests.
 
 - A new network is one module in `bot/platforms/` (a `Platform` subclass) plus an entry in `PLATFORMS`.
 - Monitors live in `bot/monitors/`; every alert goes through a monitor the user can switch off in `/modules`.

@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: ["3.12", "3.13", "3.14"]
+        python: ["3.12", "3.13", "3.14", "3.15"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -32,28 +32,29 @@ jobs:
       # the fix is a version bump (Dependabot opens it).
       - run: pip-audit -r requirements.txt --strict --progress-spinner off
       - run: pip-audit -r requirements-dev.txt --strict --progress-spinner off   # the CI tools too
-      # The production image: tests pass on the runner's Python, but a base
-      # image bump or a package without wheels for it only breaks here.
-      - if: matrix.python == '3.14'
+      # The production image, on the leg whose Python the image ships (3.15):
+      # tests pass on the runner's Python, but a base image bump or a package
+      # without wheels for it only breaks here.
+      - if: matrix.python == '3.15'
         run: docker build --quiet --tag social-tracker-bot-ci .
       # The entrypoint must hand a root-owned volume to appuser and drop root,
       # as on Railway: otherwise the bot can't write its DB. The report time
       # zone needs the tz database in the image.
-      - if: matrix.python == '3.14'
+      - if: matrix.python == '3.15'
         run: |
           sudo mkdir -p /tmp/rootdata
           docker run --rm -v /tmp/rootdata:/app/data social-tracker-bot-ci \
             python -c "import os, bot.main; from bot.config import normalize_tz; \
               assert os.getuid() == 1000 and os.access('data', os.W_OK) and normalize_tz('Europe/Moscow')"
-      - if: matrix.python == '3.14' && github.event_name == 'pull_request'
+      - if: matrix.python == '3.15' && github.event_name == 'pull_request'
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
         with:
           image: docker.io/tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
-      - if: matrix.python == '3.14' && github.event_name == 'pull_request'
+      - if: matrix.python == '3.15' && github.event_name == 'pull_request'
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
           driver-opts: image=moby/buildkit@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
-      - if: matrix.python == '3.14' && github.event_name == 'pull_request'
+      - if: matrix.python == '3.15' && github.event_name == 'pull_request'
         name: arm64 builds too (before the merge, not after)
         run: docker buildx build --platform linux/arm64 .
 
