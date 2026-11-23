@@ -2,9 +2,22 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
-## 1.2.1 — 2026-11-23
+## 1.3.0 — unreleased
 
-- `scripts/clean_deleted.py`: remove deleted accounts from the channel's subscribers over MTProto (Telethon), by hand from a laptop, dry run by default; `--session bot` or `--session user`.
+Life of the channel without TGStat in the admins, and the group router that #43 left unreachable.
+
+**Life of the channel** — a new monitor, on by itself for a Telegram channel the bot is an admin of
+- What Telegram sends an admin bot is kept on your volume: every join and leave (who, and the invite link it came through — the link's name, a join request, a chat folder, or directly), every post, and the reactions a post gathers (a snapshot per post, custom emoji summed, paid reactions as ⭐).
+- `/channel`, also the 📣 Channel button on the home screen: joins · leaves · posts · reactions for 24 hours, 7 and 30 days; where the joins came from; the three most reacted posts of the month with links; the latest five events with names. The report gets one line: «📣 Channel, last 7 days: +14 joins · −3 leaves · 4 posts · 37 reactions».
+- Nothing new is alerted (a drop in followers is still the followers monitor's job). Switched off in `/modules`, nothing is recorded — a join names a person. The Sunday backup carries the history and `/restore` merges it back.
+- Views, forwards and the citation index are not in the Bot API; the screen says so and points at Telegram's own statistics.
+- The bot now asks Telegram for `chat_member` and `message_reaction_count` updates explicitly: they are not delivered unless requested.
+
+**Deleted accounts among the subscribers**
+- `scripts/clean_deleted.py`: remove deleted accounts from the channel's subscribers over MTProto (Telethon), by hand from a laptop, dry run by default; `--session bot` or `--session user`. Not part of the bot: the Bot API cannot list members.
+
+**Fixed**
+- The handler that keeps group and channel traffic away from the owner-only handlers (#43) shared a handler group with the stale-message filter; python-telegram-bot runs one handler per group, so it never ran: comments were not reviewed and every stranger's message in the group got «⛔ Access denied». Each early handler now has a group of its own, and a test checks what runs first.
 
 ## 1.2.0 — 2026-11-23
 

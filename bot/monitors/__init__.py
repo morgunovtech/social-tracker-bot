@@ -54,6 +54,10 @@ def _has_mail(config: Config) -> bool:
     return bool(config.security_mail_url and config.security_mail_token)
 
 
+def _has_channel(config: Config) -> bool:
+    return bool(config.telegram_channel_id)
+
+
 def _has_comments(config: Config) -> bool:
     return bool(config.anthropic_api_key and (config.telegram_channel_id or config.comments_chat_id))
 
@@ -75,6 +79,13 @@ MONITORS: tuple[Monitor, ...] = (
         "новые входы, смена пароля, коды входа — из пересланных писем",
         requires=_has_mail,
         needs="SECURITY_MAIL_URL и SECURITY_MAIL_TOKEN",
+    ),
+    Monitor(
+        "channel",
+        "Жизнь канала",
+        "подписки и отписки, откуда пришли, посты и реакции — экран 📣 Канал и строка в отчёте",
+        requires=_has_channel,
+        needs="Telegram-канал, бот в его админах",
     ),
     Monitor(
         "comments",

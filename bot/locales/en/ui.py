@@ -300,6 +300,21 @@ STRINGS: dict[str, str] = {
     "Помечено · подтверждено · ложных:": "Flagged · confirmed · false:",
     "Точность по твоим отметкам: {pct}% ({confirmed} из {judged})": "Accuracy by your marks: {pct}% ({confirmed} of {judged})",
     "Отмечай карточки кнопками — из отметок складывается точность.": "Mark the cards with the buttons — the marks add up to the accuracy.",
+    # The channel screen (bot/ui.py channel_screen)
+    "📣 Канал": "📣 Channel",
+    "<b>📣 Канал {channel}</b>": "<b>📣 Channel {channel}</b>",
+    "Не подключено — нужно: {needs}.": "Not connected — needed: {needs}.",
+    "⬜ Выключено в /modules — пока выключено, события не записываются.": (
+        "⬜ Switched off in /modules — while it is off, no events are recorded."
+    ),
+    "Просмотры, пересылки и цитирование Bot API не отдаёт — они в статистике самого Telegram "
+    "(в канале: ⋮ → Статистика).": (
+        "Views, forwards and citations are not in the Bot API — they are in Telegram's own statistics "
+        "(in the channel: ⋮ → Statistics)."
+    ),
+    "/channel — жизнь канала: подписки и отписки, откуда пришли, посты и реакции": (
+        "/channel — life of the channel: joins and leaves, where they came from, posts and reactions"
+    ),
     "<b>Бэкап</b>": "<b>Backup</b>",
     "По воскресеньям я присылаю файл с базой. Чтобы вернуть историю, ответь на него "
     "командой /restore — уже собранное не перезапишется.":
