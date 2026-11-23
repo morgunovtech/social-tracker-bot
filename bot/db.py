@@ -71,6 +71,32 @@ CREATE TABLE IF NOT EXISTS pending_notifications (
 # into a hundred-message morning.
 PENDING_MAX = 100
 
+# Comments of the channel's discussion group that the classifier looked at
+# (bot/monitors/comments.py): one row per message, the text excerpt kept only
+# when the message was flagged. action is what the owner did from the card
+# (deleted, banned, unbanned), label what they said about the verdict
+# (confirmed, false_positive) — the numbers the accuracy table is made of.
+_CREATE_COMMENTS = """
+CREATE TABLE IF NOT EXISTS comment_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER NOT NULL,
+    message_id INTEGER NOT NULL,
+    user_id INTEGER,
+    user_name TEXT NOT NULL DEFAULT '',
+    text TEXT NOT NULL DEFAULT '',
+    media TEXT NOT NULL DEFAULT '',
+    link TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL,
+    confidence INTEGER NOT NULL DEFAULT 0,
+    reason TEXT NOT NULL DEFAULT '',
+    action TEXT NOT NULL DEFAULT '',
+    label TEXT NOT NULL DEFAULT '',
+    reviewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    acted_at TIMESTAMP,
+    UNIQUE (chat_id, message_id)
+);
+"""
+
 # Settings that must never leave the server (wiped from off-site backups).
 _SECRET_SETTINGS = ("linkedin_li_at", "instagram_token")
 # Each secret with the settings that describe it (when it was set, when it dies).
@@ -118,6 +144,7 @@ class Database:
             await db.execute(_CREATE_SETTINGS)
             await db.execute(_CREATE_EVENTS)
             await db.execute(_CREATE_PENDING)
+            await db.execute(_CREATE_COMMENTS)
             await db.commit()
         logger.info("Database initialized at %s", self._db_path)
 
@@ -317,3 +344,85 @@ class Database:
                 f"DELETE FROM pending_notifications WHERE id IN ({','.join('?' * len(ids))})", ids
             )
             await db.commit()
+
+    # --- comments of the discussion group (bot/monitors/comments.py) --------
+
+    async def add_review(
+        self, chat_id: int, message_id: int, user_id: int | None, user_name: str, text: str, media: str,
+        link: str, category: str, confidence: int, reason: str,
+    ) -> int | None:
+        """Record a classified comment; None when this message is already recorded
+        (Telegram re-delivered the update)."""
+        async with aiosqlite.connect(self._db_path) as db:
+            cursor = await db.execute(
+                """
+                INSERT OR IGNORE INTO comment_reviews
+                    (chat_id, message_id, user_id, user_name, text, media, link, category, confidence, reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (chat_id, message_id, user_id, user_name, text, media, link, category, confidence, reason),
+            )
+            await db.commit()
+            return cursor.lastrowid if cursor.rowcount == 1 else None
+
+    async def get_review(self, review_id: int) -> dict | None:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            row = await (await db.execute("SELECT * FROM comment_reviews WHERE id = ?", (review_id,))).fetchone()
+            return dict(row) if row else None
+
+    async def get_review_by_message(self, chat_id: int, message_id: int) -> dict | None:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            row = await (
+                await db.execute(
+                    "SELECT * FROM comment_reviews WHERE chat_id = ? AND message_id = ?", (chat_id, message_id)
+                )
+            ).fetchone()
+            return dict(row) if row else None
+
+    async def update_review(self, review_id: int, *, action: str | None = None, label: str | None = None) -> None:
+        """What the owner did with a card: the action, the label, or both."""
+        sets, params = [], []
+        if action is not None:
+            sets += ["action = ?", "acted_at = CURRENT_TIMESTAMP"]
+            params.append(action)
+        if label is not None:
+            sets.append("label = ?")
+            params.append(label)
+        if not sets:
+            return
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(f"UPDATE comment_reviews SET {', '.join(sets)} WHERE id = ?", (*params, review_id))
+            await db.commit()
+
+    async def count_author_reviews(self, chat_id: int, user_id: int) -> int:
+        """How many messages of this author the bot has already seen in the group."""
+        async with aiosqlite.connect(self._db_path) as db:
+            return await _scalar(
+                db, "SELECT COUNT(*) FROM comment_reviews WHERE chat_id = ? AND user_id = ?", (chat_id, user_id)
+            )
+
+    async def review_stats(self, days: int = 30) -> dict:
+        """The accuracy table: how many comments were checked, and per category
+        how many were flagged, acted on, confirmed and marked false."""
+        since = (utcnow() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            total = await _scalar(db, "SELECT COUNT(*) FROM comment_reviews WHERE reviewed_at >= ?", (since,))
+            rows = await (
+                await db.execute(
+                    """
+                    SELECT category,
+                           COUNT(*) AS flagged,
+                           SUM(action IN ('deleted', 'banned')) AS acted,
+                           SUM(label = 'confirmed') AS confirmed,
+                           SUM(label = 'false_positive') AS false_positive
+                    FROM comment_reviews
+                    WHERE reviewed_at >= ? AND category != 'ok'
+                    GROUP BY category
+                    """,
+                    (since,),
+                )
+            ).fetchall()
+        return {"checked": total, "categories": {r["category"]: dict(r) for r in rows}}

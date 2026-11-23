@@ -14,7 +14,7 @@ from bot import i18n, main, notifier, reporter, tofs_status, ui
 from bot.config import Config
 from bot.db import utcnow
 from bot.i18n import plural, t
-from bot.monitors import collection, followers, hygiene, mail, profile
+from bot.monitors import collection, comments, followers, hygiene, mail, profile
 from bot.platforms import BY_ID, PLATFORMS
 from bot.scheduler import CollectOutcome, _send_backup
 
@@ -111,6 +111,8 @@ async def test_every_screen(config, db, insert):
         ui.linkedin_confirm(4500, 9000),
         ui.help_screen(),
         await ui.when_to_write(db, config),
+        await ui.comments_screen(db, config),
+        await ui.comments_screen(db, dataclasses.replace(config, anthropic_api_key="k")),
     ]
     for platform in PLATFORMS:
         screens.append(await ui.checklist(db, platform))
@@ -254,3 +256,22 @@ async def test_backup_caption(config, db):
     await db.upsert("telegram", 1000)
     await _send_backup(bot, config, db)
     english_only(bot.documents[0]["caption"])
+
+
+async def test_comment_cards(db):
+    with_key = dataclasses.replace(Config.from_env(), anthropic_api_key="k")
+    await db.add_review(-1001, 7, 5, "Ivan (@ivan)", "buy here", "photo", "https://t.me/c/1/7", "drugs", 92, "an offer with a contact")
+    await db.update_review(1, action="banned", label="confirmed")
+    screen = await ui.comments_screen(db, with_key)
+    screen_english(screen)
+    for state in ({"action": "", "label": ""}, {"action": "deleted", "label": "confirmed"},
+                  {"action": "banned", "label": "confirmed"}, {"action": "", "label": "false_positive"}):
+        review = {**await db.get_review(1), **state}
+        text, markup = comments.card(review, "Channel", first_message=True)
+        english_only(text)
+        if markup is not None:
+            for row in markup.inline_keyboard:
+                for button in row:
+                    english_only(button.text)
+    text, _ = comments.card({**await db.get_review(1), "category": "refused", "confidence": 0, "action": "", "label": ""})
+    english_only(text)

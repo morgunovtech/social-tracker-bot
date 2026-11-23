@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 import aiohttp
 from telegram import Update
-from telegram.constants import ParseMode
+from telegram.constants import ChatType, ParseMode
 from telegram.error import BadRequest, Conflict, NetworkError
 from telegram.ext import (
     ApplicationHandlerStop,
@@ -29,7 +29,7 @@ from bot import monitors, notifier, ui
 from bot.config import DOW_ORDER, Config, normalize_dow, normalize_tz
 from bot.db import Database, utcnow
 from bot.i18n import t
-from bot.monitors import NO_PREVIEW, hygiene
+from bot.monitors import NO_PREVIEW, comments, hygiene
 from bot.platforms import BY_ID, PLATFORM_IDS
 from bot.platforms import instagram as ig
 from bot.platforms.linkedin import collect_linkedin, plausible_count
@@ -185,6 +185,27 @@ async def drop_stale_messages(update: Update, context: ContextTypes.DEFAULT_TYPE
     if message is not None and message.date is not None and utcnow() - message.date > PENDING_MAX_AGE:
         logger.info("Dropping a message queued for %s", utcnow() - message.date)
         raise ApplicationHandlerStop
+
+
+def _watch(context: ContextTypes.DEFAULT_TYPE) -> comments.Watch:
+    return context.bot_data.setdefault("comments_watch", comments.Watch())
+
+
+async def on_group_update(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Runs before every handler. Nothing from a group or a channel reaches the
+    owner-only handlers (they would answer «⛔ Доступ запрещён» to every
+    comment); a new message in the channel's discussion group is reviewed in
+    the background, so a slow classifier never holds up the owner's chat."""
+    chat = update.effective_chat
+    if chat is None or chat.type == ChatType.PRIVATE:
+        return
+    message = update.message
+    if message is not None and chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
+        config, db = _deps(context)
+        context.application.create_task(
+            comments.review(context.bot, config, db, _watch(context), message), update=update
+        )
+    raise ApplicationHandlerStop
 
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -360,6 +381,12 @@ async def cmd_settings(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def cmd_modules(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config, db = _deps(context)
     await _reply(update, await ui.monitors_screen(db, config))
+
+
+@_admin_only
+async def cmd_comments(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config, db = _deps(context)
+    await _reply(update, await ui.comments_screen(db, config))
 
 
 @_admin_only
@@ -921,6 +948,25 @@ async def _cb_monitors(press: _Press, context, args: list[str]) -> None:
     await _show(press.query, await ui.monitors_screen(db, config))
 
 
+async def _cb_comments(press: _Press, context, args: list[str]) -> None:
+    """cm — the screen; cm:<del|ban|ok|unban>:<review id> — a card button.
+    The card is re-rendered in place from the record, so a second tap or an
+    old card shows the current state."""
+    config, db = _deps(context)
+    if not args:
+        await _show(press.query, await ui.comments_screen(db, config))
+        return
+    if len(args) != 2 or not args[1].isdigit():
+        return
+    review, note = await comments.act(context.bot, db, int(args[1]), args[0])
+    if review is None:
+        await press.answer(note)
+        return
+    await press.answer(note)
+    text, markup = comments.card(review, _watch(context).group_title)
+    await _safe_edit(press.query, text, reply_markup=markup, link_preview_options=NO_PREVIEW)
+
+
 async def _cb_linkedin(press: _Press, context, args: list[str]) -> None:
     """li | li:save:<count> (confirmed after the typo check) | li:cancel of a timed-out prompt."""
     config, db = _deps(context)
@@ -957,6 +1003,7 @@ _ROUTES: dict[str, Route] = {
     ui.LINKEDIN: _cb_linkedin,
     ui.INSTAGRAM: _cb_instagram,
     ui.HELP: _cb_help,
+    ui.COMMENTS: _cb_comments,
 }
 # Screen ids of the menu before the redesign: their buttons stay in the chat history.
 _LEGACY = {"menu": ui.HOME, "stats": ui.HOME, "week": ui.DYNAMICS, "settings": ui.SETTINGS, "history": ui.TABLE}
@@ -1056,6 +1103,7 @@ COMMANDS = {
     "security": cmd_security,
     "settings": cmd_settings,
     "modules": cmd_modules,
+    "comments": cmd_comments,
     "linkedin": cmd_linkedin,
     "history": cmd_history,
     "settime": cmd_settime,
@@ -1075,8 +1123,10 @@ def register_handlers(app, config: Config, db: Database) -> None:
     app.bot_data["config"] = config
     app.bot_data["db"] = db
 
-    # Before everything else: drop messages that waited through a long outage.
+    # Before everything else: drop messages that waited through a long outage,
+    # and keep group and channel traffic away from the owner-only handlers.
     app.add_handler(TypeHandler(Update, drop_stale_messages), group=-1)
+    app.add_handler(TypeHandler(Update, on_group_update), group=-1)
 
     li_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(li_conv_start, pattern=r"^(?:li:enter|linkedin_prompt)$")],

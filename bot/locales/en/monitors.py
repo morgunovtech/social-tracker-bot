@@ -22,6 +22,65 @@ STRINGS: dict[str, str] = {
         "new sign-ins, password changes, login codes — from forwarded emails"
     ),
     "SECURITY_MAIL_URL и SECURITY_MAIL_TOKEN": "SECURITY_MAIL_URL and SECURITY_MAIL_TOKEN",
+    "Комментарии": "Comments",
+    "запрещённый контент в обсуждении канала: наркотики, порно, экстремизм, мошенничество — карточка с кнопками": (
+        "prohibited content in the channel's discussion group: drugs, porn, extremism, fraud — a card with buttons"
+    ),
+    "ANTHROPIC_API_KEY и Telegram-канал с группой обсуждения": "ANTHROPIC_API_KEY and a Telegram channel with a discussion group",
+    # bot/monitors/comments.py — the cards
+    "наркотики": "drugs",
+    "порнография": "pornography",
+    "сексуализация детей": "sexualization of minors",
+    "экстремизм или терроризм": "extremism or terrorism",
+    "мошенничество": "fraud",
+    "спам или реклама": "spam or advertising",
+    "модель отказалась оценивать": "the model declined to judge it",
+    "📷 фото": "📷 photo",
+    "🎬 видео": "🎬 video",
+    "🎬 GIF": "🎬 GIF",
+    "🩵 стикер": "🩵 sticker",
+    "📎 файл": "📎 file",
+    "🗑 Удалено": "🗑 Deleted",
+    "🔨 Удалено, автор забанен": "🔨 Deleted, author banned",
+    "↩️ Бан снят, сообщение удалено": "↩️ Ban lifted, the message stays deleted",
+    "🗑 Удалить": "🗑 Delete",
+    "🔨 Удалить и забанить": "🔨 Delete and ban",
+    "✅ Всё в порядке": "✅ All fine",
+    "↩️ Разбанить": "↩️ Unban",
+    "🔨 Забанить автора": "🔨 Ban the author",
+    "{icon} Комментарии: {label}": "{icon} Comments: {label}",
+    "{icon} Комментарии: {label} — уверенность {confidence}%": "{icon} Comments: {label} — confidence {confidence}%",
+    "первое сообщение в группе": "first message in the group",
+    "Почему: {reason}": "Why: {reason}",
+    "Модель не стала оценивать это сообщение — обычно так бывает с самым тяжёлым контентом. Посмотри сам.": (
+        "The model declined to judge this message — that usually happens with the worst content. Have a look yourself."
+    ),
+    "За такой контент Telegram блокирует всю группу. Я только сообщаю — удалить или забанить можно кнопкой.": (
+        "Telegram blocks the whole group for content like this. I only report — delete or ban with a button."
+    ),
+    "Группе это не грозит, но и не нужно. Удалить или забанить можно кнопкой.": (
+        "No threat to the group, but unwanted. Delete or ban with a button."
+    ),
+    "✅ Отмечено: ложная тревога — учту в статистике": "✅ Marked: false alarm — counted in the statistics",
+    "🟠 Комментарии: проверка не работает {n} раза подряд ({error}) — комментарии сейчас никто не смотрит. "
+    "Проверь ANTHROPIC_API_KEY и баланс API.": (
+        "🟠 Comments: the check has failed {n} times in a row ({error}) — nobody is looking at the comments right now. "
+        "Check ANTHROPIC_API_KEY and the API balance."
+    ),
+    "✅ Комментарии: проверка снова работает": "✅ Comments: the check works again",
+    "Нет прав: сделай бота админом группы с правом удалять сообщения и блокировать участников.": (
+        "No rights: make the bot a group admin with the rights to delete messages and ban members."
+    ),
+    "Сообщение уже удалено.": "The message is already deleted.",
+    "Автор — админ группы, его нельзя забанить.": "The author is a group admin and cannot be banned.",
+    "Telegram не нашёл этого пользователя.": "Telegram could not find this user.",
+    "Telegram ответил ошибкой: {error}": "Telegram answered with an error: {error}",
+    "Эта карточка устарела": "This card is out of date",
+    "Отмечено как ложная тревога": "Marked as a false alarm",
+    "Удалено": "Deleted",
+    "Автор неизвестен": "The author is unknown",
+    "Удалено, автор забанен": "Deleted, author banned",
+    "Бан снят": "Ban lifted",
     # bot/monitors/hygiene.py — the checklist
     "да": "yes",
     "нет": "no",

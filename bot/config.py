@@ -15,6 +15,8 @@ load_dotenv()
 
 
 DOW_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+# The model that classifies comments unless COMMENTS_MODEL says otherwise.
+DEFAULT_COMMENTS_MODEL = "claude-opus-5-5"
 
 
 def _require(name: str) -> str:
@@ -103,6 +105,17 @@ def _repo_slug() -> str | None:
     return slug or None
 
 
+def _chat_id(name: str) -> int | None:
+    """An optional numeric chat id; empty means «not set»."""
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        raise RuntimeError(f"Invalid {name}={raw!r}: a Telegram chat id is a number such as -1001234567890") from None
+
+
 def _admin_chat_id() -> int | None:
     """ADMIN_CHAT_ID is optional: empty means «the first /start is the owner»."""
     raw = (os.getenv("ADMIN_CHAT_ID") or "").strip()
@@ -169,6 +182,13 @@ class Config:
     # notifications (see mail-worker/README.md) and its bearer token.
     security_mail_url: str | None
     security_mail_token: str | None
+    # Comments of the channel (bot/monitors/comments.py): the Claude API key
+    # that classifies them and the model; off without the key. The discussion
+    # group is found through the channel (linked_chat_id) unless COMMENTS_CHAT_ID
+    # names one.
+    anthropic_api_key: str | None
+    comments_model: str
+    comments_chat_id: int | None
 
     @classmethod
     def from_env(cls) -> Config:
@@ -200,6 +220,9 @@ class Config:
             update_watch=os.getenv("UPDATE_WATCH", "1") == "1",
             security_mail_url=(os.getenv("SECURITY_MAIL_URL") or "").rstrip("/") or None,
             security_mail_token=os.getenv("SECURITY_MAIL_TOKEN") or None,
+            anthropic_api_key=(os.getenv("ANTHROPIC_API_KEY") or "").strip() or None,
+            comments_model=(os.getenv("COMMENTS_MODEL") or "").strip() or DEFAULT_COMMENTS_MODEL,
+            comments_chat_id=_chat_id("COMMENTS_CHAT_ID"),
         )
 
     def set_owner(self, user_id: int) -> None:

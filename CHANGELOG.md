@@ -2,6 +2,23 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.2.0 — 2026-11-23
+
+Prohibited content in the channel's comments, reported with one-tap actions; the bot no longer talks to strangers in groups.
+
+**Comments of the channel** — a new monitor, off without `ANTHROPIC_API_KEY`
+- Made an admin of the channel's discussion group, the bot looks at every comment with a Claude model (`claude-opus-5-5`, `COMMENTS_MODEL` to change) and sends a card for anything the group can be blocked for — drug sales, pornography, sexualization of minors, extremism, fraud — and, quietly, for spam. The card: the text (links defanged), the author, first message or not, why it was flagged, a link to the message, and three buttons: 🗑 delete, 🔨 delete and ban (with ↩️ unban after), ✅ all fine.
+- Report-only by design: nothing is deleted or banned without a tap. The taps are labels; `/comments` (also a button on 🛡 Security) shows how many comments were checked and, per category, flagged · confirmed · false, with the accuracy of the verdicts — the table any automatic action would be calibrated on.
+- A dangerous category at ≥ 70 % rings; lower confidence, spam and a model refusal are quiet cards. The group's admins and the owner are never reviewed; a picture (or a video / sticker thumbnail) is judged together with the caption. The classifier gets the text, the picture, the group's title and two facts about the author — never an id, a name or a @username.
+- Three failed checks in a row → one 🟠 notice; the first success after → ✅. A failure is never counted as «fine».
+- Setup: `ANTHROPIC_API_KEY`, the bot as a group admin with the rights to delete messages and ban members; `COMMENTS_CHAT_ID` names the group when it is not the channel's linked one. Switch in `/modules`.
+
+**Fixed**
+- Added to a group, the bot used to answer «⛔ Доступ запрещён» to every message by a non-owner (every comment, once it was in the discussion group). Nothing from a group or a channel reaches the owner-only handlers any more.
+
+**Under the hood**
+- `anthropic` joins the hashed lock (with `httpx2`, `pydantic`, `jiter`, `opentelemetry-api`); `comment_reviews` table in the DB.
+
 ## 1.1.0 — 2026-11-23
 
 Quiet hours and `/mute`, one required variable, and the supply chain hardened: hashed lock, pinned image and Actions, a public image on ghcr.io.

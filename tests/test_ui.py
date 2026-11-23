@@ -104,7 +104,7 @@ async def test_security_screen_shows_accounts_advice_and_events(config, db):
     assert "Что сделать в первую очередь" in screen.text and "…и ещё" in screen.text
     assert "🚨 Google: новый вход &lt;в&gt; аккаунт" in screen.text            # quoted mail is escaped
     assert "«Security alert»" not in screen.text
-    assert set(buttons(screen.keyboard)) == {"sec:edit:telegram", "sec:edit:youtube", "sec:edit:linkedin", "home"}
+    assert set(buttons(screen.keyboard)) == {"sec:edit:telegram", "sec:edit:youtube", "sec:edit:linkedin", "cm", "home"}
 
 
 async def test_password_question_lists_the_ages(db):

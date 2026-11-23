@@ -22,7 +22,7 @@ from bot import monitors, notifier, platforms
 from bot.config import DOW_ORDER, Config
 from bot.db import Database, parse_utc, utcnow
 from bot.i18n import language, plural, t
-from bot.monitors import hygiene
+from bot.monitors import comments, hygiene
 from bot.platforms import BY_ID, PLATFORMS
 from bot.platforms import instagram as ig
 from bot.platforms.base import Platform
@@ -44,6 +44,7 @@ INSTAGRAM = "ig"
 LI_ENTER = "li:enter"
 LI_CANCEL = "li:cancel"
 HELP = "help"
+COMMENTS = comments.CALLBACK
 
 # The persistent reply-keyboard button: tapping it sends this text back.
 # Russian is the key; the keyboard shows t(MENU_BUTTON_TEXT).
@@ -369,8 +370,63 @@ async def security(db: Database, config: Config, top: int = 5) -> Screen:
             day = parse_utc(e["occurred_at"]).strftime("%d.%m")
             lines.append(f"• {day} {esc(e['detail'].splitlines()[0])}")
     lines += ["", t("Нажми на аккаунт, чтобы отметить пункты. Пароли я не спрашиваю и не храню.")]
+    rows.append([_button(t("💬 Комментарии канала"), COMMENTS)])
     rows.append(_back(HOME, t("Главная")))
     return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
+
+
+COMMENTS_STATS_DAYS = 30
+
+
+async def comments_screen(db: Database, config: Config) -> Screen:
+    """What the comment monitor does, and the accuracy table its cards built."""
+    monitor = monitors.BY_ID[comments.MONITOR_ID]
+    lines = [t("<b>💬 Комментарии канала</b>"), ""]
+    if not monitor.requires(config):
+        lines.append(
+            t("Не подключено — нужно: {needs}. Тогда я буду смотреть каждый комментарий в группе обсуждения "
+              "и присылать карточку с кнопками на запрещённый контент.").format(needs=esc(t(monitor.needs)))
+        )
+        return Screen("\n".join(lines), InlineKeyboardMarkup([_back(SECURITY, t("Безопасность"))]))
+    on = await monitors.is_switched_on(db, comments.MONITOR_ID)
+    lines.append(
+        t("Режим: только сообщаю. Каждый комментарий в группе обсуждения смотрит модель; на запрещённый контент "
+          "приходит карточка, а удалить или забанить — кнопкой под ней. Сам я ничего не удаляю.")
+    )
+    if config.comments_chat_id is None:
+        lines.append(t("Группа: группа обсуждения канала {channel}, бот должен быть в ней админом с правом удалять "
+                       "сообщения и блокировать участников.").format(channel=esc(config.telegram_channel_id)))
+    else:
+        lines.append(t("Группа: {chat}, бот должен быть в ней админом с правом удалять сообщения и блокировать "
+                       "участников.").format(chat=esc(config.comments_chat_id)))
+    lines.append(t("Модель: {model}").format(model=esc(config.comments_model)))
+    if not on:
+        lines.append(t("⬜ Выключено в /modules"))
+    stats = await db.review_stats(COMMENTS_STATS_DAYS)
+    lines += ["", t("<b>За {days} дней</b>").format(days=COMMENTS_STATS_DAYS)]
+    lines.append(t("Проверено комментариев: {n}").format(n=stats["checked"]))
+    by_category = stats["categories"]
+    if not by_category:
+        lines.append(t("Помеченных пока нет."))
+    else:
+        lines.append(t("Помечено · подтверждено · ложных:"))
+        confirmed = false_positive = 0
+        for category, row in sorted(by_category.items(), key=lambda kv: -kv[1]["flagged"]):
+            icon = "🔴" if category in comments.classifier.DANGEROUS else "🟠"
+            label = esc(t(comments.LABELS.get(category, category)))
+            lines.append(f"{icon} {label} — {row['flagged']} · {row['confirmed'] or 0} · {row['false_positive'] or 0}")
+            confirmed += row["confirmed"] or 0
+            false_positive += row["false_positive"] or 0
+        judged = confirmed + false_positive
+        if judged:
+            lines.append(
+                t("Точность по твоим отметкам: {pct}% ({confirmed} из {judged})").format(
+                    pct=round(100 * confirmed / judged), confirmed=confirmed, judged=judged
+                )
+            )
+        else:
+            lines.append(t("Отмечай карточки кнопками — из отметок складывается точность."))
+    return Screen("\n".join(lines), InlineKeyboardMarkup([_back(SECURITY, t("Безопасность"))]))
 
 
 def question_keys(platform: Platform) -> list[str]:
@@ -786,6 +842,7 @@ def help_screen() -> Screen:
         t("/setquiet on|off — тихий режим"),
         t("/mute &lt;время&gt; — помолчать: 1h, 8h, 1d (по умолчанию 8h); /unmute — снять"),
         t("/modules — мониторинги"),
+        t("/comments — комментарии канала: что проверено и насколько точно"),
         "",
         t("<b>Бэкап</b>"),
         t(

@@ -54,6 +54,10 @@ def _has_mail(config: Config) -> bool:
     return bool(config.security_mail_url and config.security_mail_token)
 
 
+def _has_comments(config: Config) -> bool:
+    return bool(config.anthropic_api_key and (config.telegram_channel_id or config.comments_chat_id))
+
+
 MONITORS: tuple[Monitor, ...] = (
     Monitor("followers", "Подписчики", "падения, наплыв ботов, круглые числа"),
     Monitor("collection", "Сбор данных", "сбои несколько дней подряд, истёкший cookie LinkedIn или токен Instagram"),
@@ -71,6 +75,13 @@ MONITORS: tuple[Monitor, ...] = (
         "новые входы, смена пароля, коды входа — из пересланных писем",
         requires=_has_mail,
         needs="SECURITY_MAIL_URL и SECURITY_MAIL_TOKEN",
+    ),
+    Monitor(
+        "comments",
+        "Комментарии",
+        "запрещённый контент в обсуждении канала: наркотики, порно, экстремизм, мошенничество — карточка с кнопками",
+        requires=_has_comments,
+        needs="ANTHROPIC_API_KEY и Telegram-канал с группой обсуждения",
     ),
 )
 BY_ID: dict[str, Monitor] = {m.id: m for m in MONITORS}

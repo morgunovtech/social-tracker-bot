@@ -267,6 +267,39 @@ STRINGS: dict[str, str] = {
     "🌙 Накопилось, пока было тихо:": "🌙 Piled up while it was quiet:",
     "🌙 (продолжение)": "🌙 (continued)",
     "/modules — мониторинги": "/modules — monitors",
+    "/comments — комментарии канала: что проверено и насколько точно": (
+        "/comments — the channel's comments: what was checked and how accurately"
+    ),
+    # Comments screen
+    "💬 Комментарии канала": "💬 Channel comments",
+    "<b>💬 Комментарии канала</b>": "<b>💬 Channel comments</b>",
+    "Не подключено — нужно: {needs}. Тогда я буду смотреть каждый комментарий в группе обсуждения "
+    "и присылать карточку с кнопками на запрещённый контент.": (
+        "Not connected — needed: {needs}. Then I will look at every comment in the discussion group "
+        "and send a card with buttons for prohibited content."
+    ),
+    "Режим: только сообщаю. Каждый комментарий в группе обсуждения смотрит модель; на запрещённый контент "
+    "приходит карточка, а удалить или забанить — кнопкой под ней. Сам я ничего не удаляю.": (
+        "Mode: report only. A model looks at every comment in the discussion group; prohibited content "
+        "becomes a card, and deleting or banning is a button under it. I delete nothing myself."
+    ),
+    "Группа: группа обсуждения канала {channel}, бот должен быть в ней админом с правом удалять "
+    "сообщения и блокировать участников.": (
+        "Group: the discussion group of {channel}; the bot must be its admin with the rights to delete "
+        "messages and ban members."
+    ),
+    "Группа: {chat}, бот должен быть в ней админом с правом удалять сообщения и блокировать "
+    "участников.": (
+        "Group: {chat}; the bot must be its admin with the rights to delete messages and ban members."
+    ),
+    "Модель: {model}": "Model: {model}",
+    "⬜ Выключено в /modules": "⬜ Switched off in /modules",
+    "<b>За {days} дней</b>": "<b>Last {days} days</b>",
+    "Проверено комментариев: {n}": "Comments checked: {n}",
+    "Помеченных пока нет.": "Nothing flagged yet.",
+    "Помечено · подтверждено · ложных:": "Flagged · confirmed · false:",
+    "Точность по твоим отметкам: {pct}% ({confirmed} из {judged})": "Accuracy by your marks: {pct}% ({confirmed} of {judged})",
+    "Отмечай карточки кнопками — из отметок складывается точность.": "Mark the cards with the buttons — the marks add up to the accuracy.",
     "<b>Бэкап</b>": "<b>Backup</b>",
     "По воскресеньям я присылаю файл с базой. Чтобы вернуть историю, ответь на него "
     "командой /restore — уже собранное не перезапишется.":
