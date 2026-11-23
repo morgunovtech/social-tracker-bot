@@ -90,6 +90,14 @@ def test_avatar_and_admin_changes():
     assert "🚨 Telegram: сменился владелец — Owner (@owner) → Stranger (@x)" in lines
 
 
+def test_admin_names_are_defanged():
+    hijacked = {**CHANNEL, "admins": _admins(
+        (1, "Owner (@owner)", "creator"), (99, "Bot", "administrator"), (7, "support evil.com", "administrator"),
+    )}
+    (line,) = profile.diff(TELEGRAM, CHANNEL, hijacked)
+    assert line == "🚨 Telegram: новый админ — support evil[.]com"
+
+
 def test_admin_rename_is_not_a_change():
     renamed = {**CHANNEL, "admins": _admins((1, "New Name", "creator"), (99, "Bot", "administrator"))}
     assert profile.diff(TELEGRAM, CHANNEL, renamed) == []

@@ -274,10 +274,11 @@ async def _schedule(db: Database, config: Config) -> tuple[str, int, int, ZoneIn
 # ---------------------------------------------------------------------------
 
 async def linkedin_is_manual(db: Database, config: Config) -> bool:
-    """LinkedIn is connected but its number is typed in by hand: no working cookie."""
+    """LinkedIn is connected but its number is typed in by hand: no working
+    cookie, or no number yet — the first one read by cookie is confirmed by hand."""
     if not BY_ID["linkedin"].enabled(config):
         return False
-    if not await get_active_cookie(db, config):
+    if not await get_active_cookie(db, config) or await db.get_latest("linkedin") is None:
         return True
     return await db.get_setting("cookie_expired_alerted") == "1"
 

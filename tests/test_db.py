@@ -1,10 +1,11 @@
 import os
 import sqlite3
+from datetime import timedelta
 
 import pytest
 from conftest import COOKIE
 
-from bot.db import Database
+from bot.db import Database, utcnow
 
 
 async def test_upsert_keeps_one_row_per_platform_per_day(db):
@@ -174,3 +175,28 @@ async def test_restore_skips_live_state(db, tmp_path):
     for key in ("profile_telegram", "profile_fail_telegram", "fail_streak_youtube"):
         assert await live.get_setting(key) is None
     assert await live.get_setting("hygiene_youtube_2fa") == "app"
+
+
+async def test_prune_drops_what_no_screen_reads(db):
+    now = utcnow()
+
+    def old(days: int) -> str:
+        return (now - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+
+    with sqlite3.connect(db._db_path) as conn:
+        for message_id, category, days in ((1, "ok", 31), (2, "ok", 29), (3, "drugs", 181), (4, "drugs", 179)):
+            conn.execute(
+                "INSERT INTO comment_reviews (chat_id, message_id, user_id, category, reviewed_at) VALUES (1, ?, 5, ?, ?)",
+                (message_id, category, old(days)),
+            )
+        for user_id, days in ((1, 91), (2, 89)):
+            conn.execute(
+                "INSERT INTO channel_events (chat_id, kind, user_id, user_name, via, occurred_at) VALUES (1, 'join', ?, 'n', '', ?)",
+                (user_id, old(days)),
+            )
+    assert await db.prune(now) == {"comment_reviews": 2, "channel_events": 1}
+    assert await db.prune(now) == {"comment_reviews": 0, "channel_events": 0}
+    assert {r["message_id"] for r in [await db.get_review_by_message(1, m) for m in (2, 4)] if r} == {2, 4}
+    assert await db.get_review_by_message(1, 1) is None and await db.get_review_by_message(1, 3) is None
+    assert [e["user_id"] for e in await db.channel_recent_events(10)] == [2]
+    assert await db.count_reviews_since(now - timedelta(days=30)) == 1

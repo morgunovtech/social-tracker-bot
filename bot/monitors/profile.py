@@ -55,12 +55,13 @@ def _snippet(text: str) -> str:
 def _admin_lines(label: str, before: str, after: str) -> list[str]:
     old = {a["id"]: a for a in json.loads(before)}
     new = {a["id"]: a for a in json.loads(after)}
+    # A display name is other people's text: a domain in it must not be a link.
     lines = [
-        t("🚨 {label}: новый админ — {name}").format(label=label, name=new[uid]["name"])
+        t("🚨 {label}: новый админ — {name}").format(label=label, name=defang(new[uid]["name"]))
         for uid in new.keys() - old.keys()
     ]
     lines += [
-        t("🟠 {label}: админ удалён — {name}").format(label=label, name=old[uid]["name"])
+        t("🟠 {label}: админ удалён — {name}").format(label=label, name=defang(old[uid]["name"]))
         for uid in old.keys() - new.keys()
     ]
     owner_before = next((a for a in old.values() if a["status"] == "creator"), None)
@@ -68,7 +69,7 @@ def _admin_lines(label: str, before: str, after: str) -> list[str]:
     if owner_before and owner_after and owner_before["id"] != owner_after["id"]:
         lines.append(
             t("🚨 {label}: сменился владелец — {before} → {after}").format(
-                label=label, before=owner_before["name"], after=owner_after["name"]
+                label=label, before=defang(owner_before["name"]), after=defang(owner_after["name"])
             )
         )
     return lines

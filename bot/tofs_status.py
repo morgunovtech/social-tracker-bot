@@ -62,6 +62,10 @@ async def _item(db: Database, config: Config, platform, errors: dict) -> dict:
         return {"name": name, "level": "warning", "text": t("токен истёк — пришли новый через /igtoken")}
     if platform.id == "instagram" and errors.get("instagram_token_missing"):
         return {"name": name, "level": "warning", "text": t("нет токена — пришли его через /igtoken")}
+    if platform.id == "linkedin" and errors.get("linkedin_baseline_needed"):
+        needed = errors["linkedin_baseline_needed"]
+        return {"name": name, "level": "warning",
+                "text": t("по cookie получено {count} — подтверди: /linkedin {raw}").format(count=_fmt(needed), raw=needed)}
     if latest is None:
         if errors.get(platform.id):
             return {"name": name, "level": "warning", "text": t("собрать не удалось")}

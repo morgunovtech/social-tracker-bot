@@ -9,6 +9,8 @@ from bot.platforms.base import COUNT, IMAGE, TEXT, Context, Platform, Snapshot
 logger = logging.getLogger(__name__)
 
 _YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/channels"
+# aiohttp's own default is five minutes: a hung request held the whole daily collect that long.
+_TIMEOUT = aiohttp.ClientTimeout(total=20)
 
 
 async def _get_channel(
@@ -16,7 +18,7 @@ async def _get_channel(
 ) -> dict | None:
     """The channel resource with the requested parts, or None. Costs 1 quota unit."""
     params = {"part": part, "id": channel_id, "key": api_key}
-    async with session.get(_YOUTUBE_API_URL, params=params) as resp:
+    async with session.get(_YOUTUBE_API_URL, params=params, timeout=_TIMEOUT) as resp:
         if resp.status != 200:
             logger.error("YouTube API returned status %d", resp.status)
             return None

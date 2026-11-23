@@ -133,8 +133,16 @@ _SECRET_SETTINGS = ("linkedin_li_at", "instagram_token")
 # Each secret with the settings that describe it (when it was set, when it dies).
 _SECRET_KEYS: dict[str, tuple[str, ...]] = {
     "linkedin_li_at": ("linkedin_li_at", "linkedin_li_at_set_at"),
-    "instagram_token": ("instagram_token", "instagram_token_set_at", "instagram_user_id"),
+    "instagram_token": ("instagram_token", "instagram_token_set_at", "instagram_user_id", "instagram_username"),
 }
+
+# Retention, applied once a day by the scheduler (prune). A join and a flagged
+# comment name a person, and the weekly backup carries every row to the chat,
+# so nothing stays longer than a screen reads it: /channel and /comments look
+# 30 days back, the report 7.
+REVIEW_OK_KEEP_DAYS = 30          # comments the model called fine: only a count on /comments
+REVIEW_FLAGGED_KEEP_DAYS = 180    # cards: their buttons keep working for a while
+CHANNEL_EVENTS_KEEP_DAYS = 90     # joins and leaves, with names
 
 
 def _check_backup(path: str) -> None:
@@ -445,6 +453,33 @@ class Database:
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(f"UPDATE comment_reviews SET {', '.join(sets)} WHERE id = ?", (*params, review_id))
             await db.commit()
+
+    async def count_reviews_since(self, since: datetime) -> int:
+        """How many comments were classified since the moment (the daily limit)."""
+        stamp = since.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        async with aiosqlite.connect(self._db_path) as db:
+            return await _scalar(db, "SELECT COUNT(*) FROM comment_reviews WHERE reviewed_at >= ?", (stamp,))
+
+    async def prune(self, now: datetime | None = None) -> dict[str, int]:
+        """Drop what no screen reads any more; returns the rows removed per table."""
+        now = now or utcnow()
+
+        def before(days: int) -> str:
+            return (now - timedelta(days=days)).astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+        async with aiosqlite.connect(self._db_path) as db:
+            ok = await db.execute(
+                "DELETE FROM comment_reviews WHERE category = 'ok' AND reviewed_at < ?", (before(REVIEW_OK_KEEP_DAYS),)
+            )
+            flagged = await db.execute(
+                "DELETE FROM comment_reviews WHERE category != 'ok' AND reviewed_at < ?",
+                (before(REVIEW_FLAGGED_KEEP_DAYS),),
+            )
+            events = await db.execute(
+                "DELETE FROM channel_events WHERE occurred_at < ?", (before(CHANNEL_EVENTS_KEEP_DAYS),)
+            )
+            await db.commit()
+        return {"comment_reviews": ok.rowcount + flagged.rowcount, "channel_events": events.rowcount}
 
     async def count_author_reviews(self, chat_id: int, user_id: int) -> int:
         """How many messages of this author the bot has already seen in the group."""

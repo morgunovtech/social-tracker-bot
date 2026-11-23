@@ -17,6 +17,9 @@ STRINGS: dict[str, str] = {
     "⚠️ Instagram отклонил токен — пришли новый через /igtoken":
         "⚠️ Instagram rejected the token — send a new one via /igtoken",
     "{label} — пока нет данных: число вводится вручную": "{label} — no data yet: the number is entered by hand",
+    "{label} — по cookie получено {count}: первое значение подтверди вручную — /linkedin {raw}": (
+        "{label} — the cookie read {count}: confirm the first value by hand — /linkedin {raw}"
+    ),
     "{label} — пока нет данных: нужен токен, см. /igtoken": "{label} — no data yet: a token is needed, see /igtoken",
     "{label} — ⚠️ собрать не удалось": "{label} — ⚠️ collection failed",
     "🔮 {label}: {goal} примерно через {weeks} нед. (+{rate} в неделю)":
@@ -73,6 +76,7 @@ STRINGS: dict[str, str] = {
     "профиль не читается — удалён, скрыт или у бота отобрали права?":
         "profile unreadable — deleted, hidden, or did the bot lose its rights?",
     "cookie истёк — обнови через /setcookie": "cookie expired — renew it via /setcookie",
+    "по cookie получено {count} — подтверди: /linkedin {raw}": "the cookie read {count} — confirm: /linkedin {raw}",
     "токен истёк — пришли новый через /igtoken": "token expired — send a new one via /igtoken",
     "нет токена — пришли его через /igtoken": "no token — send it via /igtoken",
     "собрать не удалось": "collection failed",

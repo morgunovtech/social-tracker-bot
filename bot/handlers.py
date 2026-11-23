@@ -63,6 +63,8 @@ RESTORE_MAX_BYTES = 20 * 1024 * 1024
 # Messages queued while the bot restarts (a deploy) are handled after start;
 # older ones (a long outage) are dropped rather than replayed.
 PENDING_MAX_AGE = timedelta(minutes=10)
+# Commands whose argument is a secret: a stale one is deleted from the chat, not just dropped.
+SECRET_COMMANDS = ("setcookie", "igtoken")
 
 # What the bot asks Telegram for. Joins and leaves (chat_member) and the
 # reactions on posts (message_reaction_count) are not sent unless asked
@@ -190,14 +192,40 @@ def _admin_only(handler):
     return wrapper
 
 
+def _command_name(message) -> str:
+    """'/setcookie@bot AQ…' → 'setcookie'; '' for anything that is not a command."""
+    text = message.text or message.caption or ""
+    if not text.startswith("/"):
+        return ""
+    return text.split(maxsplit=1)[0][1:].split("@", 1)[0].lower()
+
+
 async def drop_stale_messages(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Runs before every handler. A message queued during a deploy restart is
     handled; one older than PENDING_MAX_AGE is dropped, so a /now from hours
-    ago doesn't fire. Button presses carry no send time and always pass."""
+    ago doesn't fire. Button presses carry no send time and always pass.
+
+    A dropped /setcookie or /igtoken still carries its secret: the owner's
+    message is deleted and they are asked to send it again, rather than left
+    in the chat without an answer."""
     message = update.message
-    if message is not None and message.date is not None and utcnow() - message.date > PENDING_MAX_AGE:
-        logger.info("Dropping a message queued for %s", utcnow() - message.date)
-        raise ApplicationHandlerStop
+    if message is None or message.date is None or utcnow() - message.date <= PENDING_MAX_AGE:
+        return
+    logger.info("Dropping a message queued for %s", utcnow() - message.date)
+    if (
+        _command_name(message) in SECRET_COMMANDS
+        and len((message.text or "").split()) > 1
+        and _is_admin(update, context.bot_data["config"])
+    ):
+        try:
+            await message.delete()
+        except Exception:
+            logger.warning("A stale message with a secret could not be deleted", exc_info=True)
+        await update.effective_chat.send_message(
+            t("⏳ Эта команда пришла, пока я был выключен: сообщение с секретом я удалил, "
+              "чтобы оно не лежало в чате. Пришли его заново.")
+        )
+    raise ApplicationHandlerStop
 
 
 def _watch(context: ContextTypes.DEFAULT_TYPE) -> comments.Watch:
@@ -638,9 +666,14 @@ async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await db.set_setting("linkedin_li_at_set_at", utcnow().isoformat())
     await db.set_setting("cookie_expired_alerted", "0")  # fresh cookie — re-arm the alert
 
-    # Same guard as the daily collect: a value far from the stored one is
-    # likely someone else's counter and must not become the new baseline.
-    if plausible_count(prev, count):
+    # Same guards as the daily collect: the page carries other profiles'
+    # counters too, so the first number is confirmed by the owner, and a value
+    # far from the stored one must not become the new baseline.
+    if prev is None:
+        fetched = t(
+            "Проверка вернула {count}. Это первое значение — сверь его со страницей профиля и подтверди: /linkedin {raw}"
+        ).format(count=_fmt(count), raw=count)
+    elif plausible_count(prev, count):
         await db.upsert("linkedin", count, source="cookie")
         fetched = t("Проверка прошла: {count} подписчиков.").format(count=_fmt(count))
     else:
@@ -717,7 +750,7 @@ async def cmd_igtoken(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     username = str(user.get("username") or config.instagram_username)
-    await ig.store_token(db, token, user_id)
+    await ig.store_token(db, token, user_id, config.instagram_username)
     await db.set_setting("instagram_token_alerted", "0")  # a fresh token re-arms the alert
     try:
         count = int(user["followers_count"])

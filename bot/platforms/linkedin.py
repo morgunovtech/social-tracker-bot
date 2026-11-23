@@ -224,6 +224,14 @@ class LinkedIn(Platform):
             flags["linkedin_cookie_aging"] = age
 
         if count is not None and source is not None:
+            if ctx.prev is None:
+                # The page carries other profiles' counters too, and without a
+                # stored value there is nothing to pick the right one by. The
+                # first number is confirmed by the owner (/linkedin N), not
+                # taken on trust and then defended by plausible_count.
+                logger.warning("LinkedIn count %d needs a baseline to be trusted — the owner confirms it", count)
+                flags["linkedin_baseline_needed"] = count
+                return Snapshot(None, flags=flags)
             if plausible_count(ctx.prev, count):
                 return Snapshot(count, source, flags=flags)
             logger.warning(

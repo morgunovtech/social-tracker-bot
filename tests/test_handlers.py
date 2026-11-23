@@ -434,12 +434,17 @@ async def test_a_far_off_linkedin_number_is_confirmed_first(make_update, make_co
     assert (await db.get_latest("linkedin"))["count"] == 45200 and query.answers[0]["text"] == "Сохранено"
 
 
-async def test_linkedin_input_button_shows_only_while_it_is_typed_by_hand(make_update, make_context, db):
+async def test_linkedin_input_button_shows_only_while_it_is_typed_by_hand(make_update, make_context, db, insert):
     update = make_update()
     await handlers.cmd_home(update, make_context())
     assert ui.LI_ENTER in buttons(update.message.markups[0])
 
     await db.set_setting("linkedin_li_at", COOKIE)
+    update = make_update()
+    await handlers.cmd_home(update, make_context())
+    assert ui.LI_ENTER in buttons(update.message.markups[0])      # a cookie, but the first number is typed in
+
+    insert("linkedin", 4500, 0, source="cookie")
     update = make_update()
     await handlers.cmd_home(update, make_context())
     assert ui.LI_ENTER not in buttons(update.message.markups[0])
@@ -697,6 +702,16 @@ async def test_setcookie_saves_cookie_but_guards_the_baseline(make_update, make_
     assert (await db.get_latest("linkedin"))["count"] == 4530
 
 
+async def test_setcookie_without_a_baseline_asks_to_confirm_the_first_number(make_update, make_context, db, fake_linkedin):
+    result, _ = fake_linkedin
+    result["value"] = (120000, "cookie")                       # may well be someone else's counter
+    update = make_update()
+    await handlers.cmd_setcookie(update, make_context(COOKIE))
+    assert await db.get_setting("linkedin_li_at") == COOKIE and await db.get_latest("linkedin") is None
+    assert "/linkedin 120000" in update.effective_chat.sent[-1]
+    assert "li:enter" in buttons((await ui.home(db, make_context().bot_data["config"])).keyboard)
+
+
 async def test_cookieage(make_update, make_context, db):
     update = make_update()
     await handlers.cmd_cookieage(update, make_context())
@@ -836,6 +851,22 @@ async def test_queued_messages_are_handled_unless_stale(make_update, make_contex
             await handlers.drop_stale_messages(update, make_context())
     else:
         assert await handlers.drop_stale_messages(update, make_context()) is None
+
+
+@pytest.mark.parametrize("text", ["/setcookie " + COOKIE, "/igtoken@test_bot EAAB" + "x" * 60])
+async def test_a_stale_command_with_a_secret_is_deleted_and_explained(make_update, make_context, text):
+    update = make_update(text=text)
+    update.message.date = utcnow() - timedelta(minutes=30)
+    with pytest.raises(ApplicationHandlerStop):
+        await handlers.drop_stale_messages(update, make_context())
+    assert update.message.deleted and "Пришли его заново" in update.effective_chat.sent[0]
+
+    # The bare command carries nothing, a stranger's message is nobody's business: dropped in silence.
+    for stale in (make_update(text="/setcookie"), make_update(user_id=STRANGER_ID, text=text)):
+        stale.message.date = utcnow() - timedelta(minutes=30)
+        with pytest.raises(ApplicationHandlerStop):
+            await handlers.drop_stale_messages(stale, make_context())
+        assert not stale.message.deleted and stale.effective_chat.sent == []
 
 
 async def test_button_presses_are_never_dropped_as_stale(make_update, make_context):

@@ -328,8 +328,19 @@ async def _scheduled_job(
         async with lock:
             outcome = await collect_and_report(bot, config, db)
     except Exception:
-        # No healthcheck ping on failure — the watchdog will fire.
+        # No healthcheck ping on failure — the watchdog will fire. The whole run
+        # is retried like a failed platform, and an owner without a watchdog
+        # hears on the second day in a row (bot/monitors/collection.py).
         logger.exception("Scheduled collection failed")
+        if attempt < COLLECT_MAX_ATTEMPTS:
+            _schedule_retry(scheduler, bot, config, db, lock, attempt)
+        if attempt == 1:
+            try:
+                lines = await collection.run_failed(db)
+                if lines and await monitors.is_on(db, config, "collection"):
+                    await notifier.send(bot, config, db, "\n".join(lines), notifier.priority_for(lines))
+            except Exception:
+                logger.exception("Collection failure notice failed")
         return
 
     now = utcnow()
@@ -354,6 +365,14 @@ async def _scheduled_job(
 
     if attempt > 1:
         return  # retries only fill data and alert; the rest already ran today
+
+    # What no screen reads any more goes (bot/db.py, the retention constants).
+    try:
+        removed = await db.prune()
+        if any(removed.values()):
+            logger.info("Pruned old rows: %s", removed)
+    except Exception:
+        logger.exception("Prune failed")
 
     # Report push on configured day(s)
     dow = await db.get_setting("report_dow") or config.report_dow

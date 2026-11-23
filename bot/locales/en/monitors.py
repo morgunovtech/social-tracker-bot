@@ -68,6 +68,11 @@ STRINGS: dict[str, str] = {
         "Check ANTHROPIC_API_KEY and the API balance."
     ),
     "✅ Комментарии: проверка снова работает": "✅ Comments: the check works again",
+    "🟠 Комментарии: дневной лимит проверок ({limit}) исчерпан — до конца суток (UTC) новые "
+    "комментарии не проверяю. Лимит задаёт COMMENTS_DAILY_LIMIT в .env.": (
+        "🟠 Comments: the daily limit of checks ({limit}) is reached — no new comment is checked until "
+        "the end of the day (UTC). COMMENTS_DAILY_LIMIT in .env sets the limit."
+    ),
     "Нет прав: сделай бота админом группы с правом удалять сообщения и блокировать участников.": (
         "No rights: make the bot a group admin with the rights to delete messages and ban members."
     ),
@@ -248,6 +253,14 @@ STRINGS: dict[str, str] = {
         "⚠️ Instagram is connected but there is no token — send it with /igtoken"
     ),
     "🟠 {label}: не удаётся собрать данные {streak} дн. подряд": "🟠 {label}: data collection has failed {streak} days in a row",
+    "🟠 LinkedIn: по cookie получено {count} — первое число подтверди командой /linkedin {raw}, "
+    "дальше буду собирать сам": (
+        "🟠 LinkedIn: the cookie read {count} — confirm the first number with /linkedin {raw}, "
+        "I collect it myself from then on"
+    ),
+    "🟠 Ежедневный сбор не выполнился {streak} дн. подряд — подробности в логах бота": (
+        "🟠 The daily collection has failed {streak} days in a row — the details are in the bot's logs"
+    ),
     # bot/monitors/channel.py — life of the channel
     "Жизнь канала": "Life of the channel",
     "подписки и отписки, откуда пришли, посты и реакции — экран 📣 Канал и строка в отчёте": (

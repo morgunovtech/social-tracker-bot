@@ -29,6 +29,7 @@ from bot import monitors
 from bot.config import Config
 from bot.db import Database, parse_utc, utcnow
 from bot.i18n import plural, t
+from bot.monitors import defang
 from bot.monitors.comments import message_link
 
 logger = logging.getLogger(__name__)
@@ -181,8 +182,9 @@ async def record(db: Database, config: Config, update: Update) -> str | None:
 # ── What the owner reads ────────────────────────────────────────────────────
 
 def esc(value: object) -> str:
-    """Names and link titles are other people's text: HTML-escaped, like bot.ui.esc."""
-    return html.escape(str(value), quote=False)
+    """Names and link titles are other people's text: HTML-escaped, like
+    bot.ui.esc, and a domain in them is defanged so it is not a link."""
+    return html.escape(defang(str(value)), quote=False)
 
 
 def _signed(joins: int, leaves: int) -> str:

@@ -151,6 +151,18 @@ async def test_an_env_token_looks_its_account_up_once(graph, db):
     assert snap.count is None and snap.error
 
 
+async def test_a_changed_username_is_resolved_again(graph, db):
+    """INSTAGRAM_USERNAME changed in .env: the stored id is another account's, so it is looked up anew."""
+    config = dataclasses.replace(Config.from_env(), instagram_username="semyon", instagram_access_token=TOKEN)
+    await _collect(config, db)
+    assert await db.get_setting(ig.USERNAME_KEY) == "semyon"
+    graph["assigned"] = [{"id": USER_ID, "username": "semyon"}, {"id": "2", "username": "other"}]
+    snap = await _collect(dataclasses.replace(config, instagram_username="Other"), db)
+    assert (await db.get_setting(ig.USER_ID_KEY), await db.get_setting(ig.USERNAME_KEY)) == ("2", "other")
+    assert [c[0] for c in graph["calls"]].count("assigned") == 2
+    assert snap.count is None and snap.error            # the fake Graph serves USER_ID only
+
+
 async def test_profile_monitor_watches_instagram(graph, config, db):
     config = dataclasses.replace(config, telegram_channel_id=None, youtube_api_key=None)  # Instagram alone
     await ig.store_token(db, TOKEN, USER_ID)

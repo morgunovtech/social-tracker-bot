@@ -159,7 +159,15 @@ async def build_report(
         if latest is None:
             if platforms is not None and platform not in platforms:
                 continue
-            if platform == "linkedin":
+            if platform == "linkedin" and errors.get("linkedin_baseline_needed"):
+                needed = errors["linkedin_baseline_needed"]
+                lines += [
+                    "",
+                    t("{label} — по cookie получено {count}: первое значение подтверди вручную — /linkedin {raw}").format(
+                        label=label, count=_fmt(needed), raw=needed
+                    ),
+                ]
+            elif platform == "linkedin":
                 lines += ["", t("{label} — пока нет данных: число вводится вручную").format(label=label)]
             elif platform == "instagram" and (
                 errors.get("instagram_token_missing") or errors.get("instagram_token_expired")

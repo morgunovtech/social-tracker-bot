@@ -9,14 +9,17 @@ from zoneinfo import available_timezones
 from dotenv import load_dotenv
 
 from bot import platforms
+from bot.classifier import DEFAULT_MODEL as DEFAULT_COMMENTS_MODEL
 from bot.i18n import LANGUAGES
 
 load_dotenv()
 
 
 DOW_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
-# The model that classifies comments unless COMMENTS_MODEL says otherwise.
-DEFAULT_COMMENTS_MODEL = "claude-opus-5-5"
+# Comment checks per day unless COMMENTS_DAILY_LIMIT says otherwise (0 = no limit):
+# a spam wave must not turn into an unbounded API bill. The model itself is
+# classifier.DEFAULT_MODEL, re-exported here as DEFAULT_COMMENTS_MODEL.
+DEFAULT_COMMENTS_DAILY_LIMIT = 300
 
 
 def _require(name: str) -> str:
@@ -63,6 +66,26 @@ def normalize_tz(value: str) -> str:
     if name is None:
         raise ValueError(f"Unknown time zone: {value}")
     return name
+
+
+def _int(name: str, default: int, lo: int, hi: int, *, legacy: str | None = None) -> int:
+    """A whole number from lo to hi; an empty variable means the default
+    (every optional variable in .env.example is left empty, this one too).
+    legacy is an older name of the same variable, read when the current one
+    is empty. A value out of range stops the bot now, with its name, not
+    later with a traceback from the scheduler."""
+    raw = (os.getenv(name) or "").strip()
+    if not raw and legacy:
+        raw = (os.getenv(legacy) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise RuntimeError(f"Invalid {name}={raw!r}: a whole number from {lo} to {hi}") from None
+    if not lo <= value <= hi:
+        raise RuntimeError(f"Invalid {name}={raw!r}: a whole number from {lo} to {hi}")
+    return value
 
 
 def _url(name: str) -> str | None:
@@ -189,6 +212,7 @@ class Config:
     anthropic_api_key: str | None
     comments_model: str
     comments_chat_id: int | None
+    comments_daily_limit: int  # checks per UTC day, 0 = no limit
 
     @classmethod
     def from_env(cls) -> Config:
@@ -202,10 +226,10 @@ class Config:
             instagram_access_token=os.getenv("INSTAGRAM_ACCESS_TOKEN") or None,
             linkedin_profile_url=os.getenv("LINKEDIN_PROFILE_URL") or None,
             linkedin_li_at=os.getenv("LINKEDIN_LI_AT"),
-            linkedin_stale_days=int(os.getenv("LINKEDIN_STALE_DAYS", "7")),
+            linkedin_stale_days=_int("LINKEDIN_STALE_DAYS", 7, 1, 3650),
             # REPORT_HOUR_UTC is its name from before the zone setting.
-            report_hour=int(os.getenv("REPORT_HOUR") or os.getenv("REPORT_HOUR_UTC") or "8"),
-            report_minute=int(os.getenv("REPORT_MINUTE", "0")),
+            report_hour=_int("REPORT_HOUR", 8, 0, 23, legacy="REPORT_HOUR_UTC"),
+            report_minute=_int("REPORT_MINUTE", 0, 0, 59),
             report_dow=_report_dow(),
             report_tz=_report_tz(),
             quiet_if_no_change=os.getenv("QUIET_IF_NO_CHANGE", "0") == "1",
@@ -223,6 +247,7 @@ class Config:
             anthropic_api_key=(os.getenv("ANTHROPIC_API_KEY") or "").strip() or None,
             comments_model=(os.getenv("COMMENTS_MODEL") or "").strip() or DEFAULT_COMMENTS_MODEL,
             comments_chat_id=_chat_id("COMMENTS_CHAT_ID"),
+            comments_daily_limit=_int("COMMENTS_DAILY_LIMIT", DEFAULT_COMMENTS_DAILY_LIMIT, 0, 100_000),
         )
 
     def set_owner(self, user_id: int) -> None:

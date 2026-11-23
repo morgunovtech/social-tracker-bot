@@ -22,6 +22,7 @@ owner hears once, and once more when it is back.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -55,6 +56,12 @@ STORED_TEXT_LEN = 1000
 # Consecutive classifier failures before the owner hears about it.
 API_FAIL_AFTER = 3
 API_FAIL_KEY = "comments_api_fails"
+# Comments classified at once. Every message in the group is reviewed as a
+# task of its own, so a spam wave of two hundred messages used to be two
+# hundred parallel API calls with pictures; now three at a time, the rest wait.
+CONCURRENCY = 3
+# The day the owner was told the daily limit (config.comments_daily_limit) is reached.
+LIMIT_NOTIFIED_KEY = "comments_limit_notified"
 
 # Category → what the card and the table call it (Russian key, t() at render).
 LABELS = {
@@ -89,6 +96,7 @@ class Watch:
     group_checked_at: datetime | None = None
     admins: set[int] = field(default_factory=set)
     admins_at: datetime | None = None
+    semaphore: asyncio.Semaphore = field(default_factory=lambda: asyncio.Semaphore(CONCURRENCY))
 
 
 @dataclass(frozen=True)
@@ -255,7 +263,7 @@ def card(review: dict, channel_title: str = "", first_message: bool = False) -> 
         head = t("{icon} Комментарии: {label} — уверенность {confidence}%").format(
             icon=icon, label=label, confidence=confidence
         )
-    who = [channel_title, review["user_name"]]
+    who = [channel_title, defang(review["user_name"])]   # a display name can be a link too
     if first_message:
         who.append(t("первое сообщение в группе"))
     if review["media"]:
@@ -302,6 +310,28 @@ async def _api_recovered(bot: Bot, config: Config, db: Database) -> None:
         await notifier.send(bot, config, db, t("✅ Комментарии: проверка снова работает"), Priority.NORMAL)
 
 
+async def over_daily_limit(bot: Bot, config: Config, db: Database) -> bool:
+    """COMMENTS_DAILY_LIMIT classifications per UTC day, so a spam wave cannot
+    run up an unbounded API bill; the owner hears once a day when it is reached
+    and the rest of the day's comments go unchecked — said in as many words."""
+    limit = config.comments_daily_limit
+    if not limit:
+        return False
+    day = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    if await db.count_reviews_since(day) < limit:
+        return False
+    today = day.date().isoformat()
+    if await db.get_setting(LIMIT_NOTIFIED_KEY) != today:
+        await db.set_setting(LIMIT_NOTIFIED_KEY, today)
+        await notifier.send(
+            bot, config, db,
+            t("🟠 Комментарии: дневной лимит проверок ({limit}) исчерпан — до конца суток (UTC) новые "
+              "комментарии не проверяю. Лимит задаёт COMMENTS_DAILY_LIMIT в .env.").format(limit=limit),
+            Priority.NORMAL,
+        )
+    return True
+
+
 def _client(config: Config, watch: Watch) -> anthropic.AsyncAnthropic:
     if watch.client is None:
         watch.client = classifier.make_client(config.anthropic_api_key)
@@ -326,19 +356,22 @@ async def review(bot: Bot, config: Config, db: Database, watch: Watch, message: 
         return None
     if await db.get_review_by_message(comment.chat_id, comment.message_id) is not None:
         return None   # Telegram re-delivered the update
+    if await over_daily_limit(bot, config, db):
+        return None
 
     first_message = await db.count_author_reviews(comment.chat_id, comment.user_id) == 0
-    image = await fetch_image(bot, comment.image_file_id) if comment.image_file_id else None
-    sample = Sample(
-        text=comment.text, channel_title=watch.group_title, first_message=first_message,
-        forwarded=comment.forwarded, media=comment.media, image=image,
-    )
-    try:
-        verdict = await classifier.classify(_client(config, watch), config.comments_model, sample, config.lang)
-    except (anthropic.APIError, ValueError, KeyError, TypeError) as e:
-        logger.warning("Comment classification failed: %s", e)
-        await _api_failed(bot, config, db, e)
-        return None
+    async with watch.semaphore:
+        image = await fetch_image(bot, comment.image_file_id) if comment.image_file_id else None
+        sample = Sample(
+            text=comment.text, channel_title=watch.group_title, first_message=first_message,
+            forwarded=comment.forwarded, media=comment.media, image=image,
+        )
+        try:
+            verdict = await classifier.classify(_client(config, watch), config.comments_model, sample, config.lang)
+        except (anthropic.APIError, ValueError, KeyError, TypeError) as e:
+            logger.warning("Comment classification failed: %s", e)
+            await _api_failed(bot, config, db, e)
+            return None
     await _api_recovered(bot, config, db)
     return await record_and_report(bot, config, db, watch, comment, verdict, first_message)
 
@@ -346,10 +379,13 @@ async def review(bot: Bot, config: Config, db: Database, watch: Watch, message: 
 async def record_and_report(
     bot: Bot, config: Config, db: Database, watch: Watch, comment: Comment, verdict: Verdict, first_message: bool,
 ) -> int | None:
+    # Only a card needs the text and the name; a comment the model called fine
+    # keeps its author's id alone (for «first message in the group»).
     stored_text = " ".join(comment.text.split())[:STORED_TEXT_LEN] if verdict.flagged else ""
+    stored_name = comment.user_name if verdict.flagged else ""
     link = message_link(comment.chat_id, comment.message_id, watch.group_username)
     review_id = await db.add_review(
-        comment.chat_id, comment.message_id, comment.user_id, comment.user_name, stored_text, comment.media,
+        comment.chat_id, comment.message_id, comment.user_id, stored_name, stored_text, comment.media,
         link, verdict.category, verdict.confidence, verdict.reason,
     )
     if review_id is None or not verdict.flagged:

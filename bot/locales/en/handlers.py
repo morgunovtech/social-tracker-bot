@@ -59,6 +59,14 @@ STRINGS: dict[str, str] = {
         "could not get the follower count (details in the logs)",
     "❌ Cookie не сохранён: {reason}.\nПроверь, что значение скопировано целиком, без лишних символов.":
         "❌ Cookie not saved: {reason}.\nCheck that the value is copied whole, with no extra characters.",
+    "Проверка вернула {count}. Это первое значение — сверь его со страницей профиля и подтверди: /linkedin {raw}": (
+        "The check returned {count}. It is the first value — compare it with the profile page and confirm: /linkedin {raw}"
+    ),
+    "⏳ Эта команда пришла, пока я был выключен: сообщение с секретом я удалил, "
+    "чтобы оно не лежало в чате. Пришли его заново.": (
+        "⏳ This command arrived while I was switched off: I deleted the message with the secret "
+        "so it does not stay in the chat. Send it again."
+    ),
     "Проверка прошла: {count} подписчиков.": "Check passed: {count} followers.",
     "Проверка вернула {count} — слишком далеко от прошлого {prev}, число не записано. "
     "Если оно верное, введи его: /linkedin {raw}":

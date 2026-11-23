@@ -1,4 +1,5 @@
 import dataclasses
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -9,6 +10,7 @@ from conftest import COOKIE
 
 from bot import notifier, scheduler
 from bot.db import utcnow
+from bot.monitors import collection
 from bot.platforms import linkedin as linkedin_platform
 from bot.platforms import telegram as telegram_platform
 from bot.platforms import youtube as youtube_platform
@@ -72,11 +74,20 @@ def collectors(monkeypatch):
 
 # --- collect_and_report ------------------------------------------------------
 
-async def test_first_collect_records_everything(bot, config, db, collectors):
+async def test_first_collect_records_everything_but_an_unconfirmed_linkedin_number(bot, config, db, collectors):
     outcome = await collect_and_report(bot, config, db)
-    assert set(outcome.collected) == {"telegram", "youtube", "linkedin"}
-    assert not outcome.errors and not outcome.drops and not outcome.milestones
-    assert "Telegram — 1 000" in outcome.report
+    assert set(outcome.collected) == {"telegram", "youtube"}
+    # The page carries other profiles' counters: the first cookie value is confirmed by hand, not stored.
+    assert outcome.errors == {"linkedin_baseline_needed": 4520} and not outcome.drops and not outcome.milestones
+    assert "Telegram — 1 000" in outcome.report and "/linkedin 4520" in outcome.report
+    alerts = await _build_alerts(db, config, outcome)
+    assert alerts and "/linkedin 4520" in alerts[0] and await _build_alerts(db, config, outcome) == []   # said once
+
+    await db.upsert("linkedin", 4500, source="manual")                 # the owner confirmed
+    outcome = await collect_and_report(bot, config, db)
+    assert outcome.collected["linkedin"] == (4520, "cookie") and not outcome.errors
+    await _build_alerts(db, config, outcome)
+    assert await db.get_setting("linkedin_baseline_alerted") == "0"
 
 
 async def test_drop_spike_and_milestone(bot, config, db, insert, collectors):
@@ -257,6 +268,38 @@ async def test_failed_platform_is_retried_up_to_the_limit(bot, config, db, fake_
     await _scheduled_job(bot, config, db, job_scheduler, attempt=scheduler.COLLECT_MAX_ATTEMPTS)
     assert job_scheduler.get_job("collect_retry") is None
     assert bot.messages == []                          # retries never re-send the report
+
+
+async def test_a_collect_that_raises_is_retried_and_counted_by_day(bot, config, db, job_scheduler, monkeypatch):
+    async def boom(*args, **kwargs):
+        raise RuntimeError("db locked")
+
+    monkeypatch.setattr(scheduler, "collect_and_report", boom)
+    await _scheduled_job(bot, config, db, job_scheduler)
+    assert job_scheduler.get_job("collect_retry") is not None          # the whole run is retried like a platform
+    assert await db.get_setting("last_daily_run") is None and bot.messages == []   # day one: quiet
+
+    await db.set_setting(collection.RUN_FAIL_DATE_KEY, (utcnow().date() - timedelta(days=1)).isoformat())
+    await _scheduled_job(bot, config, db, job_scheduler)
+    assert bot.messages == ["🟠 Ежедневный сбор не выполнился 2 дн. подряд — подробности в логах бота"]
+
+    bot.messages.clear()
+    await _scheduled_job(bot, config, db, job_scheduler, attempt=2)    # a retry does not count twice
+    assert bot.messages == [] and await db.get_setting(collection.RUN_FAIL_STREAK_KEY) == "2"
+    working = CollectOutcome(report="", has_change=False, collected={"telegram": (1000, "api")})
+    await _build_alerts(db, config, working)
+    assert await db.get_setting(collection.RUN_FAIL_STREAK_KEY) == "0"
+
+
+async def test_the_daily_run_prunes_old_rows(bot, config, db, fake_collect, job_scheduler):
+    old = (utcnow() - timedelta(days=400)).strftime("%Y-%m-%d %H:%M:%S")
+    with sqlite3.connect(db._db_path) as conn:
+        conn.execute(
+            "INSERT INTO comment_reviews (chat_id, message_id, user_id, category, reviewed_at) VALUES (1, 1, 5, 'ok', ?)",
+            (old,),
+        )
+    await _scheduled_job(bot, config, db, job_scheduler)
+    assert await db.get_review_by_message(1, 1) is None
 
 
 async def test_monthly_digest_and_sunday_backup(bot, config, db, insert, fake_collect, job_scheduler, monkeypatch):

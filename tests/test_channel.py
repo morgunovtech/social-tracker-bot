@@ -280,3 +280,7 @@ async def test_restore_merges_the_channel_history(config, db, tmp_path):
     await fresh.restore_from(backup)                                              # twice: nothing doubles
     assert (await fresh.channel_counts(NOW - timedelta(days=1)))["joins"] == 2
     os.remove(backup)
+
+
+def test_names_on_the_screen_are_escaped_and_defanged():
+    assert channel.esc("<b>buy</b> at evil.com") == "&lt;b&gt;buy&lt;/b&gt; at evil[.]com"
