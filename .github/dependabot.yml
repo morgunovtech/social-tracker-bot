@@ -1,7 +1,9 @@
 # Dependabot opens one grouped PR per week with every Python update, plus
 # monthly PRs for the base image and the Actions. CI tests them; the
-# auto-merge workflow merges minor/patch bumps once CI is green, and Railway
-# redeploys from main. The bot then reports «🔄 Бот обновился» on its next
+# auto-merge workflow merges only patch/minor bumps of the Python libraries
+# once CI is green, and Railway redeploys from main. A version reaches a PR
+# no sooner than 7 days after its release (cooldown; security updates are
+# not delayed), a major one after 30. The bot then reports «🔄 Бот обновился» on its next
 # start, and lists the PRs that wait for a human in its Sunday check.
 version: 2
 updates:
@@ -10,6 +12,13 @@ updates:
     schedule:
       interval: weekly
       day: saturday
+      # After the Saturday report (08:00 UTC by default): the redeploy after
+      # the merge restarts the bot.
+      time: "13:00"
+      timezone: Europe/Moscow
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
     groups:
       python-deps:
         patterns: ["*"]
@@ -18,10 +27,14 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
   # The mail-worker is deployed by hand (npx wrangler deploy): a merged bump
   # reaches Cloudflare with the next deploy, not by itself.
   - package-ecosystem: npm

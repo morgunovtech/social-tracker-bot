@@ -1,0 +1,10 @@
+# Direct dependencies, pinned. requirements.txt is the lock compiled from
+# this file with hashes for every package the image installs (see
+# CONTRIBUTING.md, «Dependencies»); change a pin here, then recompile.
+python-telegram-bot[job-queue]==22.8
+APScheduler==3.11.3
+aiohttp==3.14.5
+aiosqlite==0.22.1
+python-dotenv==1.2.4
+beautifulsoup4==4.15.0
+matplotlib==3.11.2
