@@ -83,7 +83,9 @@ docker-compose up -d
 
 ### Railway
 
-Создайте сервис из репозитория, задайте переменные из `.env.example` и **подключите volume на `/app/data`** — без него БД пропадает при каждом деплое.
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/cL4hpn?referralCode=7hTMqE)
+
+Шаблон создаёт сервис из этого репозитория с volume на `/app/data` и спрашивает `BOT_TOKEN` и `ADMIN_CHAT_ID`; необязательные сети — переменные, которые можно заполнить потом. Вручную: создайте сервис из репозитория, задайте переменные из `.env.example` и **подключите volume на `/app/data`** — без него БД пропадает при каждом деплое.
 
 БД лежит в `./data` (на Railway — в volume на `/app/data`). Контейнер стартует от root только чтобы отдать эту папку пользователю `appuser`, и дальше работает без прав root.
 

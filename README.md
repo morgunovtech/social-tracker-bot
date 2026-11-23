@@ -2,7 +2,7 @@
 
 > A Telegram bot that watches your social accounts: followers on Telegram, YouTube, Instagram and LinkedIn with weekly trends, and the account's security — profile changes a hijacker makes, new sign-ins and password changes from your security emails, and a 2FA/password checklist. It stays quiet while things are fine and speaks up the moment something breaks.
 
-🇷🇺 [По-русски](README.ru.md)
+🇷🇺 [По-русски](README.ru.md) · [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/cL4hpn?referralCode=7hTMqE)
 
 The bot talks to you in English or Russian (`BOT_LANG`); the setup is the same in both.
 
@@ -46,7 +46,9 @@ docker-compose up -d
 
 ### Railway
 
-Create a service from this repository, set the variables from `.env.example`, and **attach a volume at `/app/data`** — without one the database is lost on every deploy.
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/cL4hpn?referralCode=7hTMqE)
+
+The template creates the service from this repository with a volume at `/app/data` and asks for `BOT_TOKEN` and `ADMIN_CHAT_ID`; the optional networks are variables you fill in later. By hand: create a service from this repository, set the variables from `.env.example`, and **attach a volume at `/app/data`** — without one the database is lost on every deploy.
 
 The container starts as root only to hand the data directory to the unprivileged `appuser`, then drops root for good.
 

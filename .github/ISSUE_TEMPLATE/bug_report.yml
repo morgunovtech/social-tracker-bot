@@ -1,0 +1,22 @@
+name: Bug report
+description: Something the bot does wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what the bot answered (or didn't), what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log lines
+      description: From `docker-compose logs -f` or the Railway log. Remove tokens, cookies and chat ids.
+      render: text
+  - type: input
+    id: where
+    attributes:
+      label: Where it runs
+      placeholder: Railway / Docker Compose, Python version, bot commit (the home screen shows it under ⚙️)
