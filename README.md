@@ -21,7 +21,7 @@ The bot is modular: connect only the platforms you have, and switch monitors on 
 - **Daily collection, weekly report**: deltas for the day / week / month, a 14-day sparkline, a 30-day PNG chart, the week's leader by growth, a monthly digest on the 1st. Every platform is optional.
 - **Signals, not noise**: milestones (1k, 5k, 10k…) on the day they're crossed, a forecast to the next one, growth speeding up or slowing down, a bot-influx detector (a jump ×5 above the usual daily gain).
 - **Problems arrive at once**: a revoked Instagram token or an expired LinkedIn cookie, collection failing 2+ days in a row, a drop in followers (20 or more and at least 1%), data that has gone stale.
-- **Self-recovering**: failed platforms are retried hourly (up to 3 times), a run missed while the bot was down is caught up on start, a dead man's switch (`HEALTHCHECK_URL`) tells you when the bot itself dies. Point it at a [TofsDevOps](https://github.com/morgunovtech/Tofs_DevOps_bot) heartbeat address and the ping also carries a line per network («✅ Telegram · 12 340, +18 за сутки», «🔴 LinkedIn · профиль не читается») to TofsDevOps's main screen, next to your sites; refreshed after every profile check.
+- **Self-recovering**: failed platforms are retried hourly (up to 3 times), a run missed while the bot was down is caught up on start, a dead man's switch (`HEALTHCHECK_URL`) tells you when the bot itself dies. Point it at a [TofsDevOps](https://github.com/morgunovtech/Tofs_DevOps_bot) heartbeat address and the ping also carries a line per network («✅ Telegram · 12 340, +18 today», «🔴 LinkedIn · profile unreadable») to TofsDevOps's main screen, next to your sites; refreshed after every profile check.
 - **Your data stays yours**: SQLite on your volume, a weekly backup sent to your chat (without the LinkedIn cookie and the Instagram token), and `/restore` to merge a backup back without overwriting anything collected since.
 - **Quiet mode**: a one-liner instead of the full report when nothing changed.
 - **Rings only when it matters**: 🚨 and 🔴 — a likely hijack, a new sign-in, a changed password, a vanished profile — ring at once, even at night; everything else arrives silently, and during quiet hours or a `/mute` it waits and comes as one digest. See [When it writes](#when-it-writes).
@@ -32,13 +32,30 @@ The bot is modular: connect only the platforms you have, and switch monitors on 
 - **Security emails** (optional, needs the [mail-worker](mail-worker/README.md)): forward your accounts' security notifications to a Cloudflare Email Worker, and the bot alerts within 5 minutes on a new sign-in, a password, email or 2FA change, a password reset request or a login code you didn't ask for, with recovery links. Links quoted from a mail or a changed description are defanged (`hxxps://evil[.]example`), so nothing in an alert is a clickable scam link. Gmail's forwarding confirmation code is relayed to you.
 - **Hygiene checklist** (`/security`): per account — 2FA and its kind, backup codes, recovery contacts, a unique password, the last password change; for Telegram, its own list — cloud password, its recovery email, only your own sessions, a unique password. A score out of 10 in every report, and a reminder at most once a month with what to fix. No network exposes this to third-party apps, so these are your own marks: **the bot never asks for a password.**
 
+## Privacy
+
+What leaves your server and what does not, as the code does it:
+
+| Where | What and why |
+|---|---|
+| Telegram Bot API | The bot's messages to you, and the public data of your channel (follower count, title, description, admins when the bot is a channel admin). |
+| YouTube Data API (`googleapis.com`) | Your channel's statistics with your own key, once a day. Only with `YOUTUBE_API_KEY`. |
+| Instagram API (`graph.facebook.com`) | Your account's follower count and profile with your own token, once a day. Only with a token. |
+| LinkedIn (`linkedin.com`) | Your profile page, opened with your `li_at` cookie once a day. Only with the cookie; without it you type the number in. |
+| Watchdog (`HEALTHCHECK_URL`) | An empty ping after the daily run — healthchecks.io or a TofsDevOps address; TofsDevOps also gets one status line per network (count, delta). Only when set. |
+| Your own site (`SITE_INGEST_URL`) | The final follower counts, POSTed with a Bearer token. Only when set. |
+| OSV (`api.osv.dev`) | On Sundays, the names and versions of the bot's packages, to report known vulnerabilities. `UPDATE_WATCH=0` turns it off. |
+| Your mail-worker | The bot fetches the security emails you forwarded yourself; the worker accepts only the senders in `ALLOWED_SENDERS`. |
+
+Everything else stays with you: follower history, profile baselines, checklist answers and security events live in SQLite on your volume. The Instagram token and the LinkedIn cookie are stored there too; the message carrying either is deleted from the chat at once, and the Sunday backup is made without them. Only `ADMIN_CHAT_ID` can use the bot. Logs carry no Bot API URL with the token (the httpx logger stays at WARNING). Links quoted from mails and profile descriptions are defanged in alerts (`hxxps://evil[.]example`) and previews are off. Details: [SECURITY.md](SECURITY.md).
+
 ## Setup
 
 0. **Language.** `BOT_LANG=en` or `ru` (the default): every screen, report, alert and the `/` menu. The examples below show the Russian bot.
 1. **Telegram (required).** Create a bot with [@BotFather](https://t.me/BotFather) → `BOT_TOKEN`. Get your user id from [@userinfobot](https://t.me/userinfobot) → `ADMIN_CHAT_ID`: only you can use the bot. To track a channel, make the bot an **admin** of it → `TELEGRAM_CHANNEL_ID`.
 2. **YouTube (optional).** In [Google Cloud Console](https://console.cloud.google.com/) enable YouTube Data API v3 and create an API key → `YOUTUBE_API_KEY`; your channel id (`UC…`) → `YOUTUBE_CHANNEL_ID`.
 3. **Instagram (optional).** The account must be professional (Creator or Business: Settings → Account type in the app, free). On [developers.facebook.com](https://developers.facebook.com/) create an app with the **Instagram API** use case (Meta also asks for a business portfolio: free, no verification needed for your own account), open «API setup with Unified login», create the configuration from the template, add your account as an **Instagram Tester**, accept the invitation in Instagram (Settings → Website permissions → Tester invitations) and press **Generate token**. Your @username → `INSTAGRAM_USERNAME`, then send the bot `/igtoken <token>` — it checks that the token was granted for that account, deletes your message and keeps the token (or set `INSTAGRAM_ACCESS_TOKEN` in `.env`). The token does not expire; if Meta revokes it, the bot says so once and in every report until a new one arrives. This is the official Instagram API: the bot reads only its own account's public data (followers, name, bio, post count) and watches those for a hijack.
-4. **LinkedIn (optional).** Your profile URL → `LINKEDIN_PROFILE_URL`. Then either send the bot `/setcookie <li_at>` with the `li_at` cookie of a logged-in browser (DevTools → Application → Cookies → linkedin.com) — the bot checks it, deletes your message and watches the cookie's age — or enter the number by hand with the «✏️ Ввести число LinkedIn» button on the home screen.
+4. **LinkedIn (optional).** Your profile URL → `LINKEDIN_PROFILE_URL`. Then either send the bot `/setcookie <li_at>` with the `li_at` cookie of a logged-in browser (DevTools → Application → Cookies → linkedin.com) — the bot checks it, deletes your message and watches the cookie's age — or enter the number by hand with the «✏️ Enter LinkedIn count» button on the home screen.
 
 5. **Security emails (optional).** Deploy the [mail-worker](mail-worker/README.md) → `SECURITY_MAIL_URL`, `SECURITY_MAIL_TOKEN`, and set up forwarding in your mailbox.
 
@@ -61,7 +78,7 @@ The container starts as root only to hand the data directory to the unprivileged
 
 ## Menu
 
-Everything is a button away; the «🏠 Меню» button under the input field always brings you home.
+Everything is a button away; the «🏠 Menu» button under the input field always brings you home.
 
 ```
 🏠 Home — the follower report, the security score, when the next report goes out
@@ -80,7 +97,7 @@ Everything is a button away; the «🏠 Меню» button under the input field 
 └── ❓ Help — how the bot works, what the icons mean, every command
 ```
 
-A tap answers right away with a short confirmation («Сохранено», «Тихий режим включён»), a menu message is edited in place instead of piling up, and a button of an older version's menu opens the current one.
+A tap answers right away with a short confirmation («Saved», «Quiet mode on»), a menu message is edited in place instead of piling up, and a button of an older version's menu opens the current one.
 
 ## Commands
 
@@ -109,32 +126,32 @@ The `/` menu lists the six entry points; the rest are for typing.
 ## What a report looks like
 
 ```
-📊 Подписчики · 23.11.2026
+📊 Followers · 23.11.2026
 
 Telegram — 1 156  ▁▁▂▂▃▃▄▄▅▅▆▆▇█
-+2 за день · +14 за неделю · +60 за месяц
++2 today · +14 this week · +60 this month
 
 YouTube — 126  ▁▁▂▂▂▄▄▄▆▆▆███
-0 за день · +2 за неделю · +10 за месяц
+0 today · +2 this week · +10 this month
 
 Instagram — 180  ▁▁▂▂▃▃▄▄▅▅▆▆▇█
-+1 за день · +7 за неделю · +30 за месяц
++1 today · +7 this week · +30 this month
 
 LinkedIn — 4 981
-введено вручную 20.11
+entered by hand on 20.11
 
-📈 Всего — 6 443
+📈 Total — 6 443
 
-🏆 Лидер недели: Instagram, +4,0%
-🔮 Instagram: 250 примерно через 10 нед. (+7 в неделю)
-🛡 Безопасность: 7 из 10 — /security
+🏆 Leader of the week: Instagram, +4.0%
+🔮 Instagram: 250 in about 10 wk. (+7 a week)
+🛡 Security: 7 of 10 — /security
 ```
 
-Problems come first («⚠️ Instagram отклонил токен — пришли новый через /igtoken»), a milestone crossed that day gets its own line («🎯 Telegram перешагнул 1 000!»), and in quiet mode a week without changes is one line.
+Problems come first («⚠️ Instagram rejected the token — send a new one via /igtoken»), a milestone crossed that day gets its own line («🎯 Telegram passed 1 000!»), and in quiet mode a week without changes is one line.
 
 ## Schedule
 
-Data is collected every day at the report time, and the report goes out on the report day(s). Time and days are in your time zone: pick it with the «🌍 Часовой пояс» button in ⚙️ Settings or with `/settz`, and `/settime 09:00` means 09:00 on your clock, summer time included. Switching the zone keeps the report at the same moment and shows it on the new clock (08:00 UTC becomes 11:00 in Moscow).
+Data is collected every day at the report time, and the report goes out on the report day(s). Time and days are in your time zone: pick it with the «🌍 Time zone» button in ⚙️ Settings or with `/settz`, and `/settime 09:00` means 09:00 on your clock, summer time included. Switching the zone keeps the report at the same moment and shows it on the new clock (08:00 UTC becomes 11:00 in Moscow).
 
 `REPORT_TZ`, `REPORT_HOUR`, `REPORT_MINUTE` and `REPORT_DOW` are the defaults until you change them in the bot: Saturday, 08:00 UTC. A schedule saved by a version without the zone setting stays in UTC until you pick a zone. Follower history, the monthly digest and the Sunday backup keep UTC days.
 
@@ -145,11 +162,11 @@ Every message to you goes through one door (`bot/notifier.py`) with three priori
 | | Rings | Examples |
 |---|---|---|
 | **Critical** — 🚨 🔴 | yes, through quiet hours and `/mute` | a new admin or owner, a link in the description, a drop in videos or posts, a profile that stopped being readable; a new sign-in, a changed or reset password, a changed email or 2FA |
-| **Normal** — 🟠 ⚠️ 🎯 📨 | no; waits during quiet hours and a mute | a changed title, description or avatar; a login code, an unrecognised mail; a drop in followers, a bot influx, a milestone; an expired cookie or rejected token, a failure streak, the mail worker down; a failed deploy; «🔄 Бот обновился» |
+| **Normal** — 🟠 ⚠️ 🎯 📨 | no; waits during quiet hours and a mute | a changed title, description or avatar; a login code, an unrecognised mail; a drop in followers, a bot influx, a milestone; an expired cookie or rejected token, a failure streak, the mail worker down; a failed deploy; «🔄 The bot has been updated» |
 | **Digest** — 📊 | no; waits only during a mute | the weekly report and its chart, the monthly digest, the hygiene reminder, the backup, the Sunday vulnerabilities notice |
 
 - **Quiet hours** are off by default: ⚙️ Settings → 🔔 When to write, presets 23:00–08:00 and 00:00–09:00 in your time zone. The weekly report is a digest itself, so it still comes at its time.
-- **`/mute 8h`** (or the 🔕 buttons on the same screen) pauses everything but the critical; `/unmute` lifts it. The home screen says «🔕 Тишина до 08:00» while it lasts.
+- **`/mute 8h`** (or the 🔕 buttons on the same screen) pauses everything but the critical; `/unmute` lifts it. The home screen says «🔕 Muted until 08:00» while it lasts.
 - When the silence ends, what was held arrives as **one numbered digest** with the time of each item; a message with buttons or one too long for the digest comes on its own. Replies to your own taps and commands are not notifications and never wait.
 - «Silent when healthy» stays: nothing repeats until it changes, and a recovery is told once.
 
@@ -161,7 +178,7 @@ The bot keeps itself up to date without touching its own container:
 2. **CI** tests each one: ruff, pytest on Python 3.12–3.14, `pip-audit`, a build of the production image that must start as `appuser`, and the mail-worker's tests and `npm audit`.
 3. **Minor and patch updates merge themselves** once CI is green (`.github/workflows/dependabot-automerge.yml`); major ones wait for you. Branch protection on `main` requires the CI checks, otherwise auto-merge would not wait for them.
 4. **Railway redeploys** from `main`.
-5. **The bot tells you** what the pipeline can't: «🔄 Бот обновился: aiohttp 3.14.3 → 3.14.4» after a deploy; within an hour, if the newest commit failed to deploy and it's stuck on an older build; and on Sundays, known vulnerabilities (OSV) in its packages and Dependabot PRs waiting for a human. Silent when there's nothing to do.
+5. **The bot tells you** what the pipeline can't: «🔄 The bot has been updated: aiohttp 3.14.3 → 3.14.4» after a deploy; within an hour, if the newest commit failed to deploy and it's stuck on an older build; and on Sundays, known vulnerabilities (OSV) in its packages and Dependabot PRs waiting for a human. Silent when there's nothing to do.
 
 `UPDATE_WATCH=0` turns the notices off. On Railway the commit and the repository come from its own variables; elsewhere set `GITHUB_REPOSITORY` and build with `--build-arg APP_COMMIT=$(git rev-parse HEAD)`.
 
