@@ -22,7 +22,7 @@ from bot import monitors, notifier, platforms
 from bot.config import DOW_ORDER, Config
 from bot.db import Database, parse_utc, utcnow
 from bot.i18n import language, plural, t
-from bot.monitors import comments, hygiene
+from bot.monitors import channel, comments, hygiene
 from bot.platforms import BY_ID, PLATFORMS
 from bot.platforms import instagram as ig
 from bot.platforms.base import Platform
@@ -45,6 +45,7 @@ LI_ENTER = "li:enter"
 LI_CANCEL = "li:cancel"
 HELP = "help"
 COMMENTS = comments.CALLBACK
+CHANNEL = channel.CALLBACK
 
 # The persistent reply-keyboard button: tapping it sends this text back.
 # Russian is the key; the keyboard shows t(MENU_BUTTON_TEXT).
@@ -297,6 +298,8 @@ async def home(db: Database, config: Config, report: str | None = None) -> Scree
         [_button(t("🔄 Обновить данные"), NOW)],
         [_button(t("📈 Динамика"), DYNAMICS), _button(t("🛡 Безопасность"), SECURITY)],
     ]
+    if BY_ID["telegram"].enabled(config):
+        rows.append([_button(t("📣 Канал"), CHANNEL)])
     if await linkedin_is_manual(db, config):
         rows.append([_button(t("✏️ Ввести число LinkedIn"), LI_ENTER)])
     rows.append([_button(t("⚙️ Настройки"), SETTINGS), _button(t("❓ Помощь"), HELP)])
@@ -313,6 +316,27 @@ async def dynamics(db: Database) -> Screen:
         _back(HOME, t("Главная")),
     ]
     return Screen(_titled(await build_week_report(db)), InlineKeyboardMarkup(rows))
+
+
+async def channel_screen(db: Database, config: Config) -> Screen:
+    """Life of the Telegram channel: joins and leaves, where they came from,
+    posts and their reactions — what an admin bot sees without TGStat."""
+    target = esc(config.telegram_channel_id or "")
+    lines = [t("<b>📣 Канал {channel}</b>").format(channel=target), ""]
+    monitor = monitors.BY_ID[channel.MONITOR_ID]
+    if not monitor.requires(config):
+        lines.append(t("Не подключено — нужно: {needs}.").format(needs=esc(t(monitor.needs))))
+        return Screen("\n".join(lines), InlineKeyboardMarkup([_back(HOME, t("Главная"))]))
+    if not await monitors.is_switched_on(db, channel.MONITOR_ID):
+        lines.append(t("⬜ Выключено в /modules — пока выключено, события не записываются."))
+        lines.append("")
+    lines += await channel.overview(db, config, await get_report_tz(db, config))
+    lines += [
+        "",
+        t("Просмотры, пересылки и цитирование Bot API не отдаёт — они в статистике самого Telegram "
+          "(в канале: ⋮ → Статистика)."),
+    ]
+    return Screen("\n".join(lines), InlineKeyboardMarkup([_back(HOME, t("Главная"))]))
 
 
 async def table(db: Database, config: Config, platform_id: str = "all", days: int = 7) -> Screen:
@@ -843,6 +867,7 @@ def help_screen() -> Screen:
         t("/mute &lt;время&gt; — помолчать: 1h, 8h, 1d (по умолчанию 8h); /unmute — снять"),
         t("/modules — мониторинги"),
         t("/comments — комментарии канала: что проверено и насколько точно"),
+        t("/channel — жизнь канала: подписки и отписки, откуда пришли, посты и реакции"),
         "",
         t("<b>Бэкап</b>"),
         t(

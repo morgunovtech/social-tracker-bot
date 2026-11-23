@@ -20,7 +20,7 @@ from bot.chart import render_chart
 from bot.config import DOW_ORDER, Config, normalize_tz
 from bot.db import Database, parse_utc, utcnow
 from bot.i18n import t
-from bot.monitors import collection, followers, hygiene, mail, profile
+from bot.monitors import channel, collection, followers, hygiene, mail, profile
 from bot.notifier import Priority
 from bot.platforms import LABELS, PLATFORM_IDS
 from bot.platforms.base import Context
@@ -131,13 +131,17 @@ async def collect_and_report(bot: Bot, config: Config, db: Database) -> CollectO
 async def build_stats(
     db: Database, config: Config, errors: dict[str, bool | int] | None = None
 ) -> tuple[str, bool]:
-    """The follower report plus the security score line (when hygiene is on)."""
+    """The follower report, the channel's week (when the channel monitor is
+    on and has data) and the security score line (when hygiene is on)."""
     report, has_change = await build_report(
         db,
         errors=errors,
         linkedin_stale_days=config.linkedin_stale_days,
         platforms=config.enabled_platforms,
     )
+    channel_line = await channel.report_line(db, config)
+    if channel_line:
+        report += f"\n\n{channel_line}"
     if await monitors.is_on(db, config, "hygiene"):
         line = await hygiene.report_line(db, config)
         if line:

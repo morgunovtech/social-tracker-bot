@@ -10,11 +10,11 @@ from zoneinfo import ZoneInfo
 import pytest
 from conftest import COOKIE, FakeBot
 
-from bot import i18n, main, notifier, reporter, tofs_status, ui
+from bot import i18n, main, monitors, notifier, reporter, tofs_status, ui
 from bot.config import Config
 from bot.db import utcnow
 from bot.i18n import plural, t
-from bot.monitors import collection, comments, followers, hygiene, mail, profile
+from bot.monitors import channel, collection, comments, followers, hygiene, mail, profile
 from bot.platforms import BY_ID, PLATFORMS
 from bot.scheduler import CollectOutcome, _send_backup
 
@@ -113,7 +113,22 @@ async def test_every_screen(config, db, insert):
         await ui.when_to_write(db, config),
         await ui.comments_screen(db, config),
         await ui.comments_screen(db, dataclasses.replace(config, anthropic_api_key="k")),
+        await ui.channel_screen(db, config),   # empty
     ]
+    # The channel screen with events, sources and a reacted post; the report line it feeds.
+    now = utcnow()
+    await db.add_channel_event(-100, "join", 1, "Ivan", "From IG", now)   # a link's name is the owner's text
+    await db.add_channel_event(-100, "join", 2, "Anna", channel.VIA_REQUEST, now)
+    await db.add_channel_event(-100, "leave", 3, "Pete", "", now)
+    await db.add_channel_post(-100, 10, "photo", now)
+    await db.set_post_reactions(-100, 10, 4, '{"👍": 3, "❤": 1}', now)
+    screens.append(await ui.channel_screen(db, config))
+    english_only(await channel.report_line(db, config))
+    for via in (*channel.VIA_LABELS, "From IG"):
+        english_only(channel.via_label(via))
+    await monitors.toggle(db, channel.MONITOR_ID)
+    screens.append(await ui.channel_screen(db, config))
+    await monitors.toggle(db, channel.MONITOR_ID)
     for platform in PLATFORMS:
         screens.append(await ui.checklist(db, platform))
         for key in ui.question_keys(platform):

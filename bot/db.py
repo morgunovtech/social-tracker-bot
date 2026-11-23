@@ -97,6 +97,37 @@ CREATE TABLE IF NOT EXISTS comment_reviews (
 );
 """
 
+# Life of the channel (bot/monitors/channel.py): every join and leave the
+# Bot API reports to an admin bot, and every post with the reactions it
+# gathered. One channel is tracked, so queries don't filter by chat_id; the
+# column is kept so a changed TELEGRAM_CHANNEL_ID is still told apart.
+_CREATE_CHANNEL_EVENTS = """
+CREATE TABLE IF NOT EXISTS channel_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    user_id INTEGER NOT NULL,
+    user_name TEXT NOT NULL DEFAULT '',
+    via TEXT NOT NULL DEFAULT '',
+    occurred_at TIMESTAMP NOT NULL,
+    UNIQUE (chat_id, kind, user_id, occurred_at)
+);
+"""
+# posted_at is NULL for a post from before the bot watched, known only by
+# its reactions: it counts for reactions, not as a publication.
+_CREATE_CHANNEL_POSTS = """
+CREATE TABLE IF NOT EXISTS channel_posts (
+    chat_id INTEGER NOT NULL,
+    message_id INTEGER NOT NULL,
+    kind TEXT NOT NULL DEFAULT '',
+    posted_at TIMESTAMP,
+    reactions INTEGER NOT NULL DEFAULT 0,
+    reactions_json TEXT NOT NULL DEFAULT '',
+    reacted_at TIMESTAMP,
+    PRIMARY KEY (chat_id, message_id)
+);
+"""
+
 # Settings that must never leave the server (wiped from off-site backups).
 _SECRET_SETTINGS = ("linkedin_li_at", "instagram_token")
 # Each secret with the settings that describe it (when it was set, when it dies).
@@ -145,6 +176,8 @@ class Database:
             await db.execute(_CREATE_EVENTS)
             await db.execute(_CREATE_PENDING)
             await db.execute(_CREATE_COMMENTS)
+            await db.execute(_CREATE_CHANNEL_EVENTS)
+            await db.execute(_CREATE_CHANNEL_POSTS)
             await db.commit()
         logger.info("Database initialized at %s", self._db_path)
 
@@ -209,6 +242,23 @@ class Database:
                         """
                         INSERT OR IGNORE INTO security_events (uid, platform, kind, detail, occurred_at)
                         SELECT uid, platform, kind, detail, occurred_at FROM backup.security_events
+                        """
+                    )
+                # The channel's events and posts: history too, merged the same way.
+                if await _scalar(db, "SELECT COUNT(*) FROM backup.sqlite_master WHERE name = 'channel_events'"):
+                    await db.execute(
+                        """
+                        INSERT OR IGNORE INTO channel_events (chat_id, kind, user_id, user_name, via, occurred_at)
+                        SELECT chat_id, kind, user_id, user_name, via, occurred_at FROM backup.channel_events
+                        """
+                    )
+                if await _scalar(db, "SELECT COUNT(*) FROM backup.sqlite_master WHERE name = 'channel_posts'"):
+                    await db.execute(
+                        """
+                        INSERT OR IGNORE INTO channel_posts
+                            (chat_id, message_id, kind, posted_at, reactions, reactions_json, reacted_at)
+                        SELECT chat_id, message_id, kind, posted_at, reactions, reactions_json, reacted_at
+                        FROM backup.channel_posts
                         """
                     )
                 await db.commit()
@@ -402,6 +452,127 @@ class Database:
             return await _scalar(
                 db, "SELECT COUNT(*) FROM comment_reviews WHERE chat_id = ? AND user_id = ?", (chat_id, user_id)
             )
+
+    # --- life of the channel (bot/monitors/channel.py) ----------------------
+
+    async def add_channel_event(
+        self, chat_id: int, kind: str, user_id: int, user_name: str, via: str, occurred_at: datetime
+    ) -> bool:
+        """A join or a leave; False when this very event is already stored
+        (Telegram re-delivered the update)."""
+        stamp = occurred_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        async with aiosqlite.connect(self._db_path) as db:
+            cursor = await db.execute(
+                """
+                INSERT OR IGNORE INTO channel_events (chat_id, kind, user_id, user_name, via, occurred_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (chat_id, kind, user_id, user_name, via, stamp),
+            )
+            await db.commit()
+            return cursor.rowcount == 1
+
+    async def add_channel_post(self, chat_id: int, message_id: int, kind: str, posted_at: datetime) -> bool:
+        """A new post; False when it is already stored. A row made earlier by
+        the post's reactions gets its kind and date."""
+        stamp = posted_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        async with aiosqlite.connect(self._db_path) as db:
+            cursor = await db.execute(
+                """
+                INSERT INTO channel_posts (chat_id, message_id, kind, posted_at) VALUES (?, ?, ?, ?)
+                ON CONFLICT (chat_id, message_id) DO UPDATE
+                    SET kind = excluded.kind, posted_at = excluded.posted_at
+                    WHERE channel_posts.posted_at IS NULL
+                """,
+                (chat_id, message_id, kind, stamp),
+            )
+            await db.commit()
+            return cursor.rowcount == 1
+
+    async def set_post_reactions(
+        self, chat_id: int, message_id: int, total: int, reactions_json: str, at: datetime
+    ) -> None:
+        """The current reactions of a post (a snapshot, not a delta); a post
+        the bot never saw posted gets a row without a date."""
+        stamp = at.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                """
+                INSERT INTO channel_posts (chat_id, message_id, reactions, reactions_json, reacted_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (chat_id, message_id) DO UPDATE
+                    SET reactions = excluded.reactions, reactions_json = excluded.reactions_json,
+                        reacted_at = excluded.reacted_at
+                """,
+                (chat_id, message_id, total, reactions_json, stamp),
+            )
+            await db.commit()
+
+    async def channel_has_data(self) -> bool:
+        async with aiosqlite.connect(self._db_path) as db:
+            events = await _scalar(db, "SELECT COUNT(*) FROM channel_events")
+            posts = await _scalar(db, "SELECT COUNT(*) FROM channel_posts")
+            return bool(events or posts)
+
+    async def channel_counts(self, since: datetime) -> dict[str, int]:
+        """Joins, leaves and posts since the moment, and the reactions the
+        posts of that period have gathered."""
+        stamp = since.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        async with aiosqlite.connect(self._db_path) as db:
+            joins = await _scalar(
+                db, "SELECT COUNT(*) FROM channel_events WHERE kind = 'join' AND occurred_at >= ?", (stamp,)
+            )
+            leaves = await _scalar(
+                db, "SELECT COUNT(*) FROM channel_events WHERE kind = 'leave' AND occurred_at >= ?", (stamp,)
+            )
+            posts, reactions = await (
+                await db.execute(
+                    "SELECT COUNT(*), COALESCE(SUM(reactions), 0) FROM channel_posts WHERE posted_at >= ?", (stamp,)
+                )
+            ).fetchone()
+        return {"joins": joins, "leaves": leaves, "posts": posts, "reactions": reactions}
+
+    async def channel_sources(self, since: datetime) -> list[tuple[str, int]]:
+        """Where the joins came from: (via, count), most first."""
+        stamp = since.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        async with aiosqlite.connect(self._db_path) as db:
+            rows = await (
+                await db.execute(
+                    """
+                    SELECT via, COUNT(*) AS n FROM channel_events
+                    WHERE kind = 'join' AND occurred_at >= ?
+                    GROUP BY via ORDER BY n DESC, via ASC
+                    """,
+                    (stamp,),
+                )
+            ).fetchall()
+        return [(row[0], row[1]) for row in rows]
+
+    async def channel_top_posts(self, since: datetime, limit: int) -> list[dict]:
+        stamp = since.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            rows = await (
+                await db.execute(
+                    """
+                    SELECT * FROM channel_posts
+                    WHERE reactions > 0 AND (posted_at >= ? OR (posted_at IS NULL AND reacted_at >= ?))
+                    ORDER BY reactions DESC, message_id DESC LIMIT ?
+                    """,
+                    (stamp, stamp, limit),
+                )
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    async def channel_recent_events(self, limit: int) -> list[dict]:
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            rows = await (
+                await db.execute(
+                    "SELECT * FROM channel_events ORDER BY occurred_at DESC, id DESC LIMIT ?", (limit,)
+                )
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     async def review_stats(self, days: int = 30) -> dict:
         """The accuracy table: how many comments were checked, and per category
