@@ -2,16 +2,28 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
-## Unreleased
+## 1.1.0 — 2026-11-23
 
-**When it writes** — the TofsDevOps notification model
+Quiet hours and `/mute`, one required variable, and the supply chain hardened: hashed lock, pinned image and Actions, a public image on ghcr.io.
+
+**When it writes** — the TofsDevOps notification model (#34)
 - One door for every message to the owner (`bot/notifier.py`) with three priorities: 🚨 and 🔴 ring through everything (hijack signs, a new sign-in, a changed password, a vanished profile); 🟠 ⚠️ 🎯 messages are silent and wait during quiet hours or a mute; the weekly report, the monthly digest, the backup and the Sunday notices are silent and wait only during a mute.
 - Quiet hours (off by default) with presets in ⚙️ Settings → 🔔 When to write, in your time zone; `/mute <time>` and `/unmute`, also as 🔕 buttons; «🔕 Тишина до …» on the home screen while a mute lasts.
 - What was held arrives as one numbered digest with the time of each item when the silence ends.
 - A rejected token or cookie, a failure streak, a bot influx and a mail worker that stopped answering are now 🟠 (they wait for the digest), so the icon and the way a message arrives agree.
 
-**Setup** — one required variable
+**Setup** — one required variable (#40)
 - The first `/start` after the deploy makes its sender the owner; `ADMIN_CHAT_ID` is optional and, when set, pins the owner or takes the bot over. Nothing is sent before an owner exists. The Railway template asks for `BOT_TOKEN` only.
+
+**Running it**
+- A public image on every green `main`: `ghcr.io/morgunovtech/social-tracker-bot` (`:latest`, `:sha-…`, amd64 and arm64); `docker-compose.yml` pulls it, building from source stays one line away (#36).
+- Logs pass a redacting formatter: the bot token, keys in a URL, the LinkedIn cookie and every secret the bot was started with are masked, tracebacks included (#37).
+
+**Under the hood** (#36)
+- `requirements.txt` is a hashed lock compiled from `requirements.in`; the image and CI install exactly it. Base image pinned by digest, every Action by commit. Dependabot waits 7 days (30 for majors) before proposing a version; the auto-merge waits for the tests itself.
+
+**Docs**
+- README «Privacy»: every host the bot talks to and what stays on your volume; the English README quotes the English UI; `CONTRIBUTING.md` «Principles», `CLAUDE.md`, `AGENTS.md` (#33, #35).
 
 ## 1.0.0 — 2026-11-23
 
