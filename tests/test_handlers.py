@@ -1,3 +1,4 @@
+import dataclasses
 import shutil
 from collections import deque
 from datetime import UTC, datetime, timedelta
@@ -69,6 +70,45 @@ async def test_stranger_button_press_is_answered_once_with_the_alert(make_update
     await handlers.on_callback(update, make_context())
     assert update.callback_query.answers == [{"text": "⛔ Доступ запрещён.", "show_alert": True}]
     assert update.callback_query.edits == []
+
+
+async def test_the_first_start_claims_the_bot(make_update, make_context, config, db):
+    unclaimed = dataclasses.replace(config, admin_chat_id=None)
+    context = make_context()
+    context.bot_data["config"] = unclaimed
+
+    update = make_update(user_id=STRANGER_ID)
+    await handlers.cmd_start(update, context)
+    assert unclaimed.admin_chat_id == STRANGER_ID
+    assert await db.get_setting(handlers.OWNER_SETTING) == str(STRANGER_ID)
+    assert update.message.replies[0].startswith("✅ Теперь этот бот твой")
+    assert len(update.message.replies) == 2  # the greeting and the home screen
+
+    # Everyone after the owner is a stranger, the former test admin included.
+    other = make_update(user_id=ADMIN_ID)
+    await handlers.cmd_start(other, context)
+    assert other.message.replies == ["Это личный бот: он отвечает только своему владельцу."]
+
+
+async def test_the_owner_is_restored_from_the_db_unless_pinned(config, db):
+    await db.set_setting(handlers.OWNER_SETTING, "99")
+    unclaimed = dataclasses.replace(config, admin_chat_id=None)
+    await handlers.restore_owner(unclaimed, db)
+    assert unclaimed.admin_chat_id == 99
+
+    pinned = dataclasses.replace(config, admin_chat_id=ADMIN_ID)
+    await handlers.restore_owner(pinned, db)
+    assert pinned.admin_chat_id == ADMIN_ID  # the environment wins over the DB
+
+
+async def test_nothing_is_sent_or_queued_before_the_owner_exists(bot, config, db):
+    unclaimed = dataclasses.replace(config, admin_chat_id=None)
+    assert await notifier.send(bot, unclaimed, db, "hello") is False
+    await notifier.send_photo(bot, unclaimed, db, b"png", "chart")
+    await notifier.send_document(bot, unclaimed, db, b"db", "backup.db", "backup")
+    assert bot.messages == [] and bot.photos == [] and bot.documents == []
+    assert await db.peek_notifications() == []
+    assert await notifier.flush_queue(bot, unclaimed, db) == 0
 
 
 # --- navigation --------------------------------------------------------------

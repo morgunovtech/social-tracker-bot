@@ -4,7 +4,7 @@ General rules for every project (branches and PRs, worktrees, no twins, repos in
 
 ## Commands
 
-- Run: `cp .env.example .env` (fill in `BOT_TOKEN` and `ADMIN_CHAT_ID`), then `docker compose up -d`, or `python -m bot.main` in a venv with `requirements.txt` installed.
+- Run: `cp .env.example .env` (fill in `BOT_TOKEN`; `ADMIN_CHAT_ID` is optional, the first `/start` is the owner), then `docker compose up -d`, or `python -m bot.main` in a venv with `requirements.txt` installed.
 - Test / lint (the same as CI): `ruff check .`, `pytest -q` (offline: a fake Telegram, local HTTP servers for every API), `pip-audit -r requirements.txt --strict`; the mail-worker: `cd mail-worker && npm test`.
 
 ## Deploy

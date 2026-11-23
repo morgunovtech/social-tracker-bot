@@ -112,3 +112,14 @@ def test_security_mail_settings(monkeypatch):
     monkeypatch.setenv("SECURITY_MAIL_URL", "https://socialbot-mail.example.workers.dev/")
     monkeypatch.setenv("SECURITY_MAIL_TOKEN", "t")
     assert Config.from_env().security_mail_url == "https://socialbot-mail.example.workers.dev"
+
+
+def test_admin_chat_id_is_optional(monkeypatch):
+    # The first /start claims the bot; the variable only pins the owner.
+    monkeypatch.delenv("ADMIN_CHAT_ID")
+    assert Config.from_env().admin_chat_id is None
+    monkeypatch.setenv("ADMIN_CHAT_ID", " 42 ")
+    assert Config.from_env().admin_chat_id == 42
+    monkeypatch.setenv("ADMIN_CHAT_ID", "me")
+    with pytest.raises(RuntimeError, match="ADMIN_CHAT_ID"):
+        Config.from_env()

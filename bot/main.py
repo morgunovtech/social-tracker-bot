@@ -7,7 +7,7 @@ from telegram.ext import Application
 
 from bot.config import Config
 from bot.db import Database
-from bot.handlers import register_handlers
+from bot.handlers import register_handlers, restore_owner
 from bot.i18n import set_language, t
 from bot.redact import RedactingFormatter
 from bot.scheduler import setup_scheduler
@@ -60,6 +60,7 @@ async def _post_init(app: Application) -> None:
     db: Database = app.bot_data["db"]
 
     await db.init()
+    await restore_owner(config, db)
 
     scheduler = await setup_scheduler(app.bot, config, db)
     scheduler.start()

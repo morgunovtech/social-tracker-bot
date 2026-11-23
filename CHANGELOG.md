@@ -10,6 +10,9 @@ The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists 
 - What was held arrives as one numbered digest with the time of each item when the silence ends.
 - A rejected token or cookie, a failure streak, a bot influx and a mail worker that stopped answering are now 🟠 (they wait for the digest), so the icon and the way a message arrives agree.
 
+**Setup** — one required variable
+- The first `/start` after the deploy makes its sender the owner; `ADMIN_CHAT_ID` is optional and, when set, pins the owner or takes the bot over. Nothing is sent before an owner exists. The Railway template asks for `BOT_TOKEN` only.
+
 ## 1.0.0 — 2026-11-23
 
 The first release worth a number: four networks, account protection, English, one-click deploy.

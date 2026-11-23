@@ -126,9 +126,25 @@ async def _show(query, screen: ui.Screen) -> None:
 # Guards
 # ---------------------------------------------------------------------------
 
+OWNER_SETTING = "admin_chat_id"
+
+
 def _is_admin(update: Update, config: Config) -> bool:
     user = update.effective_user
-    return user is not None and user.id == config.admin_chat_id
+    return user is not None and config.admin_chat_id is not None and user.id == config.admin_chat_id
+
+
+async def restore_owner(config: Config, db: Database) -> None:
+    """At startup: the owner from the DB unless ADMIN_CHAT_ID pins one. With
+    neither, the bot waits for its first /start and sends nothing until then."""
+    if config.admin_chat_id is not None:
+        return
+    stored = await db.get_setting(OWNER_SETTING)
+    if stored:
+        config.set_owner(int(stored))
+        logger.info("Owner restored from the database")
+    else:
+        logger.warning("No owner yet: the first /start claims the bot")
 
 
 async def _answer(query, text: str | None = None, show_alert: bool = False) -> None:
@@ -276,11 +292,19 @@ async def _save_linkedin(db: Database, config: Config, count: int) -> ui.Screen:
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config, db = _deps(context)
+    claimed = False
+    if config.admin_chat_id is None and update.effective_user is not None:
+        # The first person to say /start owns the bot (BOT_PRINCIPLES §5);
+        # ADMIN_CHAT_ID in the environment pins or changes the owner.
+        config.set_owner(update.effective_user.id)
+        await db.set_setting(OWNER_SETTING, str(update.effective_user.id))
+        logger.info("Owner claimed by the first /start")
+        claimed = True
     if not _is_admin(update, config):
         await update.message.reply_text(t("Это личный бот: он отвечает только своему владельцу."))
         return
     # Two messages: a message carries either the persistent keyboard or inline buttons.
-    await update.message.reply_text(ui.welcome(), reply_markup=ui.persistent_keyboard())
+    await update.message.reply_text(ui.welcome(claimed), reply_markup=ui.persistent_keyboard())
     await _reply(update, await ui.home(db, config))
 
 
