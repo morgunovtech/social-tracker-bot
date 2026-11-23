@@ -124,6 +124,12 @@ def test_verdict_parsing():
     assert refused.category == classifier.REFUSED and refused.reason == "declined" and refused.flagged
     with pytest.raises(ValueError):
         classifier.parse_verdict(_response({"category": "weird", "confidence": 1, "reason": ""}))
+    # Thinking counts toward max_tokens: a reply that ends there has no text, and is not «fine».
+    with pytest.raises(ValueError, match="max_tokens"):
+        classifier.parse_verdict(_response(None, "max_tokens"))
+    with pytest.raises(ValueError, match="no text"):
+        classifier.parse_verdict(_response(None, "end_turn"))
+    assert classifier.MAX_TOKENS >= 4096                        # room for the thinking, not only the JSON
     assert set(classifier.SCHEMA["properties"]["category"]["enum"]) == set(classifier.CATEGORIES)
     # The API refuses minimum/maximum on an integer (HTTP 400): the range is clamped here instead.
     assert not {"minimum", "maximum"} & set(classifier.SCHEMA["properties"]["confidence"])
@@ -207,6 +213,7 @@ async def test_a_dangerous_comment_becomes_a_ringing_card(group_bot, config, db,
 async def test_an_ok_comment_is_recorded_without_text_and_without_a_card(group_bot, config, db, verdicts):
     verdicts.queue.append(Verdict("ok", 97, "обычный комментарий"))
     assert await comments.review(group_bot, config, db, comments.Watch(), message("Спасибо за пост")) is None
+    assert (await db.get_review(1))["user_name"] == ""        # only a card needs the author's name
     assert group_bot.messages == []
     stored = await db.get_review_by_message(GROUP, 7)
     assert stored["category"] == "ok" and stored["text"] == ""
@@ -219,6 +226,45 @@ async def test_spam_and_low_confidence_are_quiet_cards(group_bot, config, db, ve
     await comments.review(group_bot, config, db, comments.Watch(), message("что-то мутное", message_id=2))
     assert [m[:1] for m in group_bot.messages] == ["🟠", "🟠"] and group_bot.silent == [True, True]
     assert "Группе это не грозит" in group_bot.messages[0]
+
+
+async def test_the_daily_limit_stops_the_checks_and_is_said_once(group_bot, config, db, verdicts):
+    limited = dataclasses.replace(config, comments_daily_limit=2)
+    verdicts.queue += [Verdict("ok", 90, ""), Verdict("ok", 90, "")]
+    watch = comments.Watch()
+    for i in range(4):
+        await comments.review(group_bot, limited, db, watch, message("x", message_id=i))
+    assert len(verdicts.samples) == 2                                   # the third and fourth were not asked
+    assert len(group_bot.messages) == 1 and group_bot.messages[0].startswith("🟠 Комментарии: дневной лимит проверок (2)")
+    assert "COMMENTS_DAILY_LIMIT" in group_bot.messages[0]
+    unlimited = dataclasses.replace(config, comments_daily_limit=0)
+    verdicts.queue.append(Verdict("ok", 90, ""))
+    await comments.review(group_bot, unlimited, db, watch, message("x", message_id=9))
+    assert len(verdicts.samples) == 3
+
+
+async def test_classifications_run_a_few_at_a_time(group_bot, config, db, monkeypatch):
+    running, peak = [0], [0]
+
+    async def slow_classify(client, model, sample, lang="ru"):
+        running[0] += 1
+        peak[0] = max(peak[0], running[0])
+        await asyncio.sleep(0.01)
+        running[0] -= 1
+        return Verdict("ok", 90, "")
+
+    monkeypatch.setattr(classifier, "classify", slow_classify)
+    monkeypatch.setattr(classifier, "make_client", lambda key: object())
+    watch = comments.Watch()
+    await asyncio.gather(*(comments.review(group_bot, config, db, watch, message("x", message_id=i)) for i in range(8)))
+    assert peak[0] == comments.CONCURRENCY and (await db.review_stats())["checked"] == 8
+
+
+def test_a_display_name_that_is_a_link_is_defanged():
+    review = {"id": 1, "category": "spam", "confidence": 60, "user_name": "buy at evil.com (@x)", "media": "",
+              "text": "", "reason": "", "action": "", "label": "", "link": ""}
+    text, _ = comments.card(review, "Channel")
+    assert "evil[.]com" in text and "evil.com" not in text
 
 
 async def test_a_photo_is_downloaded_and_sent_along(group_bot, config, db, verdicts):
@@ -341,7 +387,7 @@ async def test_stats_screen_counts_marks(group_bot, config, db, verdicts):
     assert "🔴 наркотики — 1 · 1 · 0" in screen.text and "🔴 мошенничество — 1 · 0 · 1" in screen.text
     assert "🟠 спам или реклама — 1 · 0 · 0" in screen.text
     assert "Точность по твоим отметкам: 50% (1 из 2)" in screen.text
-    assert buttons(screen.keyboard) == {"sec": "← Безопасность"}
+    assert buttons(screen.keyboard) == {"mod:comments:cm": "✅ Комментарии", "sec": "← Безопасность"}
 
     unconfigured = await ui.comments_screen(db, dataclasses.replace(config, anthropic_api_key=None))
     assert "Не подключено — нужно: ANTHROPIC_API_KEY" in unconfigured.text

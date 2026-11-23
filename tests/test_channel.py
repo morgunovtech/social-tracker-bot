@@ -188,7 +188,7 @@ async def test_screen_and_report_line(config, db, monkeypatch):
     monkeypatch.setattr(channel, "utcnow", lambda: NOW + timedelta(hours=2))
     empty = await ui.channel_screen(db, config)
     assert empty.text.startswith("<b>📣 Канал @test_channel</b>") and "Пока пусто" in empty.text
-    assert buttons(empty.keyboard) == {"home": "← Главная"}
+    assert buttons(empty.keyboard) == {"mod:channel:ch": "✅ Жизнь канала", "home": "← Главная"}
     assert await channel.report_line(db, config) is None
 
     await fill(config, db)
@@ -202,7 +202,7 @@ async def test_screen_and_report_line(config, db, monkeypatch):
     assert await channel.report_line(db, config) == "📣 Канал за 7 дн.: +2 подписки · −1 отписка · 1 пост · 4 реакции"
 
     await monitors.toggle(db, channel.MONITOR_ID)
-    assert "⬜ Выключено в /modules" in (await ui.channel_screen(db, config)).text
+    assert "⬜ Выключено —" in (await ui.channel_screen(db, config)).text
     assert await channel.report_line(db, config) is None
 
     unconfigured = dataclasses.replace(config, telegram_channel_id=None)
@@ -280,3 +280,7 @@ async def test_restore_merges_the_channel_history(config, db, tmp_path):
     await fresh.restore_from(backup)                                              # twice: nothing doubles
     assert (await fresh.channel_counts(NOW - timedelta(days=1)))["joins"] == 2
     os.remove(backup)
+
+
+def test_names_on_the_screen_are_escaped_and_defanged():
+    assert channel.esc("<b>buy</b> at evil.com") == "&lt;b&gt;buy&lt;/b&gt; at evil[.]com"

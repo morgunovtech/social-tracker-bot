@@ -22,8 +22,8 @@ Two sessions, because it is not settled which one Telegram lets list a
         channel. No login dialogue. If Telegram refuses the listing, the
         script says so and tells you to try --session user.
   user  your own account: asks for the phone and the login code once and
-        keeps the session in ~/.social-tracker-clean.session (delete the
-        file to log out). Sees everything an owner sees.
+        keeps the session in ~/.social-tracker-clean-user.session (delete
+        the file to log out). Sees everything an owner sees.
 
 Kicking means ban + unban (what Telegram's «remove» does), one account at a
 time with a pause; a FloodWait is honoured, not retried past. The follower
@@ -37,7 +37,6 @@ import argparse
 import asyncio
 import os
 import sys
-import time
 from pathlib import Path
 
 try:
@@ -69,6 +68,19 @@ async def _connect(session: str) -> TelegramClient:
     else:
         await client.start()   # asks for the phone and the code on the first run
     return client
+
+
+async def _kick(client: TelegramClient, entity, user) -> None:
+    """One kick, waiting out a short FloodWait once; a long one, or a second
+    one right after the wait, is raised for the caller to stop on."""
+    try:
+        await client.kick_participant(entity, user)
+    except errors.FloodWaitError as e:
+        if e.seconds > MAX_FLOOD_WAIT_S:
+            raise
+        print(f"FloodWait {e.seconds}s…")
+        await asyncio.sleep(e.seconds)
+        await client.kick_participant(entity, user)
 
 
 async def run(channel: str, session: str, apply: bool, limit: int | None) -> int:
@@ -103,23 +115,18 @@ async def run(channel: str, session: str, apply: bool, limit: int | None) -> int
         removed = 0
         for user in victims:
             try:
-                await client.kick_participant(entity, user)
+                await _kick(client, entity, user)
                 removed += 1
             except errors.FloodWaitError as e:
-                if e.seconds > MAX_FLOOD_WAIT_S:
-                    print(f"FloodWait {e.seconds}s — stopping; removed {removed} of {deleted}, run again later.")
-                    return removed
-                print(f"FloodWait {e.seconds}s…")
-                await asyncio.sleep(e.seconds)
-                await client.kick_participant(entity, user)
-                removed += 1
+                print(f"FloodWait {e.seconds}s — stopping; removed {removed} of {deleted}, run again later.")
+                return removed
             except errors.UserAdminInvalidError:
                 print(f"  {user.id}: an admin, skipped")
             except errors.RPCError as e:
                 print(f"  {user.id}: {e}")
             if removed % 50 == 0 and removed:
                 print(f"  …{removed}")
-            time.sleep(PAUSE_S)
+            await asyncio.sleep(PAUSE_S)
         print(f"Removed {removed} deleted accounts of {deleted}.")
         return removed
     finally:

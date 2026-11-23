@@ -17,6 +17,7 @@ import aiohttp
 from telegram import Bot
 
 from bot import notifier, platforms
+from bot.callbacks import SECURITY
 from bot.config import Config
 from bot.db import Database, utcnow
 from bot.i18n import plural, t
@@ -55,12 +56,13 @@ def _snippet(text: str) -> str:
 def _admin_lines(label: str, before: str, after: str) -> list[str]:
     old = {a["id"]: a for a in json.loads(before)}
     new = {a["id"]: a for a in json.loads(after)}
+    # A display name is other people's text: a domain in it must not be a link.
     lines = [
-        t("🚨 {label}: новый админ — {name}").format(label=label, name=new[uid]["name"])
+        t("🚨 {label}: новый админ — {name}").format(label=label, name=defang(new[uid]["name"]))
         for uid in new.keys() - old.keys()
     ]
     lines += [
-        t("🟠 {label}: админ удалён — {name}").format(label=label, name=old[uid]["name"])
+        t("🟠 {label}: админ удалён — {name}").format(label=label, name=defang(old[uid]["name"]))
         for uid in old.keys() - new.keys()
     ]
     owner_before = next((a for a in old.values() if a["status"] == "creator"), None)
@@ -68,7 +70,7 @@ def _admin_lines(label: str, before: str, after: str) -> list[str]:
     if owner_before and owner_after and owner_before["id"] != owner_after["id"]:
         lines.append(
             t("🚨 {label}: сменился владелец — {before} → {after}").format(
-                label=label, before=owner_before["name"], after=owner_after["name"]
+                label=label, before=defang(owner_before["name"]), after=defang(owner_after["name"])
             )
         )
     return lines
@@ -142,7 +144,9 @@ async def _send(bot: Bot, config: Config, db: Database, lines: list[str]) -> boo
         text = text[: MESSAGE_LIMIT - 1] + "…"
     try:
         # A 🚨 or 🔴 line rings through quiet hours and /mute; 🟠 changes wait for the digest.
-        await notifier.send(bot, config, db, text, notifier.priority_for(lines), no_preview=True)
+        await notifier.send(
+            bot, config, db, text, notifier.priority_for(lines), no_preview=True, actions=(SECURITY,), monitor="profile"
+        )
         return True
     except Exception:
         logger.exception("Profile alert send failed — will retry on the next check")

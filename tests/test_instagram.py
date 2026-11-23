@@ -151,6 +151,18 @@ async def test_an_env_token_looks_its_account_up_once(graph, db):
     assert snap.count is None and snap.error
 
 
+async def test_a_changed_username_is_resolved_again(graph, db):
+    """INSTAGRAM_USERNAME changed in .env: the stored id is another account's, so it is looked up anew."""
+    config = dataclasses.replace(Config.from_env(), instagram_username="semyon", instagram_access_token=TOKEN)
+    await _collect(config, db)
+    assert await db.get_setting(ig.USERNAME_KEY) == "semyon"
+    graph["assigned"] = [{"id": USER_ID, "username": "semyon"}, {"id": "2", "username": "other"}]
+    snap = await _collect(dataclasses.replace(config, instagram_username="Other"), db)
+    assert (await db.get_setting(ig.USER_ID_KEY), await db.get_setting(ig.USERNAME_KEY)) == ("2", "other")
+    assert [c[0] for c in graph["calls"]].count("assigned") == 2
+    assert snap.count is None and snap.error            # the fake Graph serves USER_ID only
+
+
 async def test_profile_monitor_watches_instagram(graph, config, db):
     config = dataclasses.replace(config, telegram_channel_id=None, youtube_api_key=None)  # Instagram alone
     await ig.store_token(db, TOKEN, USER_ID)
@@ -189,9 +201,10 @@ async def test_collection_alerts_once_until_a_token_works(db):
     assert any("отклонил токен" in line for line in await collection.alert_lines(db, dead))
 
 
-async def test_settings_and_instagram_screen(config, db):
-    screen = await ui.settings(db, config)
+async def test_connections_and_instagram_screen(config, db):
+    screen = await ui.connections(db, config)
     assert "📸 Instagram" in [b.text for row in screen.keyboard.inline_keyboard for b in row]
+    assert "Instagram — @semyon · ⚠️ нужен токен" in screen.text
     screen = await ui.instagram(db, config)
     assert "Аккаунт: @semyon" in screen.text and "Токена нет" in screen.text
     await ig.store_token(db, TOKEN, USER_ID)

@@ -25,17 +25,18 @@ from zoneinfo import ZoneInfo
 from telegram import ChatMember, ChatMemberUpdated, Message, MessageReactionCountUpdated, Update
 from telegram.constants import ChatMemberStatus
 
-from bot import monitors
+from bot import callbacks, monitors
 from bot.config import Config
 from bot.db import Database, parse_utc, utcnow
 from bot.i18n import plural, t
+from bot.monitors import defang
 from bot.monitors.comments import message_link
 
 logger = logging.getLogger(__name__)
 
 MONITOR_ID = "channel"
 # Callback data of the screen.
-CALLBACK = "ch"
+CALLBACK = callbacks.CHANNEL
 
 # How a subscriber came, as stored in channel_events.via: an invite link's
 # name as it is, or one of these.
@@ -181,8 +182,9 @@ async def record(db: Database, config: Config, update: Update) -> str | None:
 # ── What the owner reads ────────────────────────────────────────────────────
 
 def esc(value: object) -> str:
-    """Names and link titles are other people's text: HTML-escaped, like bot.ui.esc."""
-    return html.escape(str(value), quote=False)
+    """Names and link titles are other people's text: HTML-escaped, like
+    bot.ui.esc, and a domain in them is defanged so it is not a link."""
+    return html.escape(defang(str(value)), quote=False)
 
 
 def _signed(joins: int, leaves: int) -> str:

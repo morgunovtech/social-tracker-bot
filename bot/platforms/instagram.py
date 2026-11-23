@@ -31,7 +31,9 @@ _TIMEOUT = aiohttp.ClientTimeout(total=20)
 TOKEN_KEY = "instagram_token"
 TOKEN_SET_AT_KEY = "instagram_token_set_at"
 USER_ID_KEY = "instagram_user_id"
-TOKEN_KEYS = (TOKEN_KEY, TOKEN_SET_AT_KEY, USER_ID_KEY)
+# Whose account USER_ID_KEY is: a changed INSTAGRAM_USERNAME must not keep collecting the old one.
+USERNAME_KEY = "instagram_username"
+TOKEN_KEYS = (TOKEN_KEY, TOKEN_SET_AT_KEY, USER_ID_KEY, USERNAME_KEY)
 
 _PROFILE_FIELDS = "username,name,biography,followers_count,media_count"
 
@@ -165,21 +167,27 @@ async def get_token_age_days(db: Database) -> int | None:
         return None
 
 
-async def store_token(db: Database, token: str, user_id: str) -> None:
+async def store_token(db: Database, token: str, user_id: str, username: str | None = None) -> None:
     await db.set_setting(TOKEN_KEY, token)
     await db.set_setting(TOKEN_SET_AT_KEY, utcnow().isoformat())
     await db.set_setting(USER_ID_KEY, user_id)
+    if username:
+        await db.set_setting(USERNAME_KEY, username.lower())
 
 
 async def get_account_id(db: Database, config, session: aiohttp.ClientSession, token: str) -> str | None:
     """The account id for the token: stored by /igtoken, or looked up once for
-    an env token and remembered. Raises InstagramAuthError for a dead token."""
+    an env token and remembered — together with the username it was looked
+    up for, so a changed INSTAGRAM_USERNAME is resolved again rather than
+    collecting the old account for ever. Raises InstagramAuthError for a dead token."""
     user_id = await db.get_setting(USER_ID_KEY)
-    if user_id:
+    known = (await db.get_setting(USERNAME_KEY) or "").lower()
+    if user_id and known == config.instagram_username.lower():
         return user_id
     user_id = await resolve_account(session, token, config.instagram_username)
     if user_id:
         await db.set_setting(USER_ID_KEY, user_id)
+        await db.set_setting(USERNAME_KEY, config.instagram_username.lower())
     return user_id
 
 

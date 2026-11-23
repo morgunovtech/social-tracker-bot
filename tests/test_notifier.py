@@ -190,3 +190,14 @@ async def test_files_are_silent_and_never_wait(bot, config, db, clock):
     assert bot.photos[0]["silent"] and bot.documents[0]["silent"]
 
 
+
+
+async def test_two_flushes_at_once_deliver_the_queue_once(bot, config, db, clock):
+    import asyncio
+
+    await notifier.set_mute(db, timedelta(hours=1))
+    await send(bot, config, db, "🟠 held", Priority.NORMAL)
+    await notifier.set_mute(db, None)
+    # The minute job and /unmute at the same moment: one of them has the queue, the other steps aside.
+    results = await asyncio.gather(flush_queue(bot, config, db), flush_queue(bot, config, db))
+    assert sorted(results) == [0, 1] and len(bot.messages) == 1       # one digest, not two

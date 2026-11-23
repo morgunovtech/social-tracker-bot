@@ -5,7 +5,7 @@ import logging
 import os
 import tempfile
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import aiohttp
@@ -16,13 +16,14 @@ from apscheduler.triggers.interval import IntervalTrigger
 from telegram import Bot
 
 from bot import monitors, notifier, platforms, tofs_status
+from bot.callbacks import CHANNEL, CONNECTIONS, DYNAMICS, SECURITY
 from bot.chart import render_chart
 from bot.config import DOW_ORDER, Config, normalize_tz
 from bot.db import Database, parse_utc, utcnow
 from bot.i18n import t
 from bot.monitors import channel, collection, followers, hygiene, mail, profile
 from bot.notifier import Priority
-from bot.platforms import LABELS, PLATFORM_IDS
+from bot.platforms import BY_ID, LABELS, PLATFORM_IDS
 from bot.platforms.base import Context
 from bot.reporter import _crossed_milestone, build_month_report, build_report
 from bot.updates import run_dependency_watch, run_deploy_watch
@@ -133,11 +134,13 @@ async def build_stats(
 ) -> tuple[str, bool]:
     """The follower report, the channel's week (when the channel monitor is
     on and has data) and the security score line (when hygiene is on)."""
+    tz = await get_report_tz(db, config)
     report, has_change = await build_report(
         db,
         errors=errors,
         linkedin_stale_days=config.linkedin_stale_days,
         platforms=config.enabled_platforms,
+        shown_date=utcnow().astimezone(tz).date(),
     )
     channel_line = await channel.report_line(db, config)
     if channel_line:
@@ -190,8 +193,8 @@ async def _push_subscribers(
         logger.exception("Site push errored")
 
 
-async def _build_alerts(db: Database, config: Config, outcome: CollectOutcome) -> list[str]:
-    """Proactive alert lines of the monitors that are switched on.
+async def _alert_parts(db: Database, config: Config, outcome: CollectOutcome) -> tuple[list[str], list[str]]:
+    """(collection health lines, follower lines) of the monitors that are switched on.
 
     Drops and milestones are naturally deduped (the stored value moves past
     them); collection health keeps its dedup state in settings.
@@ -199,12 +202,21 @@ async def _build_alerts(db: Database, config: Config, outcome: CollectOutcome) -
     # Collection health keeps its streaks current even while switched off,
     # so switching it back on doesn't alert on a stale streak.
     collection_lines = await collection.alert_lines(db, outcome)
-    lines: list[str] = []
-    if await monitors.is_on(db, config, "collection"):
-        lines += collection_lines
-    if await monitors.is_on(db, config, "followers"):
-        lines += followers.alert_lines(outcome)
-    return lines
+    if not await monitors.is_on(db, config, "collection"):
+        collection_lines = []
+    follower_lines = followers.alert_lines(outcome) if await monitors.is_on(db, config, "followers") else []
+    return collection_lines, follower_lines
+
+
+async def _build_alerts(db: Database, config: Config, outcome: CollectOutcome) -> list[str]:
+    """Proactive alert lines of the monitors that are switched on."""
+    collection_lines, follower_lines = await _alert_parts(db, config, outcome)
+    return collection_lines + follower_lines
+
+
+def _report_actions(config: Config) -> tuple[str, ...]:
+    """The row under the report: the screens it leads to."""
+    return (DYNAMICS, SECURITY) + ((CHANNEL,) if BY_ID["telegram"].enabled(config) else ())
 
 
 async def send_alerts(bot: Bot, config: Config, db: Database, outcome: CollectOutcome) -> None:
@@ -214,9 +226,19 @@ async def send_alerts(bot: Bot, config: Config, db: Database, outcome: CollectOu
     value, so a drop or spike that isn't alerted now is never alerted.
     """
     try:
-        alerts = await _build_alerts(db, config, outcome)
+        collection_lines, follower_lines = await _alert_parts(db, config, outcome)
+        alerts = collection_lines + follower_lines
         if alerts:
-            await notifier.send(bot, config, db, "\n".join(alerts), notifier.priority_for(alerts))
+            # One monitor's lines alone get its switch-off button; a mixed message gets none.
+            monitor = (
+                "followers" if follower_lines and not collection_lines
+                else "collection" if collection_lines and not follower_lines
+                else None
+            )
+            await notifier.send(
+                bot, config, db, "\n".join(alerts), notifier.priority_for(alerts),
+                actions=(DYNAMICS,) if follower_lines else (CONNECTIONS,), monitor=monitor,
+            )
             logger.info("Sent %d proactive alert(s)", len(alerts))
     except Exception:
         logger.exception("Alert send failed")
@@ -237,8 +259,9 @@ async def _build_chart_png(db: Database, days: int = 30) -> bytes | None:
     return await asyncio.to_thread(render_chart, series)
 
 
-async def _send_backup(bot: Bot, config: Config, db: Database) -> None:
-    """Weekly DB backup straight into the admin chat — free offsite storage.
+async def _send_backup(bot: Bot, config: Config, db: Database, today: date | None = None) -> None:
+    """Weekly DB backup straight into the admin chat — free offsite storage;
+    today (the owner's local date) names the file.
 
     The LinkedIn cookie and the Instagram token are wiped from the copy:
     /setcookie and /igtoken delete them from the chat, so the backup must not
@@ -250,9 +273,8 @@ async def _send_backup(bot: Bot, config: Config, db: Database) -> None:
             await db.snapshot_without_secrets(path)
             with open(path, "rb") as f:
                 data = f.read()
-        today = utcnow().date().isoformat()
         await notifier.send_document(
-            bot, config, db, data, f"followers-{today}.db",
+            bot, config, db, data, f"followers-{(today or utcnow().date()).isoformat()}.db",
             t(
                 "📦 Еженедельный бэкап базы. Чтобы вернуть из него историю, ответь на это сообщение "
                 "командой /restore. LinkedIn cookie и токен Instagram в копию не входят: после "
@@ -296,24 +318,59 @@ async def _ping_healthcheck(config: Config, db: Database | None = None, bot=None
         logger.warning("Healthcheck ping failed", exc_info=True)
 
 
+def _schedule_retry(
+    scheduler: AsyncIOScheduler, bot: Bot, config: Config, db: Database, lock: asyncio.Lock | None, attempt: int
+) -> datetime:
+    """The next attempt of today's collect, an hour from now; replaces a pending one."""
+    run_at = utcnow() + COLLECT_RETRY_DELAY
+    scheduler.add_job(
+        _scheduled_job,
+        trigger=DateTrigger(run_date=run_at, timezone=UTC),
+        args=[bot, config, db, scheduler, lock],
+        kwargs={"attempt": attempt + 1},
+        id="collect_retry",
+        replace_existing=True,
+    )
+    return run_at
+
+
 async def _scheduled_job(
-    bot: Bot, config: Config, db: Database, scheduler: AsyncIOScheduler, attempt: int = 1
+    bot: Bot, config: Config, db: Database, scheduler: AsyncIOScheduler, lock: asyncio.Lock | None = None,
+    attempt: int = 1,
 ) -> None:
     """Daily collect. Pushes the report only on configured report day(s); other
     daily outputs: instant problem alerts, retries for failed platforms, monthly
     digest (1st), weekly DB backup (Sunday), watchdog ping.
+
+    lock is handlers.collect_lock: a /now in progress is waited for, never
+    doubled.
     """
+    lock = lock or asyncio.Lock()
     try:
-        outcome = await collect_and_report(bot, config, db)
+        async with lock:
+            outcome = await collect_and_report(bot, config, db)
     except Exception:
-        # No healthcheck ping on failure — the watchdog will fire.
+        # No healthcheck ping on failure — the watchdog will fire. The whole run
+        # is retried like a failed platform, and an owner without a watchdog
+        # hears on the second day in a row (bot/monitors/collection.py).
         logger.exception("Scheduled collection failed")
+        if attempt < COLLECT_MAX_ATTEMPTS:
+            _schedule_retry(scheduler, bot, config, db, lock, attempt)
+        if attempt == 1:
+            try:
+                lines = await collection.run_failed(db)
+                if lines and await monitors.is_on(db, config, "collection"):
+                    await notifier.send(
+                        bot, config, db, "\n".join(lines), notifier.priority_for(lines), monitor="collection"
+                    )
+            except Exception:
+                logger.exception("Collection failure notice failed")
         return
 
-    now = utcnow()
-    today = now.date()  # follower days, the monthly digest and the backup stay in UTC
-    # The report time and days are in the owner's zone.
-    local_now = now.astimezone(await get_report_tz(db, config))
+    # The report time and days, the 1st of the month and the Sunday of the
+    # backup are in the owner's zone; the follower rows stay on UTC days.
+    local_now = utcnow().astimezone(await get_report_tz(db, config))
+    today = local_now.date()
     if attempt == 1:
         await db.set_setting(LAST_DAILY_RUN_KEY, local_now.date().isoformat())
     await tofs_status.remember_errors(db, outcome.errors)
@@ -324,15 +381,7 @@ async def _scheduled_job(
     # Retry failed platforms in an hour (cookie expiry is excluded — retrying won't help).
     failed = [p for p in PLATFORM_IDS if outcome.errors.get(p)]
     if failed and attempt < COLLECT_MAX_ATTEMPTS:
-        run_at = utcnow() + COLLECT_RETRY_DELAY
-        scheduler.add_job(
-            _scheduled_job,
-            trigger=DateTrigger(run_date=run_at, timezone=UTC),
-            args=[bot, config, db, scheduler],
-            kwargs={"attempt": attempt + 1},
-            id="collect_retry",
-            replace_existing=True,
-        )
+        run_at = _schedule_retry(scheduler, bot, config, db, lock, attempt)
         logger.info(
             "Collection failed for %s — retry %d/%d at %s",
             failed, attempt + 1, COLLECT_MAX_ATTEMPTS, run_at.strftime("%H:%M UTC"),
@@ -341,18 +390,29 @@ async def _scheduled_job(
     if attempt > 1:
         return  # retries only fill data and alert; the rest already ran today
 
+    # What no screen reads any more goes (bot/db.py, the retention constants).
+    try:
+        removed = await db.prune()
+        if any(removed.values()):
+            logger.info("Pruned old rows: %s", removed)
+    except Exception:
+        logger.exception("Prune failed")
+
     # Report push on configured day(s)
     dow = await db.get_setting("report_dow") or config.report_dow
     if _today_matches_dow(dow, local_now):
         quiet = await is_quiet_mode(db, config)
         try:
             if quiet and not outcome.has_change:
-                await notifier.send(bot, config, db, t("😴 Без изменений за неделю — всё стабильно ✅"), Priority.DIGEST)
+                await notifier.send(
+                    bot, config, db, t("😴 Без изменений за неделю — всё стабильно ✅"), Priority.DIGEST,
+                    actions=(DYNAMICS,),
+                )
                 logger.info("Quiet mode: sent no-change one-liner")
             else:
                 # The chart only follows a report delivered now: a digest can't hold it.
                 held = await notifier.deferred(db, config, Priority.DIGEST)
-                await notifier.send(bot, config, db, outcome.report, Priority.DIGEST)
+                await notifier.send(bot, config, db, outcome.report, Priority.DIGEST, actions=_report_actions(config))
                 chart = None if held else await _build_chart_png(db)
                 if chart:
                     await notifier.send_photo(bot, config, db, chart, t(CHART_CAPTION))
@@ -365,7 +425,7 @@ async def _scheduled_job(
             try:
                 nudge = await hygiene.nudge(db, config)
                 if nudge:
-                    await notifier.send(bot, config, db, nudge, Priority.DIGEST)
+                    await notifier.send(bot, config, db, nudge, Priority.DIGEST, actions=(SECURITY,))
                     logger.info("Hygiene reminder sent")
             except Exception:
                 logger.exception("Hygiene reminder failed")
@@ -375,16 +435,16 @@ async def _scheduled_job(
     # Monthly digest on the 1st
     if today.day == 1:
         try:
-            digest = await build_month_report(db)
+            digest = await build_month_report(db, today)
             if digest:
-                await notifier.send(bot, config, db, digest, Priority.DIGEST)
+                await notifier.send(bot, config, db, digest, Priority.DIGEST, actions=(DYNAMICS,))
                 logger.info("Monthly digest sent")
         except Exception:
             logger.exception("Monthly digest failed")
 
     # Weekly on Sundays: DB backup, then vulnerabilities / PRs waiting for a human
     if today.weekday() == 6:
-        await _send_backup(bot, config, db)
+        await _send_backup(bot, config, db, today)
         try:
             await run_dependency_watch(bot, config, db)
         except Exception:
@@ -486,14 +546,17 @@ async def reschedule(scheduler: AsyncIOScheduler, db: Database, config: Config) 
     logger.info("Rescheduled daily collect to %02d:%02d %s (push dow=%s)", hour, minute, tz.key, dow)
 
 
-async def setup_scheduler(bot: Bot, config: Config, db: Database) -> AsyncIOScheduler:
+async def setup_scheduler(
+    bot: Bot, config: Config, db: Database, lock: asyncio.Lock | None = None
+) -> AsyncIOScheduler:
+    """lock: handlers.collect_lock, so the daily run and /now never collect at once."""
     dow, hour, minute = await get_report_schedule(db, config)
     tz = await get_report_tz(db, config)
     scheduler = AsyncIOScheduler(timezone=UTC)
     scheduler.add_job(
         _scheduled_job,
         trigger=CronTrigger(hour=hour, minute=minute, timezone=tz),
-        args=[bot, config, db, scheduler],
+        args=[bot, config, db, scheduler, lock],
         id="scheduled_report",
         replace_existing=True,
         misfire_grace_time=DAILY_MISFIRE_GRACE_S,
@@ -550,7 +613,7 @@ async def setup_scheduler(bot: Bot, config: Config, db: Database) -> AsyncIOSche
         scheduler.add_job(
             _scheduled_job,
             trigger=DateTrigger(run_date=run_at, timezone=UTC),
-            args=[bot, config, db, scheduler],
+            args=[bot, config, db, scheduler, lock],
             id="collect_catch_up",
             replace_existing=True,
         )

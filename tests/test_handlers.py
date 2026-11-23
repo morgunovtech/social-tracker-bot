@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 import shutil
 from collections import deque
@@ -11,6 +12,7 @@ from telegram import Chat, Message, Update, User
 from telegram.error import BadRequest, Conflict, NetworkError
 from telegram.ext import ApplicationHandlerStop, ConversationHandler
 
+from bot import callbacks as cb
 from bot import handlers, notifier, ui
 from bot.db import Database, utcnow
 from bot.scheduler import CollectOutcome, setup_scheduler
@@ -134,7 +136,7 @@ async def test_every_button_answers_once_and_leads_back(make_update, make_contex
             continue
         seen.add(data)
         assert len(data.encode()) <= 64, data                       # Telegram's callback_data limit
-        if data == ui.LI_ENTER:                                     # the conversation's entry point
+        if data in cb.CONVERSATION_ENTRIES:                         # answered by the next message
             continue
         photos = len(bot.photos)
         query = await press(make_update, make_context, data)
@@ -243,6 +245,13 @@ async def test_chart_button_without_data_explains_why(make_update, make_context,
     assert "мало данных" in query.answers[0]["text"] and bot.photos == []
 
 
+async def test_an_event_without_a_detail_does_not_break_the_security_screen(make_update, make_context, db):
+    await db.add_event("mail:empty", "Google", "new_login", "")
+    update = make_update()
+    await handlers.cmd_security(update, make_context())
+    assert "Последние события" in update.message.replies[0]
+
+
 async def test_stats_show_the_security_score_while_hygiene_is_on(make_update, make_context, db, insert):
     insert("telegram", 1000, 0)
     update = make_update()
@@ -289,6 +298,37 @@ async def test_a_second_tap_while_collecting_does_not_collect_twice(make_update,
     await handlers.on_callback(update, context)
     assert update.callback_query.answers[0]["text"].startswith("Уже собираю") and calls == []
     lock.release()
+
+
+def test_updates_are_handled_concurrently_and_the_collect_lock_is_shared(config, db):
+    """A /now that collects for half a minute must not hold every other button:
+    PTB's default is one update after another. The scheduler gets the same
+    lock, so the daily run and a manual one never collect at once."""
+    from bot import main
+
+    app = main.build_application(config, db)
+    assert app.concurrent_updates > 1
+    assert handlers.collect_lock(app.bot_data) is handlers.collect_lock(app.bot_data)
+
+
+async def test_the_scheduled_run_waits_for_a_manual_collect(bot, config, db, monkeypatch):
+    from bot import scheduler as sched
+
+    order: list[str] = []
+
+    async def collect(*args, **kwargs):
+        order.append("collect")
+        return CollectOutcome(report="📊 report", has_change=False)
+
+    monkeypatch.setattr(sched, "collect_and_report", collect)
+    lock = handlers.collect_lock({})
+    await lock.acquire()
+    job = asyncio.ensure_future(sched._scheduled_job(bot, config, db, sched.AsyncIOScheduler(timezone=sched.UTC), lock))
+    await asyncio.sleep(0)
+    assert order == []                                   # waits, does not collect alongside
+    lock.release()
+    await job
+    assert order == ["collect"]
 
 
 async def test_failed_collect_keeps_the_menu(make_update, make_context, monkeypatch):
@@ -402,12 +442,17 @@ async def test_a_far_off_linkedin_number_is_confirmed_first(make_update, make_co
     assert (await db.get_latest("linkedin"))["count"] == 45200 and query.answers[0]["text"] == "Сохранено"
 
 
-async def test_linkedin_input_button_shows_only_while_it_is_typed_by_hand(make_update, make_context, db):
+async def test_linkedin_input_button_shows_only_while_it_is_typed_by_hand(make_update, make_context, db, insert):
     update = make_update()
     await handlers.cmd_home(update, make_context())
     assert ui.LI_ENTER in buttons(update.message.markups[0])
 
     await db.set_setting("linkedin_li_at", COOKIE)
+    update = make_update()
+    await handlers.cmd_home(update, make_context())
+    assert ui.LI_ENTER in buttons(update.message.markups[0])      # a cookie, but the first number is typed in
+
+    insert("linkedin", 4500, 0, source="cookie")
     update = make_update()
     await handlers.cmd_home(update, make_context())
     assert ui.LI_ENTER not in buttons(update.message.markups[0])
@@ -459,7 +504,13 @@ async def test_hour_picker(make_update, make_context, db, sched):
     assert await db.get_setting("report_time") == "19:00"
     assert str(sched.get_job("scheduled_report").trigger.fields[5]) == "19"
     assert query.answers[0]["text"] == "Отчёт будет приходить в 19:00 UTC"
-    assert "в 19:00 UTC" in query.edits[0]
+    assert "Сейчас: 19:00 UTC" in query.edits[0]                     # the picker again, the hour marked
+    assert buttons(query.markups[0])["set:hour:19"] == "✅ 19:00"
+    query = await press(make_update, make_context, "set:minute:30", scheduler=sched)
+    assert await db.get_setting("report_time") == "19:30" and "Сейчас: 19:30 UTC" in query.edits[0]
+    assert buttons(query.markups[0])["set:minute:30"] == "✅ :30"
+    query = await press(make_update, make_context, "set:hour:7", scheduler=sched)   # the hour keeps the minutes
+    assert await db.get_setting("report_time") == "07:30"
 
 
 def _trigger(sched) -> tuple[str, str]:
@@ -566,8 +617,8 @@ async def test_quiet_mode_command_and_toggle(make_update, make_context, db):
     assert await db.get_setting("quiet_if_no_change") == "1"
     query = await press(make_update, make_context, "set:quiet")
     assert await db.get_setting("quiet_if_no_change") == "0"
-    assert "Настройки" in query.edits[0] and query.answers[0]["text"] == "Тихий режим выключен"
-    assert buttons(query.markups[0])["set:quiet"] == "⬜ Тихий режим"
+    assert "Настройки" in query.edits[0] and query.answers[0]["text"] == "Коротко без изменений: выключено"
+    assert buttons(query.markups[0])["set:quiet"] == "⬜ Коротко без изменений"
 
 
 async def test_mute_and_unmute_commands(make_update, make_context, db, bot):
@@ -665,6 +716,16 @@ async def test_setcookie_saves_cookie_but_guards_the_baseline(make_update, make_
     assert (await db.get_latest("linkedin"))["count"] == 4530
 
 
+async def test_setcookie_without_a_baseline_asks_to_confirm_the_first_number(make_update, make_context, db, fake_linkedin):
+    result, _ = fake_linkedin
+    result["value"] = (120000, "cookie")                       # may well be someone else's counter
+    update = make_update()
+    await handlers.cmd_setcookie(update, make_context(COOKIE))
+    assert await db.get_setting("linkedin_li_at") == COOKIE and await db.get_latest("linkedin") is None
+    assert "/linkedin 120000" in update.effective_chat.sent[-1]
+    assert "li:enter" in buttons((await ui.home(db, make_context().bot_data["config"])).keyboard)
+
+
 async def test_cookieage(make_update, make_context, db):
     update = make_update()
     await handlers.cmd_cookieage(update, make_context())
@@ -692,7 +753,7 @@ def _document(source_path: str, size: int = 1024):
 async def test_restore_without_a_file_explains_how(make_update, make_context):
     update = make_update(text="/restore")
     await handlers.cmd_restore(update, make_context())
-    assert "ответь командой /restore" in update.message.replies[0]
+    assert "подтверди кнопкой" in update.message.replies[0] and "/restore" in update.message.replies[0]
 
 
 async def test_restore_as_reply_to_the_backup(make_update, make_context, db, sched, tmp_path):
@@ -804,6 +865,22 @@ async def test_queued_messages_are_handled_unless_stale(make_update, make_contex
             await handlers.drop_stale_messages(update, make_context())
     else:
         assert await handlers.drop_stale_messages(update, make_context()) is None
+
+
+@pytest.mark.parametrize("text", ["/setcookie " + COOKIE, "/igtoken@test_bot EAAB" + "x" * 60])
+async def test_a_stale_command_with_a_secret_is_deleted_and_explained(make_update, make_context, text):
+    update = make_update(text=text)
+    update.message.date = utcnow() - timedelta(minutes=30)
+    with pytest.raises(ApplicationHandlerStop):
+        await handlers.drop_stale_messages(update, make_context())
+    assert update.message.deleted and "Пришли его заново" in update.effective_chat.sent[0]
+
+    # The bare command carries nothing, a stranger's message is nobody's business: dropped in silence.
+    for stale in (make_update(text="/setcookie"), make_update(user_id=STRANGER_ID, text=text)):
+        stale.message.date = utcnow() - timedelta(minutes=30)
+        with pytest.raises(ApplicationHandlerStop):
+            await handlers.drop_stale_messages(stale, make_context())
+        assert not stale.message.deleted and stale.effective_chat.sent == []
 
 
 async def test_button_presses_are_never_dropped_as_stale(make_update, make_context):

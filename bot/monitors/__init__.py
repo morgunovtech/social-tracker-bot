@@ -114,5 +114,9 @@ async def is_on(db: Database, config: Config, monitor_id: str) -> bool:
 async def toggle(db: Database, monitor_id: str) -> bool:
     """Flip the switch; returns the new state."""
     new_state = not await is_switched_on(db, monitor_id)
-    await db.set_setting(_key(monitor_id), "on" if new_state else "off")
+    await set_switch(db, monitor_id, new_state)
     return new_state
+
+
+async def set_switch(db: Database, monitor_id: str, on: bool) -> None:
+    await db.set_setting(_key(monitor_id), "on" if on else "off")

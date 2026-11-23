@@ -43,6 +43,7 @@ STRINGS: dict[str, str] = {
     "Самара": "Samara",
     "Тбилиси": "Tbilisi",
     "Екатеринбург": "Yekaterinburg",
+    "Ташкент": "Tashkent",
     "Алматы": "Almaty",
     "Новосибирск": "Novosibirsk",
     "Владивосток": "Vladivostok",
@@ -98,17 +99,18 @@ STRINGS: dict[str, str] = {
     "🌍 Часовой пояс: {tz}": "🌍 Time zone: {tz}",
     "Данные собираются каждый день в это время, а отчёт приходит в выбранные дни.":
         "Data is collected every day at this time; the report comes on the chosen days.",
-    "🔕 Тихий режим: {state}": "🔕 Quiet mode: {state}",
+    "📝 Коротко без изменений: {state}": "📝 Short when unchanged: {state}",
     "включён": "on",
     "выключен": "off",
-    "Когда включён, неделя без изменений — это одна строка вместо отчёта.":
+    "Когда включено, неделя без изменений — это одна строка вместо отчёта.":
         "When it is on, a week without changes is a single line instead of a report.",
     "<i>Версия: {build}Python {python}</i>": "<i>Version: {build}Python {python}</i>",
     "🧩 Мониторинги": "🧩 Monitors",
     "📅 Дни отчёта": "📅 Report days",
     "🕗 Время отчёта": "🕗 Report time",
     "🌍 Часовой пояс": "🌍 Time zone",
-    "Тихий режим": "Quiet mode",
+    "Коротко без изменений": "Short when unchanged",
+    "📦 Бэкап сейчас": "📦 Backup now",
     "<b>📅 Дни отчёта</b>\n\n"
     "Сейчас: {days}, в {time}\n\n"
     "Отметь дни, когда присылать отчёт. Данные собираются каждый день, "
@@ -126,10 +128,11 @@ STRINGS: dict[str, str] = {
     "Часы ниже — по поясу {tz}.": "The hours below are in {tz}.",
     "<b>🕗 Время отчёта</b>\n\n"
     "Сейчас: {time}\n\n"
-    "{zone} Точное время с минутами — командой, например /settime 08:30":
+    "{zone} Час — в сетке, минуты — в ряду под ней; любое время — командой, например /settime 08:37":
         "<b>🕗 Report time</b>\n\n"
         "Now: {time}\n\n"
-        "{zone} For an exact time with minutes, use the command, e.g. /settime 08:30",
+        "{zone} The hour in the grid, the minutes in the row under it; any time by command, e.g. /settime 08:37",
+    "✏️ Другой пояс…": "✏️ Another zone…",
     "<b>🌍 Часовой пояс</b>\n\n"
     "Сейчас: {tz}, там {now:%H:%M}\n\n"
     "По этому поясу считаются время и дни отчёта. Выбери свой или пришли его название командой, "
@@ -163,10 +166,14 @@ STRINGS: dict[str, str] = {
         "✅ The count is collected automatically via cookie, but I cannot see how long it lives. "
         "Send the cookie with /setcookie and I will remind you when to renew it.",
     "✏️ Число вводится вручную: cookie не задан.": "✏️ The count is entered by hand: no cookie is set.",
-    "<b>Автосбор</b>: отправь /setcookie и значение cookie li_at "
-    "(linkedin.com → DevTools → Application → Cookies). Я проверю его и сразу удалю сообщение.":
-        "<b>Automatic collection</b>: send /setcookie and the value of the li_at cookie "
-        "(linkedin.com → DevTools → Application → Cookies). I will check it and delete the message right away.",
+    "<b>Автосбор</b>: нажми «🔑 Прислать cookie» и пришли значение cookie li_at "
+    "(linkedin.com → DevTools → Application → Cookies); то же — командой /setcookie. "
+    "Я проверю его и сразу удалю сообщение.":
+        "<b>Automatic collection</b>: press \"🔑 Send the cookie\" and send the value of the li_at cookie "
+        "(linkedin.com → DevTools → Application → Cookies); the /setcookie command does the same. "
+        "I will check it and delete the message right away.",
+    "🔑 Прислать cookie": "🔑 Send the cookie",
+    "🔑 Прислать токен": "🔑 Send the token",
     "<i>LinkedIn запрещает автоматический доступ, так что автосбор — на твой риск.</i>":
         "<i>LinkedIn forbids automated access, so automatic collection is at your own risk.</i>",
     "✏️ Ввести число вручную": "✏️ Enter count by hand",
@@ -186,12 +193,14 @@ STRINGS: dict[str, str] = {
     "На developers.facebook.com создай приложение с вариантом «Instagram API», открой "
     "«API setup with Unified login», добавь свой аккаунт как Instagram Tester, прими приглашение "
     "в Instagram (Настройки → Website permissions → Tester invitations) и нажми «Generate token». "
-    "Отправь /igtoken и токен одним сообщением — я проверю его и сразу удалю сообщение.":
+    "Потом нажми «🔑 Прислать токен» и пришли его одним сообщением (то же — командой /igtoken) — "
+    "я проверю его и сразу удалю сообщение.":
         "<b>How to connect</b>: the account must be professional (Creator or Business). "
         "On developers.facebook.com create an app of the \"Instagram API\" kind, open "
         "\"API setup with Unified login\", add your account as an Instagram Tester, accept the invitation "
         "in Instagram (Settings → Website permissions → Tester invitations) and press \"Generate token\". "
-        "Send /igtoken and the token in one message — I will check it and delete the message right away.",
+        "Then press \"🔑 Send the token\" and send it in one message (the /igtoken command does the same) — "
+        "I will check it and delete the message right away.",
     "<i>Это официальный API: бот читает только публичные данные своего аккаунта.</i>":
         "<i>This is the official API: the bot reads only its own account's public data.</i>",
     # Manual LinkedIn input
@@ -233,7 +242,15 @@ STRINGS: dict[str, str] = {
     "/settime ЧЧ:ММ — время отчёта": "/settime HH:MM — report time",
     "/setday &lt;дни&gt; — дни отчёта: sat, mon-fri, mon,thu, daily": "/setday &lt;days&gt; — report days: sat, mon-fri, mon,thu, daily",
     "/settz &lt;пояс&gt; — часовой пояс, например Europe/Moscow": "/settz &lt;zone&gt; — time zone, e.g. Europe/Moscow",
-    "/setquiet on|off — тихий режим": "/setquiet on|off — quiet mode",
+    "/setquiet on|off — одна строка вместо отчёта, если за неделю без изменений":
+        "/setquiet on|off — one line instead of the report when a week brought no change",
+    "/connections — подключения: что собирается само, чему нужен токен или cookie":
+        "/connections — connections: what is collected by itself, what needs a token or a cookie",
+    "<b>Кнопки внизу</b>": "<b>The buttons at the bottom</b>",
+    "🏠 Меню — главная · 🔄 Обновить — собрать данные сейчас · 🔕 Тихо 8 ч — помолчать":
+        "🏠 Menu — home · 🔄 Refresh — collect the data now · 🔕 Quiet for 8 h — mute",
+    "Под тревогами и отчётами — кнопки туда, где разбираться; ⚙️ — выключить такие уведомления.":
+        "Under alerts and reports — buttons to where to look into it; ⚙️ — stop sending such notifications.",
     "/mute &lt;время&gt; — помолчать: 1h, 8h, 1d (по умолчанию 8h); /unmute — снять":
         "/mute &lt;time&gt; — pause notifications: 1h, 8h, 1d (default 8h); /unmute — resume",
     # 🔔 Когда писать: quiet hours and /mute (bot/ui.py when_to_write, bot/notifier.py)
@@ -293,7 +310,8 @@ STRINGS: dict[str, str] = {
         "Group: {chat}; the bot must be its admin with the rights to delete messages and ban members."
     ),
     "Модель: {model}": "Model: {model}",
-    "⬜ Выключено в /modules": "⬜ Switched off in /modules",
+    "⬜ Выключено — комментарии не проверяются. Включить — кнопкой ниже.":
+        "⬜ Switched off — comments are not checked. The button below switches it on.",
     "<b>За {days} дней</b>": "<b>Last {days} days</b>",
     "Проверено комментариев: {n}": "Comments checked: {n}",
     "Помеченных пока нет.": "Nothing flagged yet.",
@@ -304,9 +322,8 @@ STRINGS: dict[str, str] = {
     "📣 Канал": "📣 Channel",
     "<b>📣 Канал {channel}</b>": "<b>📣 Channel {channel}</b>",
     "Не подключено — нужно: {needs}.": "Not connected — needed: {needs}.",
-    "⬜ Выключено в /modules — пока выключено, события не записываются.": (
-        "⬜ Switched off in /modules — while it is off, no events are recorded."
-    ),
+    "⬜ Выключено — события не записываются. Включить — кнопкой ниже.":
+        "⬜ Switched off — events are not recorded. The button below switches it on.",
     "Просмотры, пересылки и цитирование Bot API не отдаёт — они в статистике самого Telegram "
     "(в канале: ⋮ → Статистика).": (
         "Views, forwards and citations are not in the Bot API — they are in Telegram's own statistics "
@@ -316,10 +333,59 @@ STRINGS: dict[str, str] = {
         "/channel — life of the channel: joins and leaves, where they came from, posts and reactions"
     ),
     "<b>Бэкап</b>": "<b>Backup</b>",
-    "По воскресеньям я присылаю файл с базой. Чтобы вернуть историю, ответь на него "
-    "командой /restore — уже собранное не перезапишется.":
-        "On Sundays I send the database file. To restore the history, reply to it "
-        "with /restore — what is already collected is not overwritten.",
+    "По воскресеньям я присылаю файл с базой (и по кнопке «📦 Бэкап сейчас» в настройках). "
+    "Чтобы вернуть историю, пришли этот файл или ответь на него командой /restore — "
+    "уже собранное не перезапишется.":
+        "On Sundays I send the database file (and on the \"📦 Backup now\" button in the settings). "
+        "To bring the history back, send that file or reply to it with /restore — "
+        "what is already collected is not overwritten.",
+    # the text-input conversations and the restore prompt
+    "🔑 Пришли значение cookie li_at одним сообщением "
+    "(linkedin.com → DevTools → Application → Cookies → li_at → Value). "
+    "Я проверю его и сразу удалю сообщение.":
+        "🔑 Send the value of the li_at cookie in one message "
+        "(linkedin.com → DevTools → Application → Cookies → li_at → Value). "
+        "I will check it and delete the message right away.",
+    "🔑 Пришли токен Instagram одним сообщением "
+    "(developers.facebook.com → приложение → API setup with Unified login → Generate token). "
+    "Я проверю его и сразу удалю сообщение.":
+        "🔑 Send the Instagram token in one message "
+        "(developers.facebook.com → your app → API setup with Unified login → Generate token). "
+        "I will check it and delete the message right away.",
+    "🌍 Пришли название часового пояса из базы IANA одним сообщением, например Asia/Kolkata или America/Chicago.":
+        "🌍 Send the name of the time zone from the IANA database in one message, e.g. Asia/Kolkata or America/Chicago.",
+    "Не знаю такой часовой пояс. Нужно название из базы IANA, например Europe/Moscow, или нажми «Отмена».":
+        "Unknown time zone. It must be an IANA name, e.g. Europe/Moscow, or press \"Cancel\".",
+    "✅ Восстановить": "✅ Restore",
+    # the reply keyboard, the home screen, 🔌 Подключения
+    "🔄 Обновить": "🔄 Refresh",
+    "сегодня {time}": "today {time}",
+    "🕒 Последний сбор: {when}": "🕒 Last collection: {when}",
+    "🧭 Осталось настроить:": "🧭 Left to set up:",
+    "часовой пояс — пока отчёт по UTC": "the time zone — for now the report comes in UTC",
+    "токен Instagram — без него число не собирается": "the Instagram token — no count without it",
+    "LinkedIn — cookie для автосбора или первое число вручную":
+        "LinkedIn — a cookie for automatic collection, or the first number by hand",
+    "🌍 Выбрать часовой пояс": "🌍 Choose the time zone",
+    "<b>🔌 Подключения</b>": "<b>🔌 Connections</b>",
+    "Подключения": "Connections",
+    "{icon} {label} — не подключено: {needs} в .env": "{icon} {label} — not connected: {needs} in .env",
+    "⚠️ нужен токен": "⚠️ a token is needed",
+    "🟠 токен отклонён": "🟠 the token was rejected",
+    "🟠 cookie отклонён, число вручную": "🟠 the cookie was rejected, the number by hand",
+    "✏️ число вручную": "✏️ the number by hand",
+    "⚠️ подтверди первое число": "⚠️ confirm the first number",
+    "✅ собирается": "✅ collected",
+    "⏳ первый сбор ещё не был": "⏳ no collection yet",
+    "Сети включаются в .env и перезапуском бота; токен Instagram и cookie LinkedIn — кнопками здесь.":
+        "Networks are switched on in .env and a restart of the bot; the Instagram token and the LinkedIn cookie — "
+        "with the buttons here.",
+    # bot/callbacks.py — the rows under alerts and reports
+    "🏠 Главная": "🏠 Home",
+    "💬 Комментарии": "💬 Comments",
+    "🔌 Подключения": "🔌 Connections",
+    "🔕 Тихо 8 ч": "🔕 Quiet for 8 h",
+    "⚙️ Не присылать такие": "⚙️ Stop sending these",
 }
 
 # Russian singular → (English singular, English plural).

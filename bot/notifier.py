@@ -43,20 +43,27 @@ mail) keep working; while muted or in quiet hours a NORMAL message is queued,
 and deferred() tells a caller in advance whether a priority would wait.
 flush_queue() runs every minute from the scheduler and right after /unmute:
 when the silence is over it delivers the queue as one numbered digest with
-the time of each item in the owner's zone; an item with buttons, or one too
-long for the digest, goes alone, with its time above.
+the time of each item in the owner's zone; an item with buttons of its own
+(a card), or one too long for the digest, goes alone, with its time above.
+
+Action rows (`actions`, `monitor`): the screens an alert leads to, «🔕 Тихо
+8 ч» under what may wait, «⚙️ Не присылать такие» under a 🟠 one. They are
+built by bot/callbacks.py and, unlike a card's buttons, do not take a message
+out of the digest: the digest gets one row for all its items.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 from enum import Enum
 from zoneinfo import ZoneInfo
 
 from telegram import Bot, InlineKeyboardMarkup
 
+from bot.callbacks import actions_markup
 from bot.config import Config
 from bot.db import Database, parse_utc, utcnow
 from bot.i18n import t
@@ -226,6 +233,17 @@ async def deferred(db: Database, config: Config, priority: Priority) -> bool:
     return priority is Priority.NORMAL and await in_quiet_hours(db, config)
 
 
+def _actions(priority: Priority, actions: Iterable[str], monitor: str | None) -> dict:
+    """The action row as stored and built: the screens, whether «🔕» belongs
+    (anything but the digest), the monitor of a 🟠 message (a 🚨 one is not
+    offered a switch-off)."""
+    return {
+        "actions": list(actions),
+        "mute": priority is not Priority.DIGEST,
+        "monitor": monitor if priority is Priority.NORMAL else None,
+    }
+
+
 async def send(
     bot: Bot,
     config: Config,
@@ -235,23 +253,34 @@ async def send(
     *,
     reply_markup: InlineKeyboardMarkup | None = None,
     no_preview: bool = False,
+    actions: Iterable[str] = (),
+    monitor: str | None = None,
 ) -> bool:
     """Deliver now, silently unless CRITICAL, or queue for the digest.
     True when delivered or queued; a Telegram error propagates. Before the
-    first /start there is nobody to write to: False, and nothing is queued."""
+    first /start there is nobody to write to: False, and nothing is queued.
+
+    reply_markup is a keyboard of the message's own (a card); actions and
+    monitor describe the action row (module docstring) and are ignored when
+    a reply_markup is given."""
     if config.admin_chat_id is None:
         logger.info("No owner yet — not sent: %s", text[:60])
         return False
+    spec = _actions(priority, actions, monitor)
+    if reply_markup is None and (spec["actions"] or spec["mute"] or spec["monitor"]):
+        stored = json.dumps(spec)
+        markup = actions_markup(spec["actions"], mute=spec["mute"], monitor=spec["monitor"])
+    else:
+        stored = reply_markup.to_json() if reply_markup else None
+        markup = reply_markup
     if await deferred(db, config, priority):
-        await db.queue_notification(
-            text, reply_markup.to_json() if reply_markup else None, utcnow().strftime("%Y-%m-%d %H:%M:%S")
-        )
+        await db.queue_notification(text, stored, utcnow().strftime("%Y-%m-%d %H:%M:%S"))
         logger.info("Queued (quiet hours / mute): %s", text[:60])
         return True
     await bot.send_message(
         chat_id=config.admin_chat_id,
         text=text,
-        reply_markup=reply_markup,
+        reply_markup=markup,
         disable_notification=priority is not Priority.CRITICAL,
         link_preview_options=NO_PREVIEW if no_preview else None,
     )
@@ -296,20 +325,55 @@ def _stamp(created_at: str | None, tz: ZoneInfo) -> str:
     return at.strftime("%H:%M") if at.date() == now.date() else at.strftime("%d.%m %H:%M")
 
 
-def _markup(raw: str | None) -> InlineKeyboardMarkup | None:
+def _stored(raw: str | None) -> tuple[InlineKeyboardMarkup | None, dict | None]:
+    """What a queued row carries: a keyboard of its own, or an action-row spec."""
     if not raw:
-        return None
+        return None, None
     try:
-        return InlineKeyboardMarkup.de_json(json.loads(raw), None)
+        data = json.loads(raw)
+    except ValueError:
+        return None, None
+    if isinstance(data, dict) and "actions" in data:
+        return None, data
+    try:
+        return InlineKeyboardMarkup.de_json(data, None), None
     except (ValueError, TypeError, KeyError):
-        return None
+        return None, None
+
+
+def _union(specs: list[dict]) -> InlineKeyboardMarkup | None:
+    """One action row for a batch: every screen its items lead to, «🔕» if any
+    of them may wait; no switch-off, which belongs to a single message."""
+    screens: list[str] = []
+    for spec in specs:
+        for screen in spec.get("actions") or []:
+            if screen not in screens:
+                screens.append(screen)
+    return actions_markup(screens, mute=any(spec.get("mute") for spec in specs))
+
+
+# A flush in progress: the minute job and /unmute may call flush_queue at the
+# same moment, and both would read the queue before either deleted a row.
+_flushing = False
 
 
 async def flush_queue(bot: Bot, config: Config, db: Database) -> int:
     """Deliver the deferred messages as one digest once the silence is over;
     returns how many were delivered. Several messages when the backlog is
     long or an item has buttons; only rows actually sent are deleted, so a
-    Telegram error leaves the rest for the next minute."""
+    Telegram error leaves the rest for the next minute. A second call while
+    one runs returns 0 — the running one has the whole queue."""
+    global _flushing
+    if _flushing:
+        return 0
+    _flushing = True
+    try:
+        return await _flush(bot, config, db)
+    finally:
+        _flushing = False
+
+
+async def _flush(bot: Bot, config: Config, db: Database) -> int:
     if config.admin_chat_id is None or await deferred(db, config, Priority.NORMAL):
         return 0
     rows = await db.peek_notifications()
@@ -317,7 +381,7 @@ async def flush_queue(bot: Bot, config: Config, db: Database) -> int:
         return 0
     tz = await _tz(db, config)
     header = t("🌙 Накопилось, пока было тихо:") + "\n\n"
-    text, batch, delivered = header, [], 0
+    text, batch, specs, delivered = header, [], [], 0
 
     async def deliver(body: str, items: list[dict], markup: InlineKeyboardMarkup | None = None) -> None:
         nonlocal delivered
@@ -328,25 +392,30 @@ async def flush_queue(bot: Bot, config: Config, db: Database) -> int:
         await db.delete_notifications([r["id"] for r in items])
         delivered += len(items)
 
+    async def deliver_batch() -> None:
+        nonlocal text, batch, specs
+        await deliver(text, batch, _union(specs))
+        text, batch, specs = t("🌙 (продолжение)") + "\n\n", [], []
+
     try:
         for row in rows:
             stamp = _stamp(row.get("created_at"), tz)
-            markup = _markup(row.get("markup"))
+            markup, spec = _stored(row.get("markup"))
             if markup is not None or len(row["text"]) > SAFE_LIMIT - len(header) - 20:
                 if batch:
-                    await deliver(text, batch)
-                    text, batch = t("🌙 (продолжение)") + "\n\n", []
+                    await deliver_batch()
                 alone = f"🕒 {stamp}\n{row['text']}" if stamp and len(row["text"]) + 20 < SAFE_LIMIT else row["text"]
-                await deliver(alone, [row], markup)
+                await deliver(alone, [row], markup or (_union([spec]) if spec else None))
                 continue
             body = f"{stamp} · {row['text']}" if stamp else row["text"]
             if batch and len(text) + len(body) + 8 > SAFE_LIMIT:
-                await deliver(text, batch)
-                text, batch = t("🌙 (продолжение)") + "\n\n", []
+                await deliver_batch()
             batch.append(row)
+            if spec:
+                specs.append(spec)
             text += f"{len(batch)}. {body}\n\n"
         if batch:
-            await deliver(text, batch)
+            await deliver(text, batch, _union(specs))
     except Exception:
         logger.exception("Digest delivery failed — the rest waits for the next minute")
     return delivered

@@ -24,7 +24,8 @@ The bot is modular: connect only the platforms you have, and switch monitors on 
 - **Problems arrive at once**: a revoked Instagram token or an expired LinkedIn cookie, collection failing 2+ days in a row, a drop in followers (20 or more and at least 1%), data that has gone stale.
 - **Self-recovering**: failed platforms are retried hourly (up to 3 times), a run missed while the bot was down is caught up on start, a dead man's switch (`HEALTHCHECK_URL`) tells you when the bot itself dies. Point it at a [TofsDevOps](https://github.com/morgunovtech/Tofs_DevOps_bot) heartbeat address and the ping also carries a line per network («✅ Telegram · 12 340, +18 today», «🔴 LinkedIn · profile unreadable») to TofsDevOps's main screen, next to your sites; refreshed after every profile check.
 - **Your data stays yours**: SQLite on your volume, a weekly backup sent to your chat (without the LinkedIn cookie and the Instagram token), and `/restore` to merge a backup back without overwriting anything collected since.
-- **Quiet mode**: a one-liner instead of the full report when nothing changed.
+- **Short when unchanged**: a one-liner instead of the full report when nothing changed.
+- **Three buttons at the bottom of the chat** — 🏠 Menu, 🔄 Refresh, 🔕 Quiet for 8 h — one tap from anywhere, however far up the menu has scrolled. Every alert and report carries buttons to where to look into it (🛡 Security, 📈 Trends, 📣 Channel), a 🟠 one also «⚙️ Stop sending these».
 - **Rings only when it matters**: 🚨 and 🔴 — a likely hijack, a new sign-in, a changed password, a vanished profile — ring at once, even at night; everything else arrives silently, and during quiet hours or a `/mute` it waits and comes as one digest. See [When it writes](#when-it-writes).
 
 **Security**
@@ -48,9 +49,9 @@ What leaves your server and what does not, as the code does it:
 | Your own site (`SITE_INGEST_URL`) | The final follower counts, POSTed with a Bearer token. Only when set. |
 | OSV (`api.osv.dev`) | On Sundays, the names and versions of the bot's packages, to report known vulnerabilities. `UPDATE_WATCH=0` turns it off. |
 | Your mail-worker | The bot fetches the security emails you forwarded yourself; the worker accepts only the senders in `ALLOWED_SENDERS`. |
-| Claude API (`api.anthropic.com`) | Every new comment in the channel's discussion group — its text and picture (or a video / sticker thumbnail), the group's title, and whether it is the author's first message or a forward. No user id, name or @username. Only with `ANTHROPIC_API_KEY`, and only for a group the bot is an admin of; comments are public to begin with. Anthropic's API data retention applies to what is sent. |
+| Claude API (`api.anthropic.com`) | Every new comment in the channel's discussion group — its text and picture (or a video / sticker thumbnail), the group's title, and whether it is the author's first message or a forward. No user id, name or @username. Only with `ANTHROPIC_API_KEY`, and only for a group the bot is an admin of; comments are public to begin with; at most three at a time and `COMMENTS_DAILY_LIMIT` a day (300 by default). Anthropic's API data retention applies to what is sent. |
 
-Everything else stays with you: follower history, the channel's joins, leaves, posts and reactions, profile baselines, checklist answers and security events live in SQLite on your volume. The Instagram token and the LinkedIn cookie are stored there too; the message carrying either is deleted from the chat at once, and the Sunday backup is made without them. Only the owner — the first `/start`, or `ADMIN_CHAT_ID` when set — can use the bot. Logs carry no Bot API URL with the token (the httpx logger stays at WARNING). Links quoted from mails and profile descriptions are defanged in alerts (`hxxps://evil[.]example`) and previews are off. Details: [SECURITY.md](SECURITY.md).
+Everything else stays with you: follower history, the channel's joins, leaves, posts and reactions, profile baselines, checklist answers and security events live in SQLite on your volume. What names a person does not stay for ever: joins and leaves are dropped after 90 days, comments the model called fine (an author id and a verdict, no name or text) after 30, flagged ones with their card after 180. The Instagram token and the LinkedIn cookie are stored there too; the message carrying either is deleted from the chat at once, and the Sunday backup is made without them. Only the owner — the first `/start`, or `ADMIN_CHAT_ID` when set — can use the bot. Logs carry no Bot API URL with the token (the httpx logger stays at WARNING). Links quoted from mails and profile descriptions are defanged in alerts (`hxxps://evil[.]example`) and previews are off. Details: [SECURITY.md](SECURITY.md).
 
 ## Setup
 
@@ -61,7 +62,7 @@ Everything else stays with you: follower history, the channel's joins, leaves, p
 4. **LinkedIn (optional).** Your profile URL → `LINKEDIN_PROFILE_URL`. Then either send the bot `/setcookie <li_at>` with the `li_at` cookie of a logged-in browser (DevTools → Application → Cookies → linkedin.com) — the bot checks it, deletes your message and watches the cookie's age — or enter the number by hand with the «✏️ Enter LinkedIn count» button on the home screen.
 
 5. **Security emails (optional).** Deploy the [mail-worker](mail-worker/README.md) → `SECURITY_MAIL_URL`, `SECURITY_MAIL_TOKEN`, and set up forwarding in your mailbox.
-6. **Comments of the channel (optional).** An API key from [console.anthropic.com](https://console.anthropic.com/) → `ANTHROPIC_API_KEY`; add the bot to the channel's discussion group as an **admin with the rights to delete messages and ban members** (the group is found through the channel; `COMMENTS_CHAT_ID` names one explicitly). The model is `claude-opus-5-5` unless `COMMENTS_MODEL` says otherwise. Switch it off any time in `/modules`.
+6. **Comments of the channel (optional).** An API key from [console.anthropic.com](https://console.anthropic.com/) → `ANTHROPIC_API_KEY`; add the bot to the channel's discussion group as an **admin with the rights to delete messages and ban members** (the group is found through the channel; `COMMENTS_CHAT_ID` names one explicitly). The model is `claude-opus-5-5` unless `COMMENTS_MODEL` says otherwise; `COMMENTS_DAILY_LIMIT` (300 by default, 0 = none) caps the checks per day, so a spam wave cannot run up the bill — the bot says once when the day's limit is reached. Switch it off any time in `/modules`.
 
 > ⚠️ **About LinkedIn.** There is no official API for a personal profile's follower count, so the bot opens your profile page with your cookie, once a day. LinkedIn's User Agreement prohibits automated access: use it at your own risk, LinkedIn may restrict the account. Leave the cookie out and type the number in by hand if you'd rather not take that risk.
 
@@ -96,20 +97,22 @@ Everything is a button away; the «🏠 Menu» button under the input field alwa
 ├── 🛡 Security — score, each account, what to do first, recent events
 │   ├── an account's checklist → one question at a time, with why it matters
 │   └── 💬 Channel comments — mode, how many were checked, the accuracy of your marks
+├── 🔌 Connections — every network: in .env or not, collected by itself or waiting for a token, a cookie, the first number
+│   ├── 📸 Instagram — how the number is collected, the token's age, «🔑 Send the token»
+│   └── 💼 LinkedIn — how the number is collected, the cookie's age, «🔑 Send the cookie», «✏️ Enter count by hand»
 ├── ✏️ Enter LinkedIn — only while the number is typed in by hand
-├── ⚙️ Settings — report days (checkboxes), report hour (a grid), time zone, quiet mode
+├── 🔔 Unmute — only while a mute lasts
+├── ⚙️ Settings — report days (checkboxes), report hour (a grid) and minutes, time zone (presets or «✏️ Another zone…»), short when unchanged, 📦 Backup now
 │   ├── 🔔 When to write — quiet hours (presets), «🔕 Mute» for an hour, four, eight or a day
-│   ├── 🧩 Monitors — switch each one on and off
-│   ├── 📸 Instagram — how the number is collected, the token's age
-│   └── 💼 LinkedIn — how the number is collected, the cookie's age
+│   └── 🧩 Monitors — switch each one on and off (📣 Channel and 💬 Comments have the switch on their own screens too)
 └── ❓ Help — how the bot works, what the icons mean, every command
 ```
 
-A tap answers right away with a short confirmation («Saved», «Quiet mode on»), a menu message is edited in place instead of piling up, and a button of an older version's menu opens the current one.
+The home screen also says when the data was last collected and, on a fresh install, what is left to set up (the time zone, a token, a cookie) with a button for each. A tap answers right away with a short confirmation («Saved», «Short when unchanged: on»), a menu message is edited in place instead of piling up, and a button of an older version's menu opens the current one. A cookie, a token or a time zone that is not in the presets is asked for as the next message («🔑 Send the cookie» → paste it → the bot checks it and deletes the message), the same way the LinkedIn number is.
 
 ## Commands
 
-The `/` menu lists the six entry points; the rest are for typing.
+The `/` menu lists the entry points — `/start`, `/now`, `/week`, `/security`, `/settings`, `/mute`, `/channel`, `/connections`, `/help`; the rest are for typing, and everything they do is also a button away.
 
 | Command | What it does |
 |---|---|
@@ -117,7 +120,8 @@ The `/` menu lists the six entry points; the rest are for typing.
 | `/now` | Collect now and show the report |
 | `/week` | This week vs last week, with the chart |
 | `/security` | Security score, the checklist per account, recent security events |
-| `/settings` | Report schedule, quiet mode, when to write, monitors, Instagram, LinkedIn |
+| `/settings` | Report schedule, short when unchanged, when to write, monitors, connections, backup now |
+| `/connections` | Every network: in .env or not, collected by itself or waiting for a token, a cookie, the first number; the Instagram and LinkedIn screens |
 | `/help` | How the bot works, the icons, every command |
 | `/stats` | The home screen without the greeting |
 | `/modules` | Connected platforms; switch monitors on and off |
@@ -127,11 +131,11 @@ The `/` menu lists the six entry points; the rest are for typing.
 | `/linkedin <number>` | Enter the LinkedIn number by hand |
 | `/settime HH:MM`, `/setday <days>` | Report time and day(s) in your time zone: `sat`, `mon,thu`, `mon-fri`, `daily`; without an argument, the picker |
 | `/settz <zone>` | Your time zone, an IANA name such as `Europe/Moscow`; without an argument, a list of common ones |
-| `/setquiet on\|off` | Quiet mode |
-| `/mute <time>`, `/unmute` | Pause everything but the critical for `1h`, `8h` (the default), `30m`, `1d`, up to 7 days; what was held arrives as one digest when it ends |
+| `/setquiet on\|off` | Short when unchanged: one line instead of the report when a week brought no change |
+| `/mute <time>`, `/unmute` | Pause everything but the critical for `1h`, `8h` (the default), `30m`, `1d`, up to 7 days; what was held arrives as one digest when it ends. Also the 🔕 button at the bottom of the chat and under any alert |
 | `/setcookie <li_at>`, `/cookieage` | Set the LinkedIn cookie, check its age |
 | `/igtoken <token>` | Set the Instagram token (checked against the API, the message is deleted) |
-| `/restore` | Reply it to a backup message (or send a `.db` captioned `/restore`) to merge the history back |
+| `/restore` | Merge the history back: send the `.db` file and confirm with the button, reply `/restore` to a backup message, or caption the file `/restore` |
 
 ## What a report looks like
 
@@ -166,7 +170,7 @@ Problems come first («⚠️ Instagram rejected the token — send a new one vi
 
 Data is collected every day at the report time, and the report goes out on the report day(s). Time and days are in your time zone: pick it with the «🌍 Time zone» button in ⚙️ Settings or with `/settz`, and `/settime 09:00` means 09:00 on your clock, summer time included. Switching the zone keeps the report at the same moment and shows it on the new clock (08:00 UTC becomes 11:00 in Moscow).
 
-`REPORT_TZ`, `REPORT_HOUR`, `REPORT_MINUTE` and `REPORT_DOW` are the defaults until you change them in the bot: Saturday, 08:00 UTC. A schedule saved by a version without the zone setting stays in UTC until you pick a zone. Follower history, the monthly digest and the Sunday backup keep UTC days.
+`REPORT_TZ`, `REPORT_HOUR`, `REPORT_MINUTE` and `REPORT_DOW` are the defaults until you change them in the bot: Saturday, 08:00 UTC. A schedule saved by a version without the zone setting stays in UTC until you pick a zone. The date in the report's title, the 1st of the month for the digest and the Sunday of the backup follow your zone; the day-by-day follower history is kept on UTC days.
 
 ## When it writes
 
@@ -179,7 +183,8 @@ Every message to you goes through one door (`bot/notifier.py`) with three priori
 | **Digest** — 📊 | no; waits only during a mute | the weekly report and its chart, the monthly digest, the hygiene reminder, the backup, the Sunday vulnerabilities notice |
 
 - **Quiet hours** are off by default: ⚙️ Settings → 🔔 When to write, presets 23:00–08:00 and 00:00–09:00 in your time zone. The weekly report is a digest itself, so it still comes at its time.
-- **`/mute 8h`** (or the 🔕 buttons on the same screen) pauses everything but the critical; `/unmute` lifts it. The home screen says «🔕 Muted until 08:00» while it lasts.
+- **`/mute 8h`** (or the 🔕 button at the bottom of the chat, or «🔕 Quiet for 8 h» under any alert) pauses everything but the critical; `/unmute` or the «🔔 Unmute» button on the home screen lifts it. The home screen says «🔕 Muted until 08:00» while it lasts.
+- Under every alert and report: buttons to the screen where to look into it; under a 🟠 one, «⚙️ Stop sending these» switches that monitor off. In a digest the items share one row.
 - When the silence ends, what was held arrives as **one numbered digest** with the time of each item; a message with buttons or one too long for the digest comes on its own. Replies to your own taps and commands are not notifications and never wait.
 - «Silent when healthy» stays: nothing repeats until it changes, and a recovery is told once.
 
@@ -226,7 +231,7 @@ python3 -m venv .venv
 .venv/bin/pytest -q
 ```
 
-The tests never touch the network: Telegram is a fake bot; LinkedIn, YouTube, the Instagram Graph API, the site push, TofsDevOps and the mail worker are local HTTP servers. CI runs ruff, pytest on Python 3.12–3.14, `pip-audit`, a build of the production image and the mail-worker tests (`cd mail-worker && npm ci && npm test`).
+The tests never touch the network: Telegram is a fake bot; LinkedIn, YouTube, the Instagram Graph API, the site push, TofsDevOps and the mail worker are local HTTP servers. The one exception is opt-in and never runs in CI: `LIVE_ANTHROPIC_API_KEY=sk-ant-… pytest -q tests/test_classifier_live.py` makes one real classification before a release, because a request shape the API refuses passes every fake. CI runs ruff, pytest on Python 3.12–3.14, `pip-audit`, a build of the production image and the mail-worker tests (`cd mail-worker && npm ci && npm test`).
 
 A new network is one module in `bot/platforms/` (a `Platform` subclass: how to tell it's configured, how to read the follower count and, optionally, which public profile fields to watch) plus an entry in `PLATFORMS`. Monitors live in `bot/monitors/`. Every menu screen is a function in `bot/ui.py` (text and buttons, no Telegram calls); `bot/handlers.py` routes commands and button presses to them, and a test walks every button from the home screen.
 

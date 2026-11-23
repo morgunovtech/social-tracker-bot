@@ -25,6 +25,7 @@ from telegram.ext import (
     filters,
 )
 
+from bot import callbacks as cb
 from bot import monitors, notifier, ui
 from bot.config import DOW_ORDER, Config, normalize_dow, normalize_tz
 from bot.db import Database, utcnow
@@ -37,6 +38,7 @@ from bot.reporter import _fmt
 from bot.scheduler import (
     CHART_CAPTION,
     _build_chart_png,
+    _send_backup,
     collect_and_report,
     get_report_schedule,
     get_report_tz,
@@ -50,9 +52,12 @@ logger = logging.getLogger(__name__)
 
 # ConversationHandler states
 LI_AWAITING_NUMBER = 1
+AWAITING_INPUT = 2       # a cookie, a token or a time zone, by button (ui.input_prompt)
 
-# End a dangling LinkedIn-input conversation after this many seconds of silence.
+# End a dangling input conversation after this many seconds of silence.
 LI_CONV_TIMEOUT = 120
+# What each entry button asks for.
+INPUT_KINDS = {cb.LI_COOKIE: "cookie", cb.IG_TOKEN: "token", cb.TZ_OTHER: "tz"}
 
 # Longest /history period: keeps the table under Telegram's 4096-char message limit.
 HISTORY_MAX_DAYS = 90
@@ -63,6 +68,8 @@ RESTORE_MAX_BYTES = 20 * 1024 * 1024
 # Messages queued while the bot restarts (a deploy) are handled after start;
 # older ones (a long outage) are dropped rather than replayed.
 PENDING_MAX_AGE = timedelta(minutes=10)
+# Commands whose argument is a secret: a stale one is deleted from the chat, not just dropped.
+SECRET_COMMANDS = ("setcookie", "igtoken")
 
 # What the bot asks Telegram for. Joins and leaves (chat_member) and the
 # reactions on posts (message_reaction_count) are not sent unless asked
@@ -79,15 +86,18 @@ ALLOWED_UPDATES = (
 
 
 
-class _MenuButton(filters.MessageFilter):
-    """The persistent menu button, by its text: the current label, the labels
-    of older versions and their English translations — a user who switched
-    BOT_LANG still has the old keyboard on screen. The set is built per message,
-    after the language is set."""
+class _ReplyButton(filters.MessageFilter):
+    """A button of the persistent reply keyboard, by its text: the current
+    label, its English translation and, for the menu, the labels of older
+    versions — a user who switched BOT_LANG still has the old keyboard on
+    screen. The set is built per message, after the language is set."""
 
-    @staticmethod
-    def texts() -> set[str]:
-        return {ui.MENU_BUTTON_TEXT, *ui.LEGACY_MENU_BUTTON_TEXTS, t(ui.MENU_BUTTON_TEXT), "🏠 Menu"}
+    def __init__(self, name: str, key: str, legacy: tuple[str, ...] = ()):
+        super().__init__(name=name)
+        self._key, self._legacy = key, legacy
+
+    def texts(self) -> set[str]:
+        return {self._key, t(self._key), *self._legacy}
 
     @property
     def pattern(self) -> re.Pattern[str]:
@@ -98,7 +108,10 @@ class _MenuButton(filters.MessageFilter):
         return bool(message.text) and message.text in self.texts()
 
 
-_MENU_BUTTON = _MenuButton(name="menu_button")
+_MENU_BUTTON = _ReplyButton("menu_button", ui.MENU_BUTTON_TEXT, (*ui.LEGACY_MENU_BUTTON_TEXTS, "🏠 Menu"))
+_REFRESH_BUTTON = _ReplyButton("refresh_button", ui.REFRESH_BUTTON_TEXT)
+_MUTE_BUTTON = _ReplyButton("mute_button", ui.MUTE_BUTTON_TEXT)
+_REPLY_BUTTONS = _MENU_BUTTON | _REFRESH_BUTTON | _MUTE_BUTTON
 
 
 def _deps(context: ContextTypes.DEFAULT_TYPE) -> tuple[Config, Database]:
@@ -190,14 +203,40 @@ def _admin_only(handler):
     return wrapper
 
 
+def _command_name(message) -> str:
+    """'/setcookie@bot AQ…' → 'setcookie'; '' for anything that is not a command."""
+    text = message.text or message.caption or ""
+    if not text.startswith("/"):
+        return ""
+    return text.split(maxsplit=1)[0][1:].split("@", 1)[0].lower()
+
+
 async def drop_stale_messages(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Runs before every handler. A message queued during a deploy restart is
     handled; one older than PENDING_MAX_AGE is dropped, so a /now from hours
-    ago doesn't fire. Button presses carry no send time and always pass."""
+    ago doesn't fire. Button presses carry no send time and always pass.
+
+    A dropped /setcookie or /igtoken still carries its secret: the owner's
+    message is deleted and they are asked to send it again, rather than left
+    in the chat without an answer."""
     message = update.message
-    if message is not None and message.date is not None and utcnow() - message.date > PENDING_MAX_AGE:
-        logger.info("Dropping a message queued for %s", utcnow() - message.date)
-        raise ApplicationHandlerStop
+    if message is None or message.date is None or utcnow() - message.date <= PENDING_MAX_AGE:
+        return
+    logger.info("Dropping a message queued for %s", utcnow() - message.date)
+    if (
+        _command_name(message) in SECRET_COMMANDS
+        and len((message.text or "").split()) > 1
+        and _is_admin(update, context.bot_data["config"])
+    ):
+        try:
+            await message.delete()
+        except Exception:
+            logger.warning("A stale message with a secret could not be deleted", exc_info=True)
+        await update.effective_chat.send_message(
+            t("⏳ Эта команда пришла, пока я был выключен: сообщение с секретом я удалил, "
+              "чтобы оно не лежало в чате. Пришли его заново.")
+        )
+    raise ApplicationHandlerStop
 
 
 def _watch(context: ContextTypes.DEFAULT_TYPE) -> comments.Watch:
@@ -244,6 +283,8 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
                 text=t(
                     "⚠️ Что-то пошло не так ({error}). Попробуй ещё раз; подробности — в логах бота."
                 ).format(error=type(context.error).__name__),
+                # The menu the error interrupted may be far up the chat.
+                reply_markup=cb.actions_markup((cb.HOME,)),
             )
         except Exception:
             logger.exception("Error notice send failed")
@@ -253,15 +294,22 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
 # Shared actions
 # ---------------------------------------------------------------------------
 
+def collect_lock(bot_data: dict) -> asyncio.Lock:
+    """The one lock around a collection: /now, the 🔄 button and the scheduler's
+    daily run (bot/scheduler.py) share it, so two collections never overlap."""
+    return bot_data.setdefault("collect_lock", asyncio.Lock())
+
+
 def _collect_lock(context: ContextTypes.DEFAULT_TYPE) -> asyncio.Lock:
-    return context.bot_data.setdefault("collect_lock", asyncio.Lock())
+    return collect_lock(context.bot_data)
 
 
 async def _collect_now(
     context: ContextTypes.DEFAULT_TYPE, show: Callable[[ui.Screen], Awaitable[None]]
 ) -> bool:
     """Collect, showing the progress and then the fresh home screen; False
-    while another collection runs (a double tap must not collect twice)."""
+    while another collection runs — a double tap, or the scheduler's daily
+    run — so nothing is collected twice."""
     config, db = _deps(context)
     lock = _collect_lock(context)
     if lock.locked():
@@ -370,7 +418,9 @@ async def cmd_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await sent.edit_text(screen.text, **_markup(screen))
 
     if not await _collect_now(context, show):
-        await update.message.reply_text(t("⏳ Уже собираю данные — результат появится в сообщении выше."))
+        await update.message.reply_text(
+            t("⏳ Уже собираю данные — по расписанию или по другой команде. Подожди минуту и повтори.")
+        )
 
 
 @_admin_only
@@ -410,6 +460,12 @@ async def cmd_comments(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def cmd_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config, db = _deps(context)
     await _reply(update, await ui.channel_screen(db, config))
+
+
+@_admin_only
+async def cmd_connections(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config, db = _deps(context)
+    await _reply(update, await ui.connections(db, config))
 
 
 @_admin_only
@@ -525,7 +581,7 @@ async def cmd_setquiet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await _reply(update, await ui.settings(db, config))
         return
     await db.set_setting("quiet_if_no_change", "1" if choice == "on" else "0")
-    note = t("✅ Тихий режим включён") if choice == "on" else t("✅ Тихий режим выключен")
+    note = t("✅ Коротко без изменений: включено") if choice == "on" else t("✅ Коротко без изменений: выключено")
     await _reply(update, (await ui.settings(db, config)).noted(note))
 
 
@@ -560,6 +616,25 @@ async def cmd_mute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 @_admin_only
+async def cmd_mute_quick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """The 🔕 reply button: eight hours of silence, then the home screen."""
+    config, db = _deps(context)
+    note = await _mute(db, config, "8h")
+    await _reply(update, (await ui.home(db, config)).noted(note))
+
+
+async def _reply_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """One of the three buttons at the bottom of the chat."""
+    text = update.message.text or ""
+    if text in _REFRESH_BUTTON.texts():
+        await cmd_now(update, context)
+    elif text in _MUTE_BUTTON.texts():
+        await cmd_mute_quick(update, context)
+    else:
+        await cmd_home(update, context)
+
+
+@_admin_only
 async def cmd_unmute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config, db = _deps(context)
     await _unmute(context)
@@ -580,6 +655,12 @@ async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         )
         return
 
+    await _store_cookie(update, context, " ".join(context.args).strip())
+
+
+async def _store_cookie(update: Update, context: ContextTypes.DEFAULT_TYPE, cookie: str) -> None:
+    """The value of /setcookie, or the message after «🔑 Прислать cookie»."""
+    config, db = _deps(context)
     # Don't leave the secret sitting in chat history — delete it before any
     # check can bail out early. Replies go to the chat: the message is gone.
     chat = update.effective_chat
@@ -590,7 +671,6 @@ async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         deleted = False
     note = "" if deleted else "\n" + t("⚠️ Удалить сообщение с cookie не получилось — удали его из чата вручную.")
 
-    cookie = " ".join(context.args).strip()
     if len(cookie) < 50:
         await chat.send_message(t("❌ Это не похоже на cookie: значение слишком короткое.") + note)
         return
@@ -629,9 +709,14 @@ async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await db.set_setting("linkedin_li_at_set_at", utcnow().isoformat())
     await db.set_setting("cookie_expired_alerted", "0")  # fresh cookie — re-arm the alert
 
-    # Same guard as the daily collect: a value far from the stored one is
-    # likely someone else's counter and must not become the new baseline.
-    if plausible_count(prev, count):
+    # Same guards as the daily collect: the page carries other profiles'
+    # counters too, so the first number is confirmed by the owner, and a value
+    # far from the stored one must not become the new baseline.
+    if prev is None:
+        fetched = t(
+            "Проверка вернула {count}. Это первое значение — сверь его со страницей профиля и подтверди: /linkedin {raw}"
+        ).format(count=_fmt(count), raw=count)
+    elif plausible_count(prev, count):
         await db.upsert("linkedin", count, source="cookie")
         fetched = t("Проверка прошла: {count} подписчиков.").format(count=_fmt(count))
     else:
@@ -657,6 +742,12 @@ async def cmd_igtoken(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         return
 
+    await _store_token(update, context, "".join(context.args).strip())
+
+
+async def _store_token(update: Update, context: ContextTypes.DEFAULT_TYPE, token: str) -> None:
+    """The value of /igtoken, or the message after «🔑 Прислать токен»."""
+    config, db = _deps(context)
     # The token is a secret: out of the chat history before any check can bail out.
     chat = update.effective_chat
     deleted = True
@@ -666,7 +757,6 @@ async def cmd_igtoken(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         deleted = False
     note = "" if deleted else "\n" + t("⚠️ Удалить сообщение с токеном не получилось — удали его из чата вручную.")
 
-    token = "".join(context.args).strip()
     if len(token) < 50:
         await chat.send_message(t("❌ Это не похоже на токен: значение слишком короткое.") + note)
         return
@@ -708,7 +798,7 @@ async def cmd_igtoken(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     username = str(user.get("username") or config.instagram_username)
-    await ig.store_token(db, token, user_id)
+    await ig.store_token(db, token, user_id, config.instagram_username)
     await db.set_setting("instagram_token_alerted", "0")  # a fresh token re-arms the alert
     try:
         count = int(user["followers_count"])
@@ -729,10 +819,32 @@ async def cmd_cookieage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await _reply(update, await ui.linkedin(db, config))
 
 
+async def _restore_document(context: ContextTypes.DEFAULT_TYPE, document) -> str:
+    """Merge a backup file into the live DB; returns the note to show."""
+    config, db = _deps(context)
+    if document.file_size and document.file_size > RESTORE_MAX_BYTES:
+        return t("❌ Файл больше 20 МБ — Telegram не даст боту его скачать.")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "backup.db")
+        tg_file = await document.get_file()
+        await tg_file.download_to_drive(path)
+        try:
+            result = await db.restore_from(path)
+        except ValueError as e:
+            return t("❌ Не похоже на бэкап этого бота: {error}.").format(error=e)
+    # The backup may carry another report time: apply it to the running job.
+    await _apply_schedule(context)
+    period = f"{result['first']} — {result['last']}" if result["first"] else t("пусто")
+    return t(
+        "✅ Восстановлено, добавлено записей: {added}. Всего: {total} ({period})."
+    ).format(added=_fmt(result["added"]), total=_fmt(result["total"]), period=period)
+
+
 @_admin_only
 async def cmd_restore(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Merge a weekly backup back in: reply /restore to the backup message,
-    or send the .db file with the caption /restore."""
+    send the .db file with the caption /restore — or just send the file and
+    confirm with the button (on_document)."""
     config, db = _deps(context)
 
     message = update.message
@@ -741,8 +853,8 @@ async def cmd_restore(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if document is None:
         await message.reply_text(
             t(
-                "Чтобы вернуть историю, ответь командой /restore на сообщение с бэкапом "
-                "(«📦 Еженедельный бэкап базы») или пришли файл .db с подписью /restore.\n\n"
+                "Чтобы вернуть историю, пришли файл бэкапа («📦 Еженедельный бэкап базы») и подтверди кнопкой, "
+                "или ответь на него командой /restore.\n\n"
                 "Данные из бэкапа добавятся к текущим: уже собранное не перезапишется."
             )
         )
@@ -750,26 +862,34 @@ async def cmd_restore(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if document.file_size and document.file_size > RESTORE_MAX_BYTES:
         await message.reply_text(t("❌ Файл больше 20 МБ — Telegram не даст боту его скачать."))
         return
-
     await message.reply_text(t("⏳ Восстанавливаю…"))
-    with tempfile.TemporaryDirectory() as tmp:
-        path = os.path.join(tmp, "backup.db")
-        tg_file = await document.get_file()
-        await tg_file.download_to_drive(path)
-        try:
-            result = await db.restore_from(path)
-        except ValueError as e:
-            await message.reply_text(t("❌ Не похоже на бэкап этого бота: {error}.").format(error=e))
-            return
-
-    # The backup may carry another report time: apply it to the running job.
-    await _apply_schedule(context)
-
-    period = f"{result['first']} — {result['last']}" if result["first"] else t("пусто")
-    note = t(
-        "✅ Восстановлено, добавлено записей: {added}. Всего: {total} ({period})."
-    ).format(added=_fmt(result["added"]), total=_fmt(result["total"]), period=period)
+    note = await _restore_document(context, document)
+    if note.startswith("❌"):
+        await message.reply_text(note)
+        return
     await _reply(update, (await ui.home(db, config)).noted(note))
+
+
+def _looks_like_backup(document) -> bool:
+    name = (getattr(document, "file_name", None) or "").lower()
+    mime = (getattr(document, "mime_type", None) or "").lower()
+    return name.endswith((".db", ".sqlite", ".sqlite3")) or mime in ("application/x-sqlite3", "application/vnd.sqlite3")
+
+
+@_admin_only
+async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """A file without a caption: a database file is offered for a restore
+    with one button (the file used to be ignored in silence); anything else
+    gets a hint."""
+    if _looks_like_backup(update.message.document):
+        await update.message.reply_text(
+            t("Это бэкап базы? Могу вернуть из него историю — уже собранное не перезапишется."),
+            reply_markup=ui.restore_prompt(), do_quote=True,
+        )
+        return
+    await update.message.reply_text(
+        t("Не знаю, что делать с этим файлом. Бэкап базы (.db) я восстановлю — пришли его и подтверди кнопкой.")
+    )
 
 
 @_admin_only
@@ -906,7 +1026,7 @@ async def _cb_settings(press: _Press, context, args: list[str]) -> None:
     elif action == "quiet" and len(args) == 1:
         quiet = not await is_quiet_mode(db, config)
         await db.set_setting("quiet_if_no_change", "1" if quiet else "0")
-        await press.answer(t("Тихий режим включён") if quiet else t("Тихий режим выключен"))
+        await press.answer(t("Коротко без изменений: включено") if quiet else t("Коротко без изменений: выключено"))
         screen = await ui.settings(db, config)
     elif action == "when" and len(args) == 1:
         screen = await ui.when_to_write(db, config)
@@ -942,10 +1062,17 @@ async def _cb_settings(press: _Press, context, args: list[str]) -> None:
     elif action == "time" and len(args) == 1:
         screen = await ui.report_time(db, config)
     elif action == "hour" and value is not None and value.isdigit() and int(value) <= 23:
-        await _set_report_time(context, int(value), 0)
+        _, _, minute = await get_report_schedule(db, config)
+        await _set_report_time(context, int(value), minute)
         tz = await get_report_tz(db, config)
-        await press.answer(t("Отчёт будет приходить в {time}").format(time=ui.clock(int(value), 0, tz)))
-        screen = await ui.settings(db, config)
+        await press.answer(t("Отчёт будет приходить в {time}").format(time=ui.clock(int(value), minute, tz)))
+        screen = await ui.report_time(db, config)
+    elif action == "minute" and value is not None and value.isdigit() and int(value) in ui.MINUTE_CHOICES:
+        _, hour, _ = await get_report_schedule(db, config)
+        await _set_report_time(context, hour, int(value))
+        tz = await get_report_tz(db, config)
+        await press.answer(t("Отчёт будет приходить в {time}").format(time=ui.clock(hour, int(value), tz)))
+        screen = await ui.report_time(db, config)
     elif action == "tz" and len(args) == 1:
         screen = await ui.timezone(db, config)
     elif action == "tz" and value is not None:
@@ -961,14 +1088,31 @@ async def _cb_settings(press: _Press, context, args: list[str]) -> None:
 
 
 async def _cb_monitors(press: _Press, context, args: list[str]) -> None:
+    """mod — the screen; mod:<id> — toggle and back to the screen;
+    mod:<id>:off — «⚙️ Не присылать такие» under an alert: a toast, the alert
+    stays; mod:<id>:<cm|ch> — the toggle on that monitor's own screen."""
     config, db = _deps(context)
-    if args:
-        if len(args) != 1 or args[0] not in monitors.BY_ID:
-            return
-        on = await monitors.toggle(db, args[0])
-        label = t(monitors.BY_ID[args[0]].label)
-        await press.answer(f"{label}: {t('включено') if on else t('выключено')}")
-    await _show(press.query, await ui.monitors_screen(db, config))
+    if not args:
+        await _show(press.query, await ui.monitors_screen(db, config))
+        return
+    if args[0] not in monitors.BY_ID or len(args) > 2:
+        return
+    label = t(monitors.BY_ID[args[0]].label)
+    if len(args) == 2 and args[1] == "off":
+        await monitors.set_switch(db, args[0], False)
+        await press.answer(
+            t("{label}: выключено. Включить снова — ⚙️ Настройки → 🧩 Мониторинги").format(label=label)
+        )
+        return
+    if len(args) == 2 and args[1] not in (cb.COMMENTS, cb.CHANNEL):
+        return
+    on = await monitors.toggle(db, args[0])
+    await press.answer(f"{label}: {t('включено') if on else t('выключено')}")
+    if len(args) == 2:
+        screen = await (ui.comments_screen if args[1] == cb.COMMENTS else ui.channel_screen)(db, config)
+    else:
+        screen = await ui.monitors_screen(db, config)
+    await _show(press.query, screen)
 
 
 async def _cb_comments(press: _Press, context, args: list[str]) -> None:
@@ -995,6 +1139,11 @@ async def _cb_channel(press: _Press, context, args: list[str]) -> None:
     await _show(press.query, await ui.channel_screen(db, config))
 
 
+async def _cb_connections(press: _Press, context, args: list[str]) -> None:
+    config, db = _deps(context)
+    await _show(press.query, await ui.connections(db, config))
+
+
 async def _cb_linkedin(press: _Press, context, args: list[str]) -> None:
     """li | li:save:<count> (confirmed after the typo check) | li:cancel of a timed-out prompt."""
     config, db = _deps(context)
@@ -1019,6 +1168,76 @@ async def _cb_help(press: _Press, context, args: list[str]) -> None:
     await _show(press.query, ui.help_screen())
 
 
+async def _screen(context, screen_id: str) -> ui.Screen | None:
+    """A screen an alert's button may open, by its id."""
+    config, db = _deps(context)
+    builders = {
+        cb.HOME: lambda: ui.home(db, config),
+        cb.DYNAMICS: lambda: ui.dynamics(db),
+        cb.SECURITY: lambda: ui.security(db, config),
+        cb.CHANNEL: lambda: ui.channel_screen(db, config),
+        cb.COMMENTS: lambda: ui.comments_screen(db, config),
+        cb.CONNECTIONS: lambda: ui.connections(db, config),
+    }
+    builder = builders.get(screen_id)
+    return await builder() if builder else None
+
+
+async def _cb_open(press: _Press, context, args: list[str]) -> None:
+    """open:<screen> — the screen as a new message, so the alert it was
+    pressed on stays in the chat as it is."""
+    config, db = _deps(context)
+    screen = await _screen(context, args[0]) if args else None
+    if screen is None:
+        await press.answer(t("Это меню устарело — вот актуальное"))
+        screen = await ui.home(db, config)
+    await context.bot.send_message(chat_id=config.admin_chat_id, text=screen.text, **_markup(screen))
+
+
+async def _cb_mute(press: _Press, context, args: list[str]) -> None:
+    """mute:8h | mute:off — under an alert: a toast, the alert stays; with
+    :home — pressed on the home screen, which is re-rendered."""
+    config, db = _deps(context)
+    if not args or args[0] not in ("8h", "off") or len(args) > 2:
+        return
+    if args[0] == "off":
+        await _unmute(context)
+        note = t("🔔 Снова пишу обо всём.")
+    else:
+        await notifier.set_mute(db, notifier.MUTE_DEFAULT)
+        note = t("🔕 Молчу до {until}.").format(until=await notifier.mute_until_local(db, config))
+    if len(args) == 2 and args[1] == cb.HOME:
+        await _show(press.query, (await ui.home(db, config)).noted(note))
+    else:
+        await press.answer(note)
+
+
+async def _cb_restore(press: _Press, context, args: list[str]) -> None:
+    """restore:yes | restore:no under a .db file: the file is the message the
+    prompt replied to."""
+    config, db = _deps(context)
+    if args == ["no"]:
+        await _show(press.query, (await ui.home(db, config)).noted(t("Отменено.")))
+        return
+    if args != ["yes"]:
+        return
+    original = getattr(getattr(press.query, "message", None), "reply_to_message", None)
+    document = getattr(original, "document", None)
+    if document is None:
+        await press.answer(t("Файл не нашёл — пришли его заново или ответь на него командой /restore"))
+        return
+    await press.answer(t("⏳ Восстанавливаю…"))
+    note = await _restore_document(context, document)
+    await _show(press.query, (await ui.home(db, config)).noted(note))
+
+
+async def _cb_backup(press: _Press, context, args: list[str]) -> None:
+    """The database file now — before a migration or an experiment, not on Sunday."""
+    config, db = _deps(context)
+    await press.answer(t("📦 Отправляю бэкап…"))
+    await _send_backup(context.bot, config, db)
+
+
 _ROUTES: dict[str, Route] = {
     ui.HOME: _cb_home,
     ui.NOW: _cb_now,
@@ -1033,6 +1252,11 @@ _ROUTES: dict[str, Route] = {
     ui.HELP: _cb_help,
     ui.COMMENTS: _cb_comments,
     ui.CHANNEL: _cb_channel,
+    cb.CONNECTIONS: _cb_connections,
+    cb.OPEN: _cb_open,
+    cb.MUTE: _cb_mute,
+    cb.BACKUP: _cb_backup,
+    cb.RESTORE: _cb_restore,
 }
 # Screen ids of the menu before the redesign: their buttons stay in the chat history.
 _LEGACY = {"menu": ui.HOME, "stats": ui.HOME, "week": ui.DYNAMICS, "settings": ui.SETTINGS, "history": ui.TABLE}
@@ -1108,8 +1332,8 @@ async def li_conv_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def li_conv_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Menu button pressed mid-conversation — abandon the input and show the menu."""
-    await cmd_home(update, context)
+    """A reply-keyboard button pressed mid-conversation — abandon the input and do what it says."""
+    await _reply_button(update, context)
     return ConversationHandler.END
 
 
@@ -1117,6 +1341,55 @@ async def li_conv_other_button(update: Update, context: ContextTypes.DEFAULT_TYP
     """Another button pressed mid-conversation: it wins, the input is abandoned."""
     await on_callback(update, context)
     return ConversationHandler.END
+
+
+# ---------------------------------------------------------------------------
+# Text-input conversations: a cookie, a token, a time zone — by button
+# ---------------------------------------------------------------------------
+
+async def input_conv_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """«🔑 Прислать cookie», «🔑 Прислать токен», «✏️ Другой пояс…»: ask for
+    the value as the next message, the way the LinkedIn number is asked for."""
+    config, db = _deps(context)
+    if not _is_admin(update, config):
+        await _deny(update)
+        return ConversationHandler.END
+    query = update.callback_query
+    kind = INPUT_KINDS.get(query.data or "")
+    await _answer(query)
+    if kind is None:
+        return ConversationHandler.END
+    context.user_data["awaiting"] = kind
+    await _show(query, ui.input_prompt(kind))
+    return AWAITING_INPUT
+
+
+async def input_conv_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    config, db = _deps(context)
+    if not _is_admin(update, config):
+        await _deny(update)
+        return ConversationHandler.END
+    kind = context.user_data.pop("awaiting", None)
+    value = (update.message.text or "").strip()
+    if kind == "cookie":
+        await _store_cookie(update, context, value)
+    elif kind == "token":
+        await _store_token(update, context, value)
+    elif kind == "tz":
+        try:
+            name = normalize_tz(value)
+        except ValueError:
+            context.user_data["awaiting"] = "tz"
+            await _reply(update, ui.input_retry_tz())
+            return AWAITING_INPUT
+        note = await _set_report_tz(context, ZoneInfo(name))
+        await _reply(update, (await ui.settings(db, config)).noted(note))
+    return ConversationHandler.END
+
+
+async def input_conv_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.user_data.pop("awaiting", None)
+    return await li_conv_cancel(update, context)
 
 
 # ---------------------------------------------------------------------------
@@ -1134,6 +1407,7 @@ COMMANDS = {
     "modules": cmd_modules,
     "comments": cmd_comments,
     "channel": cmd_channel,
+    "connections": cmd_connections,
     "linkedin": cmd_linkedin,
     "history": cmd_history,
     "settime": cmd_settime,
@@ -1163,9 +1437,9 @@ def register_handlers(app, config: Config, db: Database) -> None:
         entry_points=[CallbackQueryHandler(li_conv_start, pattern=r"^(?:li:enter|linkedin_prompt)$")],
         states={
             LI_AWAITING_NUMBER: [
-                # Menu button must win over the number parser, or a dangling
-                # conversation swallows it with "not a number".
-                MessageHandler(_MENU_BUTTON, li_conv_menu),
+                # The reply buttons must win over the number parser, or a
+                # dangling conversation swallows them with "not a number".
+                MessageHandler(_REPLY_BUTTONS, li_conv_menu),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, li_conv_number),
                 CallbackQueryHandler(li_conv_cancel, pattern=r"^(?:li:cancel|li_cancel)$"),
             ],
@@ -1174,14 +1448,30 @@ def register_handlers(app, config: Config, db: Database) -> None:
         conversation_timeout=LI_CONV_TIMEOUT,
         allow_reentry=True,
     )
-    # Conversation must be registered before the catch-all CallbackQueryHandler
+    input_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(input_conv_start, pattern="^(?:" + "|".join(map(re.escape, INPUT_KINDS)) + ")$")],
+        states={
+            AWAITING_INPUT: [
+                MessageHandler(_REPLY_BUTTONS, li_conv_menu),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, input_conv_value),
+                CallbackQueryHandler(input_conv_cancel, pattern=f"^{re.escape(cb.INPUT_CANCEL)}$"),
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", input_conv_cancel), CallbackQueryHandler(li_conv_other_button)],
+        conversation_timeout=LI_CONV_TIMEOUT,
+        allow_reentry=True,
+    )
+    # Conversations must be registered before the catch-all CallbackQueryHandler
     app.add_handler(li_conv)
+    app.add_handler(input_conv)
 
     for name, handler in COMMANDS.items():
         app.add_handler(CommandHandler(name, handler))
     # A file sent with the caption /restore: CommandHandler only reads message text.
     app.add_handler(MessageHandler(filters.Document.ALL & filters.CaptionRegex(r"^/restore\b"), cmd_restore))
-    app.add_handler(MessageHandler(_MENU_BUTTON, cmd_home))
+    # Any other file: a backup is offered for a restore, the rest gets a hint.
+    app.add_handler(MessageHandler(filters.Document.ALL, on_document))
+    app.add_handler(MessageHandler(_REPLY_BUTTONS, _reply_button))
     app.add_handler(CallbackQueryHandler(on_callback))
     # Last: whatever nothing above understood gets a hint instead of silence.
     app.add_handler(MessageHandler(filters.COMMAND, on_unknown_command))

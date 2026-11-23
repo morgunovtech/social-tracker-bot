@@ -31,7 +31,9 @@ def watch_config(config):
 
 def test_installed_versions():
     versions = installed_versions()
-    assert {"python-telegram-bot", "aiohttp", "matplotlib"} <= set(versions)
+    # Everything installed, not a hand-kept list: anthropic and what it brought were missing from it.
+    assert {"python-telegram-bot", "aiohttp", "matplotlib", "anthropic", "httpx2", "pydantic"} <= set(versions)
+    assert all(v for v in versions.values())
 
 
 async def test_startup_notice_only_on_change(bot, watch_config, db):

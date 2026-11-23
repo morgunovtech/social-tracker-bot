@@ -114,6 +114,8 @@ async def test_every_screen(config, db, insert):
         await ui.comments_screen(db, config),
         await ui.comments_screen(db, dataclasses.replace(config, anthropic_api_key="k")),
         await ui.channel_screen(db, config),   # empty
+        await ui.connections(db, config),
+        await ui.connections(db, dataclasses.replace(config, telegram_channel_id=None, youtube_api_key=None)),
     ]
     # The channel screen with events, sources and a reacted post; the report line it feeds.
     now = utcnow()

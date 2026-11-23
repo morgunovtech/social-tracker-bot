@@ -56,6 +56,28 @@ def test_defaults(monkeypatch):
     assert config.quiet_if_no_change is False
 
 
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [("REPORT_HOUR", "25"), ("REPORT_MINUTE", "60"), ("LINKEDIN_STALE_DAYS", "0"), ("REPORT_HOUR", "eight"),
+     ("COMMENTS_DAILY_LIMIT", "-1")],
+)
+def test_whole_number_variables_fail_fast_with_their_name(monkeypatch, name, value):
+    monkeypatch.setenv(name, value)
+    with pytest.raises(RuntimeError, match=name):
+        Config.from_env()
+
+
+def test_empty_whole_number_variables_mean_the_default(monkeypatch):
+    # Every optional variable in .env.example is left empty; these used to crash int("").
+    for name in ("REPORT_HOUR", "REPORT_MINUTE", "LINKEDIN_STALE_DAYS", "COMMENTS_DAILY_LIMIT"):
+        monkeypatch.setenv(name, "")
+    config = Config.from_env()
+    assert (config.report_hour, config.report_minute, config.linkedin_stale_days) == (8, 0, 7)
+    assert config.comments_daily_limit == 300
+    monkeypatch.setenv("COMMENTS_DAILY_LIMIT", "0")
+    assert Config.from_env().comments_daily_limit == 0
+
+
 def test_report_hour_under_its_old_name(monkeypatch):
     monkeypatch.delenv("REPORT_HOUR")
     monkeypatch.setenv("REPORT_HOUR_UTC", "6")
