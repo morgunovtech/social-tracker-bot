@@ -1,6 +1,8 @@
 services:
   tracker-bot:
-    build: .
+    # The image every green main publishes (amd64 and arm64). To run your
+    # own changes instead, replace the line with `build: .`.
+    image: ghcr.io/morgunovtech/social-tracker-bot:latest
     container_name: social-tracker-bot
     env_file: .env
     volumes:

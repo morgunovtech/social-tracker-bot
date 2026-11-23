@@ -48,8 +48,10 @@ The bot is modular: connect only the platforms you have, and switch monitors on 
 
 ```bash
 cp .env.example .env    # fill it in
-docker-compose up -d
+docker compose up -d
 ```
+
+`docker-compose.yml` pulls the image every green `main` publishes to `ghcr.io/morgunovtech/social-tracker-bot` (amd64 and arm64); to run your own changes, replace `image:` with `build: .` and add `--build`.
 
 ### Railway
 

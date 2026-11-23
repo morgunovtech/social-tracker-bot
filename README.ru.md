@@ -83,8 +83,10 @@ Telegram-бот, который следит за вашими соцсетям�
 ```bash
 cp .env.example .env
 # заполните .env
-docker-compose up -d
+docker compose up -d
 ```
+
+`docker-compose.yml` тянет образ, который публикует каждый зелёный `main` (`ghcr.io/morgunovtech/social-tracker-bot`, amd64 и arm64); чтобы запускать свои правки, замените `image:` на `build: .` и добавьте `--build`.
 
 Логи: `docker-compose logs -f`. Остановка: `docker-compose down`.
 

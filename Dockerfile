@@ -1,9 +1,14 @@
-FROM python:3.14-slim
+# The OS suffix is explicit: a bare «3.14-slim» changes OS with the next Debian
+# stable. The digest pins the exact image CI built and ran; Dependabot (docker)
+# proposes the next one as a PR.
+FROM python:3.14-slim-trixie@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f
 
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Exactly the locked versions, each checked against its hash (requirements.txt
+# is compiled from requirements.in); nothing else gets resolved.
+RUN pip install --no-cache-dir --require-hashes --no-deps -r requirements.txt
 
 COPY bot/ bot/
 COPY entrypoint.sh .
