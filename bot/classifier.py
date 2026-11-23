@@ -66,7 +66,8 @@ SCHEMA = {
     "type": "object",
     "properties": {
         "category": {"type": "string", "enum": list(CATEGORIES)},
-        "confidence": {"type": "integer", "minimum": 0, "maximum": 100},
+        # 0–100 is asked for in the prompt and clamped in parse_verdict: the API refuses integer bounds.
+        "confidence": {"type": "integer"},
         "reason": {"type": "string"},
     },
     "required": ["category", "confidence", "reason"],

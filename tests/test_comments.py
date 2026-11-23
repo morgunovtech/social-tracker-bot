@@ -125,6 +125,8 @@ def test_verdict_parsing():
     with pytest.raises(ValueError):
         classifier.parse_verdict(_response({"category": "weird", "confidence": 1, "reason": ""}))
     assert set(classifier.SCHEMA["properties"]["category"]["enum"]) == set(classifier.CATEGORIES)
+    # The API refuses minimum/maximum on an integer (HTTP 400): the range is clamped here instead.
+    assert not {"minimum", "maximum"} & set(classifier.SCHEMA["properties"]["confidence"])
 
 
 def test_the_sdk_accepts_what_classify_sends():

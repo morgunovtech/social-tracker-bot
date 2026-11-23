@@ -7,6 +7,9 @@ The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists 
 **Deleted accounts among the subscribers**
 - `scripts/clean_deleted.py`: remove deleted accounts from the channel's subscribers over MTProto (Telethon), by hand from a laptop, dry run by default; `--session bot` or `--session user`. Not part of the bot: the Bot API cannot list members.
 
+**Fixed**
+- Comments were never classified: the output schema asked the Claude API for an integer with `minimum`/`maximum`, which the API refuses (HTTP 400), so every check failed and, after three, the owner got the «проверка не работает» notice. The range is clamped in the bot instead.
+
 ## 1.3.0 — 2026-11-23
 
 Life of the channel without TGStat in the admins, and the group router that #43 left unreachable.
