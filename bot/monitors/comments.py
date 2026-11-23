@@ -31,7 +31,7 @@ import anthropic
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.error import BadRequest, Forbidden, TelegramError
 
-from bot import classifier, monitors, notifier
+from bot import callbacks, classifier, monitors, notifier
 from bot.classifier import REFUSED, Sample, Verdict
 from bot.config import Config
 from bot.db import Database, utcnow
@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 MONITOR_ID = "comments"
 # Callback data of the card buttons: cm:<action>:<review id>.
-CALLBACK = "cm"
+CALLBACK = callbacks.COMMENTS
 # A 🚨 card (rings through quiet hours) needs a blocked-for category at least
 # this sure; anything flagged below is a 🟠 card.
 CRITICAL_CONFIDENCE = 70
@@ -298,7 +298,7 @@ async def _api_failed(bot: Bot, config: Config, db: Database, error: Exception) 
             bot, config, db,
             t("🟠 Комментарии: проверка не работает {n} раза подряд ({error}) — комментарии сейчас никто не смотрит. "
               "Проверь ANTHROPIC_API_KEY и баланс API.").format(n=fails, error=type(error).__name__),
-            Priority.NORMAL,
+            Priority.NORMAL, actions=(callbacks.COMMENTS,), monitor=MONITOR_ID,
         )
 
 
@@ -327,7 +327,7 @@ async def over_daily_limit(bot: Bot, config: Config, db: Database) -> bool:
             bot, config, db,
             t("🟠 Комментарии: дневной лимит проверок ({limit}) исчерпан — до конца суток (UTC) новые "
               "комментарии не проверяю. Лимит задаёт COMMENTS_DAILY_LIMIT в .env.").format(limit=limit),
-            Priority.NORMAL,
+            Priority.NORMAL, actions=(callbacks.COMMENTS,), monitor=MONITOR_ID,
         )
     return True
 

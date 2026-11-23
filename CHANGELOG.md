@@ -4,7 +4,18 @@ The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists 
 
 ## 1.4.0 — unreleased
 
-A code review, fixed end to end: what could give a wrong answer, what could cost money or leave a secret in the chat, and the small things.
+A code review, fixed end to end: what could give a wrong answer, what could cost money or leave a secret in the chat, and the small things. Then a walk through the owner's journeys: everything a command did is a button away, and the alerts carry the next step.
+
+**Buttons**
+- Three buttons at the bottom of the chat: 🏠 Меню, 🔄 Обновить, 🔕 Тихо 8 ч — one tap from anywhere; «🔕 Помолчать» used to be three taps deep from a home screen that twenty alerts had scrolled away.
+- Under every alert and report, a row to where to look into it (🛡 Безопасность, 📈 Динамика, 📣 Канал, 💬 Комментарии); «🔕 Тихо 8 ч» under anything that may wait; «⚙️ Не присылать такие» under a 🟠 one switches its monitor off. The buttons open the screen as a new message, so the alert stays; a digest gets one row for all its items. The error notice carries «🏠 Главная».
+- 🔌 Подключения, on the home screen and in ⚙️ Настройки: every network with its state — not in .env, collected, waiting for a token, a cookie or the first number — and the Instagram and LinkedIn screens under it, shown whether or not they are set up yet (they used to appear in the settings only once the platform was in .env). `/connections` does the same.
+- «🔑 Прислать cookie» and «🔑 Прислать токен» ask for the secret as the next message, the way the LinkedIn number is asked for; the commands stay. «✏️ Другой пояс…» asks for a zone by name; Ташкент joined the presets; a row of minutes (:00 :15 :30 :45) under the hour grid.
+- A `.db` file sent without a caption is offered for a restore with one button (it used to be ignored in silence); «📦 Бэкап сейчас» in ⚙️ Настройки, not only on Sunday.
+- The 📣 Канал and 💬 Комментарии screens carry their monitor's switch instead of «выключено в /modules».
+- The home screen shows when the data was last collected, «🔔 Снять тишину» while a mute lasts, and on a fresh install what is left to set up — the time zone, the token, the cookie — with a button for each.
+- «Тихий режим» is «Коротко без изменений»: three different things were called «тихо» (the short report, the quiet hours, the mute).
+- The `/` menu lists `/mute`, `/channel` and `/connections` too.
 
 **Comments of the channel**
 - At most three comments are classified at once, and at most `COMMENTS_DAILY_LIMIT` a day (300 by default, 0 = no limit): a spam wave of two hundred messages used to be two hundred parallel API calls with pictures. When the day's limit is reached the bot says so once and leaves the rest unchecked — in as many words.

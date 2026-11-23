@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 from telegram import ChatMember, ChatMemberUpdated, Message, MessageReactionCountUpdated, Update
 from telegram.constants import ChatMemberStatus
 
-from bot import monitors
+from bot import callbacks, monitors
 from bot.config import Config
 from bot.db import Database, parse_utc, utcnow
 from bot.i18n import plural, t
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 MONITOR_ID = "channel"
 # Callback data of the screen.
-CALLBACK = "ch"
+CALLBACK = callbacks.CHANNEL
 
 # How a subscriber came, as stored in channel_events.via: an invite link's
 # name as it is, or one of these.

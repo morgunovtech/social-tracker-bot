@@ -201,9 +201,10 @@ async def test_collection_alerts_once_until_a_token_works(db):
     assert any("отклонил токен" in line for line in await collection.alert_lines(db, dead))
 
 
-async def test_settings_and_instagram_screen(config, db):
-    screen = await ui.settings(db, config)
+async def test_connections_and_instagram_screen(config, db):
+    screen = await ui.connections(db, config)
     assert "📸 Instagram" in [b.text for row in screen.keyboard.inline_keyboard for b in row]
+    assert "Instagram — @semyon · ⚠️ нужен токен" in screen.text
     screen = await ui.instagram(db, config)
     assert "Аккаунт: @semyon" in screen.text and "Токена нет" in screen.text
     await ig.store_token(db, TOKEN, USER_ID)

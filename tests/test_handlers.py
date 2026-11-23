@@ -12,6 +12,7 @@ from telegram import Chat, Message, Update, User
 from telegram.error import BadRequest, Conflict, NetworkError
 from telegram.ext import ApplicationHandlerStop, ConversationHandler
 
+from bot import callbacks as cb
 from bot import handlers, notifier, ui
 from bot.db import Database, utcnow
 from bot.scheduler import CollectOutcome, setup_scheduler
@@ -135,7 +136,7 @@ async def test_every_button_answers_once_and_leads_back(make_update, make_contex
             continue
         seen.add(data)
         assert len(data.encode()) <= 64, data                       # Telegram's callback_data limit
-        if data == ui.LI_ENTER:                                     # the conversation's entry point
+        if data in cb.CONVERSATION_ENTRIES:                         # answered by the next message
             continue
         photos = len(bot.photos)
         query = await press(make_update, make_context, data)
@@ -503,7 +504,13 @@ async def test_hour_picker(make_update, make_context, db, sched):
     assert await db.get_setting("report_time") == "19:00"
     assert str(sched.get_job("scheduled_report").trigger.fields[5]) == "19"
     assert query.answers[0]["text"] == "Отчёт будет приходить в 19:00 UTC"
-    assert "в 19:00 UTC" in query.edits[0]
+    assert "Сейчас: 19:00 UTC" in query.edits[0]                     # the picker again, the hour marked
+    assert buttons(query.markups[0])["set:hour:19"] == "✅ 19:00"
+    query = await press(make_update, make_context, "set:minute:30", scheduler=sched)
+    assert await db.get_setting("report_time") == "19:30" and "Сейчас: 19:30 UTC" in query.edits[0]
+    assert buttons(query.markups[0])["set:minute:30"] == "✅ :30"
+    query = await press(make_update, make_context, "set:hour:7", scheduler=sched)   # the hour keeps the minutes
+    assert await db.get_setting("report_time") == "07:30"
 
 
 def _trigger(sched) -> tuple[str, str]:
@@ -610,8 +617,8 @@ async def test_quiet_mode_command_and_toggle(make_update, make_context, db):
     assert await db.get_setting("quiet_if_no_change") == "1"
     query = await press(make_update, make_context, "set:quiet")
     assert await db.get_setting("quiet_if_no_change") == "0"
-    assert "Настройки" in query.edits[0] and query.answers[0]["text"] == "Тихий режим выключен"
-    assert buttons(query.markups[0])["set:quiet"] == "⬜ Тихий режим"
+    assert "Настройки" in query.edits[0] and query.answers[0]["text"] == "Коротко без изменений: выключено"
+    assert buttons(query.markups[0])["set:quiet"] == "⬜ Коротко без изменений"
 
 
 async def test_mute_and_unmute_commands(make_update, make_context, db, bot):
@@ -746,7 +753,7 @@ def _document(source_path: str, size: int = 1024):
 async def test_restore_without_a_file_explains_how(make_update, make_context):
     update = make_update(text="/restore")
     await handlers.cmd_restore(update, make_context())
-    assert "ответь командой /restore" in update.message.replies[0]
+    assert "подтверди кнопкой" in update.message.replies[0] and "/restore" in update.message.replies[0]
 
 
 async def test_restore_as_reply_to_the_backup(make_update, make_context, db, sched, tmp_path):

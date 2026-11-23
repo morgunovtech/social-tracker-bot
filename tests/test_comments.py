@@ -387,7 +387,7 @@ async def test_stats_screen_counts_marks(group_bot, config, db, verdicts):
     assert "🔴 наркотики — 1 · 1 · 0" in screen.text and "🔴 мошенничество — 1 · 0 · 1" in screen.text
     assert "🟠 спам или реклама — 1 · 0 · 0" in screen.text
     assert "Точность по твоим отметкам: 50% (1 из 2)" in screen.text
-    assert buttons(screen.keyboard) == {"sec": "← Безопасность"}
+    assert buttons(screen.keyboard) == {"mod:comments:cm": "✅ Комментарии", "sec": "← Безопасность"}
 
     unconfigured = await ui.comments_screen(db, dataclasses.replace(config, anthropic_api_key=None))
     assert "Не подключено — нужно: ANTHROPIC_API_KEY" in unconfigured.text

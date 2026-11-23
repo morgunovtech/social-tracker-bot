@@ -17,6 +17,7 @@ import aiohttp
 from telegram import Bot
 
 from bot import notifier
+from bot.callbacks import SECURITY
 from bot.config import Config
 from bot.db import Database, utcnow
 from bot.i18n import t
@@ -249,7 +250,7 @@ async def _track_reachability(bot: Bot, config: Config, db: Database, reachable:
         if fails:
             await db.set_setting("mail_fail_streak", "0")
         if fails >= UNREACHABLE_AFTER:
-            await notifier.send(bot, config, db, t("✅ Почтовый воркер снова отвечает"))
+            await notifier.send(bot, config, db, t("✅ Почтовый воркер снова отвечает"), monitor="mail")
         return
     fails += 1
     await db.set_setting("mail_fail_streak", str(fails))
@@ -260,6 +261,7 @@ async def _track_reachability(bot: Bot, config: Config, db: Database, reachable:
                 "🟠 Почтовый воркер не отвечает ~30 мин — письма безопасности не доходят. "
                 "Проверь SECURITY_MAIL_URL, SECURITY_MAIL_TOKEN и деплой воркера."
             ),
+            monitor="mail",
         )
 
 
@@ -294,7 +296,7 @@ async def check(bot: Bot, config: Config, db: Database, session: aiohttp.ClientS
         # hours and /mute; a login code or an unrecognised mail waits for the digest.
         priority = Priority.CRITICAL if kind is not None and kind.icon == "🚨" else Priority.NORMAL
         try:
-            await notifier.send(bot, config, db, text, priority, no_preview=True)
+            await notifier.send(bot, config, db, text, priority, no_preview=True, actions=(SECURITY,), monitor="mail")
         except Exception:
             logger.exception("Mail alert send failed — will retry on the next poll")
             continue

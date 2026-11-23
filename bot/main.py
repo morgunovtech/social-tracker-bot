@@ -52,6 +52,9 @@ def _bot_commands() -> list[BotCommand]:
         BotCommand("week", t("Динамика за неделю")),
         BotCommand("security", t("Безопасность аккаунтов")),
         BotCommand("settings", t("Настройки")),
+        BotCommand("mute", t("Помолчать 8 часов")),
+        BotCommand("channel", t("Жизнь канала")),
+        BotCommand("connections", t("Подключения: токены и cookie")),
         BotCommand("help", t("Помощь и все команды")),
     ]
 

@@ -19,6 +19,31 @@ from zoneinfo import ZoneInfo
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
 from bot import monitors, notifier, platforms
+from bot.callbacks import (
+    BACKUP,
+    CHANNEL,
+    CHART,
+    COMMENTS,
+    CONNECTIONS,
+    DYNAMICS,
+    HELP,
+    HOME,
+    IG_TOKEN,
+    INPUT_CANCEL,
+    INSTAGRAM,
+    LI_CANCEL,
+    LI_COOKIE,
+    LI_ENTER,
+    LINKEDIN,
+    MONITORS,
+    MUTE_OFF,
+    NOW,
+    RESTORE,
+    SECURITY,
+    SETTINGS,
+    TABLE,
+    TZ_OTHER,
+)
 from bot.config import DOW_ORDER, Config
 from bot.db import Database, parse_utc, utcnow
 from bot.i18n import language, plural, t
@@ -30,30 +55,23 @@ from bot.platforms.linkedin import COOKIE_AGING_DAYS, get_active_cookie, get_coo
 from bot.reporter import _fmt, build_history_all, build_history_table, build_week_report
 from bot.scheduler import build_stats, get_report_schedule, get_report_tz, is_quiet_mode
 
-# Callback data of the screens and actions.
-HOME = "home"
-NOW = "now"
-DYNAMICS = "dyn"
-CHART = "chart"
-TABLE = "tbl"
-SECURITY = "sec"
-SETTINGS = "set"
-MONITORS = "mod"
-LINKEDIN = "li"
-INSTAGRAM = "ig"
-LI_ENTER = "li:enter"
-LI_CANCEL = "li:cancel"
-HELP = "help"
-COMMENTS = comments.CALLBACK
-CHANNEL = channel.CALLBACK
+# Callback data of the screens and actions: bot/callbacks.py, re-exported here
+# for the handlers (ui.HOME …); the two monitors name theirs the same way.
+assert COMMENTS == comments.CALLBACK and CHANNEL == channel.CALLBACK
 
-# The persistent reply-keyboard button: tapping it sends this text back.
-# Russian is the key; the keyboard shows t(MENU_BUTTON_TEXT).
+# The persistent reply keyboard: tapping a button sends its text back. Three
+# buttons, one tap from anywhere in a chat full of alerts: the menu, a fresh
+# collection and eight hours of silence. Russian is the key; the keyboard
+# shows t(…).
 MENU_BUTTON_TEXT = "🏠 Меню"
+REFRESH_BUTTON_TEXT = "🔄 Обновить"
+MUTE_BUTTON_TEXT = "🔕 Тихо 8 ч"
 # Reply keyboards of earlier versions stay on the user's screen until replaced.
 LEGACY_MENU_BUTTON_TEXTS = ("📊 Меню",)
 
 TABLE_PERIODS = (7, 14, 30, 90)
+# The minutes a report may start at by button; any minute by /settime.
+MINUTE_CHOICES = (0, 15, 30, 45)
 # «🔕 Помолчать» presets: the argument of /mute each button stands for.
 MUTE_CHOICES = ("1h", "4h", "8h", "1d")
 
@@ -79,6 +97,7 @@ COMMON_ZONES = (
     ("Europe/Samara", "Самара"),
     ("Asia/Tbilisi", "Тбилиси"),
     ("Asia/Yekaterinburg", "Екатеринбург"),
+    ("Asia/Tashkent", "Ташкент"),
     ("Asia/Almaty", "Алматы"),
     ("Asia/Novosibirsk", "Новосибирск"),
     ("Asia/Vladivostok", "Владивосток"),
@@ -148,7 +167,7 @@ def _titled(report: str) -> str:
 
 def persistent_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        [[KeyboardButton(t(MENU_BUTTON_TEXT))]],
+        [[KeyboardButton(t(MENU_BUTTON_TEXT)), KeyboardButton(t(REFRESH_BUTTON_TEXT)), KeyboardButton(t(MUTE_BUTTON_TEXT))]],
         resize_keyboard=True,
         is_persistent=True,
         input_field_placeholder=t("Меню — кнопкой ниже, команды — через /"),
@@ -283,6 +302,41 @@ async def linkedin_is_manual(db: Database, config: Config) -> bool:
     return await db.get_setting("cookie_expired_alerted") == "1"
 
 
+async def last_collected(db: Database, config: Config, tz: ZoneInfo) -> str | None:
+    """«сегодня 08:00» / «21.11 08:00» — when the newest row of an enabled
+    platform was collected; None before the first collection."""
+    newest: datetime | None = None
+    for platform in platforms.enabled(config):
+        latest = await db.get_latest(platform.id)
+        if latest is None:
+            continue
+        try:
+            at = parse_utc(latest["collected_at"])
+        except (ValueError, TypeError):
+            continue
+        if newest is None or at > newest:
+            newest = at
+    if newest is None:
+        return None
+    local = newest.astimezone(tz)
+    today = utcnow().astimezone(tz).date()
+    return t("сегодня {time}").format(time=local.strftime("%H:%M")) if local.date() == today else local.strftime("%d.%m %H:%M")
+
+
+async def setup_todo(db: Database, config: Config) -> list[tuple[str, str]]:
+    """What a fresh install still needs, as (callback, line): the time zone
+    while none was ever chosen (the report would come at 08:00 UTC), the
+    Instagram token, the first LinkedIn number. Empty once everything is set."""
+    todo: list[tuple[str, str]] = []
+    if await db.get_setting("report_tz") is None:
+        todo.append((f"{SETTINGS}:tz", t("часовой пояс — пока отчёт по UTC")))
+    if BY_ID["instagram"].enabled(config) and not await ig.get_active_token(db, config):
+        todo.append((CONNECTIONS, t("токен Instagram — без него число не собирается")))
+    if BY_ID["linkedin"].enabled(config) and await db.get_latest("linkedin") is None:
+        todo.append((CONNECTIONS, t("LinkedIn — cookie для автосбора или первое число вручную")))
+    return todo
+
+
 async def home(db: Database, config: Config, report: str | None = None) -> Screen:
     """The follower report itself, the next report time and the way to everything else.
 
@@ -291,20 +345,80 @@ async def home(db: Database, config: Config, report: str | None = None) -> Scree
     if report is None:
         report, _ = await build_stats(db, config)
     dow, hour, minute, tz = await _schedule(db, config)
-    text = f"{_titled(report)}\n\n" + t("⏭ Следующий отчёт: {next}").format(next=next_report(dow, hour, minute, tz))
+    lines = [_titled(report), ""]
+    collected = await last_collected(db, config, tz)
+    if collected:
+        lines.append(t("🕒 Последний сбор: {when}").format(when=esc(collected)))
+    lines.append(t("⏭ Следующий отчёт: {next}").format(next=next_report(dow, hour, minute, tz)))
     silence = await notifier.silence_status(db, config)
     if silence:
-        text += f"\n{esc(silence)}"
+        lines.append(esc(silence))
+    todo = await setup_todo(db, config)
+    if todo:
+        lines += ["", t("🧭 Осталось настроить:")] + [f"• {esc(line)}" for _, line in todo]
     rows = [
         [_button(t("🔄 Обновить данные"), NOW)],
         [_button(t("📈 Динамика"), DYNAMICS), _button(t("🛡 Безопасность"), SECURITY)],
     ]
-    if BY_ID["telegram"].enabled(config):
-        rows.append([_button(t("📣 Канал"), CHANNEL)])
+    middle = [_button(t("📣 Канал"), CHANNEL)] if BY_ID["telegram"].enabled(config) else []
+    middle.append(_button(t("🔌 Подключения"), CONNECTIONS))
+    rows.append(middle)
+    if any(callback == f"{SETTINGS}:tz" for callback, _ in todo):
+        rows.append([_button(t("🌍 Выбрать часовой пояс"), f"{SETTINGS}:tz")])
     if await linkedin_is_manual(db, config):
         rows.append([_button(t("✏️ Ввести число LinkedIn"), LI_ENTER)])
+    if await notifier.mute_until(db) is not None:
+        rows.append([_button(t("🔔 Снять тишину"), f"{MUTE_OFF}:{HOME}")])
     rows.append([_button(t("⚙️ Настройки"), SETTINGS), _button(t("❓ Помощь"), HELP)])
-    return Screen(text, InlineKeyboardMarkup(rows))
+    return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
+
+
+async def connections(db: Database, config: Config) -> Screen:
+    """Every network: whether it is in .env, whether its number comes in by
+    itself, and the button that fixes what does not. The one screen a fresh
+    install needs; the per-network screens hang under it."""
+    lines = [t("<b>🔌 Подключения</b>"), ""]
+    rows: list[list[InlineKeyboardButton]] = []
+    for platform in PLATFORMS:
+        if not platform.enabled(config):
+            lines.append(t("{icon} {label} — не подключено: {needs} в .env").format(
+                icon=UNAVAILABLE, label=platform.label, needs=_ENV_NEEDS[platform.id]
+            ))
+            continue
+        target = esc(platform.target(config))
+        latest = await db.get_latest(platform.id)
+        state = ""
+        if platform.id == "instagram":
+            if not await ig.get_active_token(db, config):
+                state = t("⚠️ нужен токен")
+            elif await db.get_setting("instagram_token_alerted") == "1":
+                state = t("🟠 токен отклонён")
+        elif platform.id == "linkedin":
+            if await db.get_setting("cookie_expired_alerted") == "1":
+                state = t("🟠 cookie отклонён, число вручную")
+            elif not await get_active_cookie(db, config):
+                state = t("✏️ число вручную")
+            elif latest is None:
+                state = t("⚠️ подтверди первое число")
+        if not state:
+            state = t("✅ собирается") if latest is not None else t("⏳ первый сбор ещё не был")
+        lines.append(f"{platform.label} — {target} · {state}")
+        if platform.id == "instagram":
+            rows.append([_button("📸 Instagram", INSTAGRAM)])
+        elif platform.id == "linkedin":
+            rows.append([_button("💼 LinkedIn", LINKEDIN)])
+    lines += ["", t("Сети включаются в .env и перезапуском бота; токен Instagram и cookie LinkedIn — кнопками здесь.")]
+    rows.append(_back(HOME, t("Главная")))
+    return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
+
+
+# What .env needs for a network that is not connected (shown on 🔌 Подключения).
+_ENV_NEEDS = {
+    "telegram": "TELEGRAM_CHANNEL_ID",
+    "youtube": "YOUTUBE_API_KEY + YOUTUBE_CHANNEL_ID",
+    "instagram": "INSTAGRAM_USERNAME",
+    "linkedin": "LINKEDIN_PROFILE_URL",
+}
 
 
 def loading() -> Screen:
@@ -328,8 +442,9 @@ async def channel_screen(db: Database, config: Config) -> Screen:
     if not monitor.requires(config):
         lines.append(t("Не подключено — нужно: {needs}.").format(needs=esc(t(monitor.needs))))
         return Screen("\n".join(lines), InlineKeyboardMarkup([_back(HOME, t("Главная"))]))
-    if not await monitors.is_switched_on(db, channel.MONITOR_ID):
-        lines.append(t("⬜ Выключено в /modules — пока выключено, события не записываются."))
+    on = await monitors.is_switched_on(db, channel.MONITOR_ID)
+    if not on:
+        lines.append(t("⬜ Выключено — события не записываются. Включить — кнопкой ниже."))
         lines.append("")
     lines += await channel.overview(db, config, await get_report_tz(db, config))
     lines += [
@@ -337,7 +452,11 @@ async def channel_screen(db: Database, config: Config) -> Screen:
         t("Просмотры, пересылки и цитирование Bot API не отдаёт — они в статистике самого Telegram "
           "(в канале: ⋮ → Статистика)."),
     ]
-    return Screen("\n".join(lines), InlineKeyboardMarkup([_back(HOME, t("Главная"))]))
+    rows = [
+        [_button(f"{_check(on)} {t(monitor.label)}", f"{MONITORS}:{channel.MONITOR_ID}:{CHANNEL}")],
+        _back(HOME, t("Главная")),
+    ]
+    return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
 
 
 async def table(db: Database, config: Config, platform_id: str = "all", days: int = 7) -> Screen:
@@ -426,7 +545,7 @@ async def comments_screen(db: Database, config: Config) -> Screen:
                        "участников.").format(chat=esc(config.comments_chat_id)))
     lines.append(t("Модель: {model}").format(model=esc(config.comments_model)))
     if not on:
-        lines.append(t("⬜ Выключено в /modules"))
+        lines.append(t("⬜ Выключено — комментарии не проверяются. Включить — кнопкой ниже."))
     stats = await db.review_stats(COMMENTS_STATS_DAYS)
     lines += ["", t("<b>За {days} дней</b>").format(days=COMMENTS_STATS_DAYS)]
     lines.append(t("Проверено комментариев: {n}").format(n=stats["checked"]))
@@ -451,7 +570,11 @@ async def comments_screen(db: Database, config: Config) -> Screen:
             )
         else:
             lines.append(t("Отмечай карточки кнопками — из отметок складывается точность."))
-    return Screen("\n".join(lines), InlineKeyboardMarkup([_back(SECURITY, t("Безопасность"))]))
+    rows = [
+        [_button(f"{_check(on)} {t(monitor.label)}", f"{MONITORS}:{comments.MONITOR_ID}:{COMMENTS}")],
+        _back(SECURITY, t("Безопасность")),
+    ]
+    return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
 
 
 def question_keys(platform: Platform) -> list[str]:
@@ -545,23 +668,19 @@ async def settings(db: Database, config: Config) -> Screen:
         t("🌍 Часовой пояс: {tz}").format(tz=esc(tz_name(tz))),
         t("Данные собираются каждый день в это время, а отчёт приходит в выбранные дни."),
         "",
-        t("🔕 Тихий режим: {state}").format(state=t("включён") if quiet else t("выключен")),
-        t("Когда включён, неделя без изменений — это одна строка вместо отчёта."),
+        t("📝 Коротко без изменений: {state}").format(state=t("включено") if quiet else t("выключено")),
+        t("Когда включено, неделя без изменений — это одна строка вместо отчёта."),
         "",
         t("🔔 Когда писать: {when}").format(when=esc(await _when_summary(db, config))),
         "",
         t("<i>Версия: {build}Python {python}</i>").format(build=build, python=py_platform.python_version()),
     ])
-    tools = [_button(t("🧩 Мониторинги"), MONITORS)]
-    if BY_ID["instagram"].enabled(config):
-        tools.append(_button("📸 Instagram", INSTAGRAM))
-    if BY_ID["linkedin"].enabled(config):
-        tools.append(_button("💼 LinkedIn", LINKEDIN))
     rows = [
         [_button(t("📅 Дни отчёта"), f"{SETTINGS}:days"), _button(t("🕗 Время отчёта"), f"{SETTINGS}:time")],
         [_button(t("🌍 Часовой пояс"), f"{SETTINGS}:tz")],
-        [_button(f"{_check(quiet)} {t('Тихий режим')}", f"{SETTINGS}:quiet"), _button(t("🔔 Когда писать"), f"{SETTINGS}:when")],
-        tools,
+        [_button(f"{_check(quiet)} {t('Коротко без изменений')}", f"{SETTINGS}:quiet"), _button(t("🔔 Когда писать"), f"{SETTINGS}:when")],
+        [_button(t("🧩 Мониторинги"), MONITORS), _button(t("🔌 Подключения"), CONNECTIONS)],
+        [_button(t("📦 Бэкап сейчас"), BACKUP)],
         _back(HOME, t("Главная")),
     ]
     return Screen(text, InlineKeyboardMarkup(rows))
@@ -655,12 +774,11 @@ async def report_time(db: Database, config: Config) -> Screen:
     text = t(
         "<b>🕗 Время отчёта</b>\n\n"
         "Сейчас: {time}\n\n"
-        "{zone} Точное время с минутами — командой, например /settime 08:30"
+        "{zone} Час — в сетке, минуты — в ряду под ней; любое время — командой, например /settime 08:37"
     ).format(time=clock(hour, minute, tz), zone=zone)
-    hours = [
-        _button(_picked((h, 0) == (hour, minute), f"{h:02d}:00"), f"{SETTINGS}:hour:{h}") for h in range(24)
-    ]
-    rows = _rows(hours, 4) + [[_button(t("🌍 Часовой пояс"), f"{SETTINGS}:tz")], _back(SETTINGS, t("Настройки"))]
+    hours = [_button(_picked(h == hour, f"{h:02d}:00"), f"{SETTINGS}:hour:{h}") for h in range(24)]
+    minutes = [_button(_picked(m == minute, f":{m:02d}"), f"{SETTINGS}:minute:{m}") for m in MINUTE_CHOICES]
+    rows = _rows(hours, 4) + [minutes, [_button(t("🌍 Часовой пояс"), f"{SETTINGS}:tz")], _back(SETTINGS, t("Настройки"))]
     return Screen(text, InlineKeyboardMarkup(rows))
 
 
@@ -676,7 +794,8 @@ async def timezone(db: Database, config: Config) -> Screen:
     for key, name in COMMON_ZONES:
         label = name if key == "UTC" else f"{t(name)} {utc_offset(ZoneInfo(key)).removeprefix('UTC')}"
         picks.append(_button(_picked(key == tz.key, label), f"{SETTINGS}:tz:{key}"))
-    return Screen(text, InlineKeyboardMarkup(_rows(picks) + [_back(SETTINGS, t("Настройки"))]))
+    rows = _rows(picks) + [[_button(t("✏️ Другой пояс…"), TZ_OTHER)], _back(SETTINGS, t("Настройки"))]
+    return Screen(text, InlineKeyboardMarkup(rows))
 
 
 async def monitors_screen(db: Database, config: Config) -> Screen:
@@ -746,12 +865,16 @@ async def linkedin(db: Database, config: Config) -> Screen:
     lines += [
         "",
         t(
-            "<b>Автосбор</b>: отправь /setcookie и значение cookie li_at "
-            "(linkedin.com → DevTools → Application → Cookies). Я проверю его и сразу удалю сообщение."
+            "<b>Автосбор</b>: нажми «🔑 Прислать cookie» и пришли значение cookie li_at "
+            "(linkedin.com → DevTools → Application → Cookies); то же — командой /setcookie. "
+            "Я проверю его и сразу удалю сообщение."
         ),
         t("<i>LinkedIn запрещает автоматический доступ, так что автосбор — на твой риск.</i>"),
     ]
-    rows = [[_button(t("✏️ Ввести число вручную"), LI_ENTER)], _back(SETTINGS, t("Настройки"))]
+    rows = [
+        [_button(t("🔑 Прислать cookie"), LI_COOKIE), _button(t("✏️ Ввести число вручную"), LI_ENTER)],
+        _back(CONNECTIONS, t("Подключения")),
+    ]
     return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
 
 
@@ -792,11 +915,13 @@ async def instagram(db: Database, config: Config) -> Screen:
             "На developers.facebook.com создай приложение с вариантом «Instagram API», открой "
             "«API setup with Unified login», добавь свой аккаунт как Instagram Tester, прими приглашение "
             "в Instagram (Настройки → Website permissions → Tester invitations) и нажми «Generate token». "
-            "Отправь /igtoken и токен одним сообщением — я проверю его и сразу удалю сообщение."
+            "Потом нажми «🔑 Прислать токен» и пришли его одним сообщением (то же — командой /igtoken) — "
+            "я проверю его и сразу удалю сообщение."
         ),
         t("<i>Это официальный API: бот читает только публичные данные своего аккаунта.</i>"),
     ]
-    return Screen("\n".join(lines), InlineKeyboardMarkup([_back(SETTINGS, t("Настройки"))]))
+    rows = [[_button(t("🔑 Прислать токен"), IG_TOKEN)], _back(CONNECTIONS, t("Подключения"))]
+    return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
 
 
 async def linkedin_prompt(db: Database) -> Screen:
@@ -808,6 +933,41 @@ async def linkedin_prompt(db: Database) -> Screen:
         ),
         InlineKeyboardMarkup([[_button(t("Отмена"), LI_CANCEL)]]),
     )
+
+
+# The text-input conversations (bot/handlers.py): what is asked for, by kind.
+INPUT_PROMPTS = {
+    "cookie": (
+        "🔑 Пришли значение cookie li_at одним сообщением "
+        "(linkedin.com → DevTools → Application → Cookies → li_at → Value). "
+        "Я проверю его и сразу удалю сообщение."
+    ),
+    "token": (
+        "🔑 Пришли токен Instagram одним сообщением "
+        "(developers.facebook.com → приложение → API setup with Unified login → Generate token). "
+        "Я проверю его и сразу удалю сообщение."
+    ),
+    "tz": "🌍 Пришли название часового пояса из базы IANA одним сообщением, например Asia/Kolkata или America/Chicago.",
+}
+
+
+def input_prompt(kind: str) -> Screen:
+    """«Send it in one message» with a cancel button; the answer is the next message."""
+    return Screen(esc(t(INPUT_PROMPTS[kind])), InlineKeyboardMarkup([[_button(t("Отмена"), INPUT_CANCEL)]]))
+
+
+def input_retry_tz() -> Screen:
+    return Screen(
+        t("Не знаю такой часовой пояс. Нужно название из базы IANA, например Europe/Moscow, или нажми «Отмена»."),
+        InlineKeyboardMarkup([[_button(t("Отмена"), INPUT_CANCEL)]]),
+    )
+
+
+def restore_prompt() -> InlineKeyboardMarkup:
+    """Under a .db file sent without a caption: restore, or not."""
+    return InlineKeyboardMarkup([[
+        _button(t("✅ Восстановить"), f"{RESTORE}:yes"), _button(t("Отмена"), f"{RESTORE}:no"),
+    ]])
 
 
 def linkedin_retry() -> Screen:
@@ -845,6 +1005,10 @@ def help_screen() -> Screen:
             "Пока всё в порядке — молчу; о проблеме пишу сразу, а сводку присылаю по расписанию."
         ),
         "",
+        t("<b>Кнопки внизу</b>"),
+        t("🏠 Меню — главная · 🔄 Обновить — собрать данные сейчас · 🔕 Тихо 8 ч — помолчать"),
+        t("Под тревогами и отчётами — кнопки туда, где разбираться; ⚙️ — выключить такие уведомления."),
+        "",
         t("<b>Значки</b>"),
         t("✅ в порядке или включено · ⬜ выключено · ➖ не подключено"),
         t("⚠️ нужно внимание · ❓ не отмечено"),
@@ -864,16 +1028,18 @@ def help_screen() -> Screen:
         t("/settime ЧЧ:ММ — время отчёта"),
         t("/setday &lt;дни&gt; — дни отчёта: sat, mon-fri, mon,thu, daily"),
         t("/settz &lt;пояс&gt; — часовой пояс, например Europe/Moscow"),
-        t("/setquiet on|off — тихий режим"),
+        t("/setquiet on|off — одна строка вместо отчёта, если за неделю без изменений"),
         t("/mute &lt;время&gt; — помолчать: 1h, 8h, 1d (по умолчанию 8h); /unmute — снять"),
         t("/modules — мониторинги"),
+        t("/connections — подключения: что собирается само, чему нужен токен или cookie"),
         t("/comments — комментарии канала: что проверено и насколько точно"),
         t("/channel — жизнь канала: подписки и отписки, откуда пришли, посты и реакции"),
         "",
         t("<b>Бэкап</b>"),
         t(
-            "По воскресеньям я присылаю файл с базой. Чтобы вернуть историю, ответь на него "
-            "командой /restore — уже собранное не перезапишется."
+            "По воскресеньям я присылаю файл с базой (и по кнопке «📦 Бэкап сейчас» в настройках). "
+            "Чтобы вернуть историю, пришли этот файл или ответь на него командой /restore — "
+            "уже собранное не перезапишется."
         ),
     ])
     return Screen(text, InlineKeyboardMarkup([_back(HOME, t("Главная"))]))

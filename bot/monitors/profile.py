@@ -17,6 +17,7 @@ import aiohttp
 from telegram import Bot
 
 from bot import notifier, platforms
+from bot.callbacks import SECURITY
 from bot.config import Config
 from bot.db import Database, utcnow
 from bot.i18n import plural, t
@@ -143,7 +144,9 @@ async def _send(bot: Bot, config: Config, db: Database, lines: list[str]) -> boo
         text = text[: MESSAGE_LIMIT - 1] + "…"
     try:
         # A 🚨 or 🔴 line rings through quiet hours and /mute; 🟠 changes wait for the digest.
-        await notifier.send(bot, config, db, text, notifier.priority_for(lines), no_preview=True)
+        await notifier.send(
+            bot, config, db, text, notifier.priority_for(lines), no_preview=True, actions=(SECURITY,), monitor="profile"
+        )
         return True
     except Exception:
         logger.exception("Profile alert send failed — will retry on the next check")

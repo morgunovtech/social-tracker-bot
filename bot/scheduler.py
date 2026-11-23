@@ -16,13 +16,14 @@ from apscheduler.triggers.interval import IntervalTrigger
 from telegram import Bot
 
 from bot import monitors, notifier, platforms, tofs_status
+from bot.callbacks import CHANNEL, CONNECTIONS, DYNAMICS, SECURITY
 from bot.chart import render_chart
 from bot.config import DOW_ORDER, Config, normalize_tz
 from bot.db import Database, parse_utc, utcnow
 from bot.i18n import t
 from bot.monitors import channel, collection, followers, hygiene, mail, profile
 from bot.notifier import Priority
-from bot.platforms import LABELS, PLATFORM_IDS
+from bot.platforms import BY_ID, LABELS, PLATFORM_IDS
 from bot.platforms.base import Context
 from bot.reporter import _crossed_milestone, build_month_report, build_report
 from bot.updates import run_dependency_watch, run_deploy_watch
@@ -192,8 +193,8 @@ async def _push_subscribers(
         logger.exception("Site push errored")
 
 
-async def _build_alerts(db: Database, config: Config, outcome: CollectOutcome) -> list[str]:
-    """Proactive alert lines of the monitors that are switched on.
+async def _alert_parts(db: Database, config: Config, outcome: CollectOutcome) -> tuple[list[str], list[str]]:
+    """(collection health lines, follower lines) of the monitors that are switched on.
 
     Drops and milestones are naturally deduped (the stored value moves past
     them); collection health keeps its dedup state in settings.
@@ -201,12 +202,21 @@ async def _build_alerts(db: Database, config: Config, outcome: CollectOutcome) -
     # Collection health keeps its streaks current even while switched off,
     # so switching it back on doesn't alert on a stale streak.
     collection_lines = await collection.alert_lines(db, outcome)
-    lines: list[str] = []
-    if await monitors.is_on(db, config, "collection"):
-        lines += collection_lines
-    if await monitors.is_on(db, config, "followers"):
-        lines += followers.alert_lines(outcome)
-    return lines
+    if not await monitors.is_on(db, config, "collection"):
+        collection_lines = []
+    follower_lines = followers.alert_lines(outcome) if await monitors.is_on(db, config, "followers") else []
+    return collection_lines, follower_lines
+
+
+async def _build_alerts(db: Database, config: Config, outcome: CollectOutcome) -> list[str]:
+    """Proactive alert lines of the monitors that are switched on."""
+    collection_lines, follower_lines = await _alert_parts(db, config, outcome)
+    return collection_lines + follower_lines
+
+
+def _report_actions(config: Config) -> tuple[str, ...]:
+    """The row under the report: the screens it leads to."""
+    return (DYNAMICS, SECURITY) + ((CHANNEL,) if BY_ID["telegram"].enabled(config) else ())
 
 
 async def send_alerts(bot: Bot, config: Config, db: Database, outcome: CollectOutcome) -> None:
@@ -216,9 +226,19 @@ async def send_alerts(bot: Bot, config: Config, db: Database, outcome: CollectOu
     value, so a drop or spike that isn't alerted now is never alerted.
     """
     try:
-        alerts = await _build_alerts(db, config, outcome)
+        collection_lines, follower_lines = await _alert_parts(db, config, outcome)
+        alerts = collection_lines + follower_lines
         if alerts:
-            await notifier.send(bot, config, db, "\n".join(alerts), notifier.priority_for(alerts))
+            # One monitor's lines alone get its switch-off button; a mixed message gets none.
+            monitor = (
+                "followers" if follower_lines and not collection_lines
+                else "collection" if collection_lines and not follower_lines
+                else None
+            )
+            await notifier.send(
+                bot, config, db, "\n".join(alerts), notifier.priority_for(alerts),
+                actions=(DYNAMICS,) if follower_lines else (CONNECTIONS,), monitor=monitor,
+            )
             logger.info("Sent %d proactive alert(s)", len(alerts))
     except Exception:
         logger.exception("Alert send failed")
@@ -340,7 +360,9 @@ async def _scheduled_job(
             try:
                 lines = await collection.run_failed(db)
                 if lines and await monitors.is_on(db, config, "collection"):
-                    await notifier.send(bot, config, db, "\n".join(lines), notifier.priority_for(lines))
+                    await notifier.send(
+                        bot, config, db, "\n".join(lines), notifier.priority_for(lines), monitor="collection"
+                    )
             except Exception:
                 logger.exception("Collection failure notice failed")
         return
@@ -382,12 +404,15 @@ async def _scheduled_job(
         quiet = await is_quiet_mode(db, config)
         try:
             if quiet and not outcome.has_change:
-                await notifier.send(bot, config, db, t("😴 Без изменений за неделю — всё стабильно ✅"), Priority.DIGEST)
+                await notifier.send(
+                    bot, config, db, t("😴 Без изменений за неделю — всё стабильно ✅"), Priority.DIGEST,
+                    actions=(DYNAMICS,),
+                )
                 logger.info("Quiet mode: sent no-change one-liner")
             else:
                 # The chart only follows a report delivered now: a digest can't hold it.
                 held = await notifier.deferred(db, config, Priority.DIGEST)
-                await notifier.send(bot, config, db, outcome.report, Priority.DIGEST)
+                await notifier.send(bot, config, db, outcome.report, Priority.DIGEST, actions=_report_actions(config))
                 chart = None if held else await _build_chart_png(db)
                 if chart:
                     await notifier.send_photo(bot, config, db, chart, t(CHART_CAPTION))
@@ -400,7 +425,7 @@ async def _scheduled_job(
             try:
                 nudge = await hygiene.nudge(db, config)
                 if nudge:
-                    await notifier.send(bot, config, db, nudge, Priority.DIGEST)
+                    await notifier.send(bot, config, db, nudge, Priority.DIGEST, actions=(SECURITY,))
                     logger.info("Hygiene reminder sent")
             except Exception:
                 logger.exception("Hygiene reminder failed")
@@ -412,7 +437,7 @@ async def _scheduled_job(
         try:
             digest = await build_month_report(db, today)
             if digest:
-                await notifier.send(bot, config, db, digest, Priority.DIGEST)
+                await notifier.send(bot, config, db, digest, Priority.DIGEST, actions=(DYNAMICS,))
                 logger.info("Monthly digest sent")
         except Exception:
             logger.exception("Monthly digest failed")

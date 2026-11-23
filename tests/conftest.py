@@ -255,6 +255,8 @@ def make_context(bot, config, db):
         bot_data = {"config": config, "db": db}
         if scheduler is not None:
             bot_data["scheduler"] = scheduler
-        return SimpleNamespace(bot=bot, bot_data=bot_data, args=list(args), application=FakeApplication())
+        return SimpleNamespace(
+            bot=bot, bot_data=bot_data, args=list(args), application=FakeApplication(), user_data={}
+        )
 
     return _make

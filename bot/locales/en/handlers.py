@@ -39,8 +39,8 @@ STRINGS: dict[str, str] = {
         "❌ Unknown time zone: \"{tz}\".\n"
         "It must be an IANA name, for example /settz Europe/Moscow or /settz Asia/Almaty. "
         "Common zones are a button away: /settz without a name.",
-    "✅ Тихий режим включён": "✅ Quiet mode on",
-    "✅ Тихий режим выключен": "✅ Quiet mode off",
+    "✅ Коротко без изменений: включено": "✅ Short when unchanged: on",
+    "✅ Коротко без изменений: выключено": "✅ Short when unchanged: off",
     "Пришли cookie вместе с командой: /setcookie <значение li_at>\n\n"
     "Где взять: linkedin.com → DevTools → Application → Cookies → li_at → Value. "
     "Сообщение с cookie я сразу удалю.":
@@ -119,8 +119,23 @@ STRINGS: dict[str, str] = {
     "Для графика пока мало данных: нужно хотя бы два дня": "Not enough data for a chart yet: it needs at least two days",
     "График — ниже": "The chart is below",
     "Сохранено": "Saved",
-    "Тихий режим включён": "Quiet mode on",
-    "Тихий режим выключен": "Quiet mode off",
+    "{label}: выключено. Включить снова — ⚙️ Настройки → 🧩 Мониторинги":
+        "{label}: off. To switch it back on — ⚙️ Settings → 🧩 Monitors",
+    "📦 Отправляю бэкап…": "📦 Sending the backup…",
+    "Чтобы вернуть историю, пришли файл бэкапа («📦 Еженедельный бэкап базы») и подтверди кнопкой, "
+    "или ответь на него командой /restore.\n\n"
+    "Данные из бэкапа добавятся к текущим: уже собранное не перезапишется.":
+        "To bring the history back, send the backup file (\"📦 Weekly database backup\") and confirm with the button, "
+        "or reply to it with /restore.\n\n"
+        "The backup's data is added to the current data: what is already collected is not overwritten.",
+    "Это бэкап базы? Могу вернуть из него историю — уже собранное не перезапишется.":
+        "Is this a database backup? I can bring the history back from it — what is already collected is not overwritten.",
+    "Не знаю, что делать с этим файлом. Бэкап базы (.db) я восстановлю — пришли его и подтверди кнопкой.":
+        "I don't know what to do with this file. A database backup (.db) I can restore — send it and confirm with the button.",
+    "Файл не нашёл — пришли его заново или ответь на него командой /restore":
+        "I can't find the file — send it again or reply to it with /restore",
+    "Коротко без изменений: включено": "Short when unchanged: on",
+    "Коротко без изменений: выключено": "Short when unchanged: off",
     "Нужен хотя бы один день": "At least one day is needed",
     "Отчёт будет приходить в {time}": "The report will come at {time}",
     "включено": "on",
@@ -141,6 +156,8 @@ STRINGS: dict[str, str] = {
     "Безопасность аккаунтов": "Account security",
     "Настройки": "Settings",
     "Помощь и все команды": "Help and all commands",
+    "Помолчать 8 часов": "Mute for 8 hours",
+    "Подключения: токены и cookie": "Connections: tokens and cookies",
     # bot/scheduler.py
     "📉 Подписчики за 30 дней": "📉 Followers over 30 days",
     "📦 Еженедельный бэкап базы. Чтобы вернуть из него историю, ответь на это сообщение "
