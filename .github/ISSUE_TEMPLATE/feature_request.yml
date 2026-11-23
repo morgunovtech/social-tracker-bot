@@ -1,0 +1,11 @@
+name: Feature request
+description: A network, a monitor or a report you miss
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you'd like
+      description: For a new network, say which official API gives the follower count; the bot never asks for a password and only reads public data of your own account.
+    validations:
+      required: true
