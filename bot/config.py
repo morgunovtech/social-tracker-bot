@@ -103,11 +103,25 @@ def _repo_slug() -> str | None:
     return slug or None
 
 
+def _admin_chat_id() -> int | None:
+    """ADMIN_CHAT_ID is optional: empty means «the first /start is the owner»."""
+    raw = (os.getenv("ADMIN_CHAT_ID") or "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        raise RuntimeError(f"Invalid ADMIN_CHAT_ID={raw!r}: a Telegram user id is a number") from None
+
+
 @dataclass(frozen=True)
 class Config:
     # Telegram bot (required) and the channel to track (optional)
     bot_token: str
-    admin_chat_id: int
+    # The owner. None until the first /start claims the bot (then it is kept in
+    # the DB); ADMIN_CHAT_ID in the environment pins the owner and wins over
+    # the DB. The one field that changes after start — see set_owner().
+    admin_chat_id: int | None
     telegram_channel_id: str | None
 
     # YouTube (optional: both values or the platform is off)
@@ -160,7 +174,7 @@ class Config:
     def from_env(cls) -> Config:
         return cls(
             bot_token=_require("BOT_TOKEN"),
-            admin_chat_id=int(_require("ADMIN_CHAT_ID")),
+            admin_chat_id=_admin_chat_id(),
             telegram_channel_id=os.getenv("TELEGRAM_CHANNEL_ID") or None,
             youtube_api_key=os.getenv("YOUTUBE_API_KEY") or None,
             youtube_channel_id=os.getenv("YOUTUBE_CHANNEL_ID") or None,
@@ -187,6 +201,12 @@ class Config:
             security_mail_url=(os.getenv("SECURITY_MAIL_URL") or "").rstrip("/") or None,
             security_mail_token=os.getenv("SECURITY_MAIL_TOKEN") or None,
         )
+
+    def set_owner(self, user_id: int) -> None:
+        """The owner learnt at runtime: the first /start, or the DB at startup.
+        The dataclass is frozen so nothing changes under the bot's feet; this
+        one field is the exception, and it only ever goes from None to an id."""
+        object.__setattr__(self, "admin_chat_id", user_id)
 
     @property
     def enabled_platforms(self) -> list[str]:

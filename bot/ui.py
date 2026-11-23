@@ -83,9 +83,11 @@ COMMON_ZONES = (
 )
 _ZONE_NAMES = dict(COMMON_ZONES)
 
-def welcome() -> str:
-    """The /start greeting in the chat language."""
-    return t(
+def welcome(claimed: bool = False) -> str:
+    """The /start greeting in the chat language; claimed — this /start just
+    made the sender the owner."""
+    head = t("✅ Теперь этот бот твой: он отвечает только тебе.") + "\n\n" if claimed else ""
+    return head + t(
         "👋 Привет! Я слежу за подписчиками и безопасностью твоих аккаунтов.\n\n"
         "Пока всё в порядке, я молчу. О падении подписчиков, накрутке, смене названия, ссылок "
         "или админов и о письмах про новые входы пишу сразу, а сводку присылаю по расписанию.\n\n"

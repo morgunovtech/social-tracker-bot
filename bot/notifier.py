@@ -237,7 +237,11 @@ async def send(
     no_preview: bool = False,
 ) -> bool:
     """Deliver now, silently unless CRITICAL, or queue for the digest.
-    True when delivered or queued; a Telegram error propagates."""
+    True when delivered or queued; a Telegram error propagates. Before the
+    first /start there is nobody to write to: False, and nothing is queued."""
+    if config.admin_chat_id is None:
+        logger.info("No owner yet — not sent: %s", text[:60])
+        return False
     if await deferred(db, config, priority):
         await db.queue_notification(
             text, reply_markup.to_json() if reply_markup else None, utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -258,6 +262,8 @@ async def send_photo(
     bot: Bot, config: Config, db: Database, photo: bytes, caption: str, priority: Priority = Priority.DIGEST
 ) -> None:
     """A picture: silent unless CRITICAL, never deferred (see the module docstring)."""
+    if config.admin_chat_id is None:
+        return
     await bot.send_photo(
         chat_id=config.admin_chat_id, photo=photo, caption=caption,
         disable_notification=priority is not Priority.CRITICAL,
@@ -269,6 +275,8 @@ async def send_document(
     priority: Priority = Priority.DIGEST,
 ) -> None:
     """A file: silent unless CRITICAL, never deferred."""
+    if config.admin_chat_id is None:
+        return
     await bot.send_document(
         chat_id=config.admin_chat_id, document=document, filename=filename, caption=caption,
         disable_notification=priority is not Priority.CRITICAL,
@@ -302,7 +310,7 @@ async def flush_queue(bot: Bot, config: Config, db: Database) -> int:
     returns how many were delivered. Several messages when the backlog is
     long or an item has buttons; only rows actually sent are deleted, so a
     Telegram error leaves the rest for the next minute."""
-    if await deferred(db, config, Priority.NORMAL):
+    if config.admin_chat_id is None or await deferred(db, config, Priority.NORMAL):
         return 0
     rows = await db.peek_notifications()
     if not rows:
