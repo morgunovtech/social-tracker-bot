@@ -4,7 +4,7 @@
 
 🇷🇺 [По-русски](README.ru.md)
 
-The bot talks to you in Russian; the setup is the same in any language.
+The bot talks to you in English or Russian (`BOT_LANG`); the setup is the same in both.
 
 ## What you get
 
@@ -27,6 +27,7 @@ The bot is modular: connect only the platforms you have, and switch monitors on 
 
 ## Setup
 
+0. **Language.** `BOT_LANG=en` or `ru` (the default): every screen, report, alert and the `/` menu. The examples below show the Russian bot.
 1. **Telegram (required).** Create a bot with [@BotFather](https://t.me/BotFather) → `BOT_TOKEN`. Get your user id from [@userinfobot](https://t.me/userinfobot) → `ADMIN_CHAT_ID`: only you can use the bot. To track a channel, make the bot an **admin** of it → `TELEGRAM_CHANNEL_ID`.
 2. **YouTube (optional).** In [Google Cloud Console](https://console.cloud.google.com/) enable YouTube Data API v3 and create an API key → `YOUTUBE_API_KEY`; your channel id (`UC…`) → `YOUTUBE_CHANNEL_ID`.
 3. **Instagram (optional).** The account must be professional (Creator or Business: Settings → Account type in the app, free). On [developers.facebook.com](https://developers.facebook.com/) create an app with the **Instagram API** use case (Meta also asks for a business portfolio: free, no verification needed for your own account), open «API setup with Unified login», create the configuration from the template, add your account as an **Instagram Tester**, accept the invitation in Instagram (Settings → Website permissions → Tester invitations) and press **Generate token**. Your @username → `INSTAGRAM_USERNAME`, then send the bot `/igtoken <token>` — it checks that the token was granted for that account, deletes your message and keeps the token (or set `INSTAGRAM_ACCESS_TOKEN` in `.env`). The token does not expire; if Meta revokes it, the bot says so once and in every report until a new one arrives. This is the official Instagram API: the bot reads only its own account's public data (followers, name, bio, post count) and watches those for a hijack.

@@ -12,6 +12,7 @@ import statistics
 from typing import TYPE_CHECKING
 
 from bot.db import Database
+from bot.i18n import t
 from bot.platforms import LABELS
 from bot.reporter import _fmt
 
@@ -54,13 +55,16 @@ def alert_lines(outcome: CollectOutcome) -> list[str]:
     lines: list[str] = []
     for platform, (prev, new) in outcome.drops.items():
         lines.append(
-            f"🟠 {LABELS[platform]}: −{_fmt(prev - new)} подписчиков за день ({_fmt(prev)} → {_fmt(new)})"
+            t("🟠 {label}: −{drop} подписчиков за день ({prev} → {new})").format(
+                label=LABELS[platform], drop=_fmt(prev - new), prev=_fmt(prev), new=_fmt(new)
+            )
         )
     for platform, (prev, new) in outcome.spikes.items():
         lines.append(
-            f"🚨 {LABELS[platform]}: +{_fmt(new - prev)} за день ({_fmt(prev)} → {_fmt(new)}) — "
-            f"аномально резкий рост, возможен наплыв ботов"
+            t(
+                "🚨 {label}: +{gain} за день ({prev} → {new}) — аномально резкий рост, возможен наплыв ботов"
+            ).format(label=LABELS[platform], gain=_fmt(new - prev), prev=_fmt(prev), new=_fmt(new))
         )
     for platform, milestone in outcome.milestones:
-        lines.append(f"🎯 {LABELS[platform]} перешагнул {_fmt(milestone)}!")
+        lines.append(t("🎯 {label} перешагнул {milestone}!").format(label=LABELS[platform], milestone=_fmt(milestone)))
     return lines

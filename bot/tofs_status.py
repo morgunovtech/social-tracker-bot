@@ -20,6 +20,7 @@ import aiohttp
 from bot import platforms
 from bot.config import Config
 from bot.db import Database, parse_utc, utcnow
+from bot.i18n import plural, t
 from bot.monitors import followers, profile
 from bot.reporter import AUTO_STALE_DAYS, _fmt, _signed
 
@@ -53,51 +54,43 @@ async def _item(db: Database, config: Config, platform, errors: dict) -> dict:
     fails = int(await db.get_setting(f"profile_fail_{platform.id}") or "0")
     if fails >= profile.UNREACHABLE_AFTER:
         return {"name": name, "level": "critical",
-                "text": "профиль не читается — удалён, скрыт или у бота отобрали права?"}
+                "text": t("профиль не читается — удалён, скрыт или у бота отобрали права?")}
     latest = await db.get_latest(platform.id)
     if platform.id == "linkedin" and errors.get("linkedin_cookie_expired"):
-        return {"name": name, "level": "warning", "text": "cookie истёк — обнови через /setcookie"}
+        return {"name": name, "level": "warning", "text": t("cookie истёк — обнови через /setcookie")}
     if platform.id == "instagram" and errors.get("instagram_token_expired"):
-        return {"name": name, "level": "warning", "text": "токен истёк — пришли новый через /igtoken"}
+        return {"name": name, "level": "warning", "text": t("токен истёк — пришли новый через /igtoken")}
     if platform.id == "instagram" and errors.get("instagram_token_missing"):
-        return {"name": name, "level": "warning", "text": "нет токена — пришли его через /igtoken"}
+        return {"name": name, "level": "warning", "text": t("нет токена — пришли его через /igtoken")}
     if latest is None:
         if errors.get(platform.id):
-            return {"name": name, "level": "warning", "text": "собрать не удалось"}
-        return {"name": name, "level": "unknown", "text": "пока нет данных"}
+            return {"name": name, "level": "warning", "text": t("собрать не удалось")}
+        return {"name": name, "level": "unknown", "text": t("пока нет данных")}
 
     count = latest["count"]
     yesterday = await db.get_by_date(platform.id, utcnow().date() - timedelta(days=1))
     # No change, nothing to say: «129, 0 за сутки» is a number that adds nothing.
     change = count - yesterday["count"] if yesterday else 0
-    head = _fmt(count) + (f", {_signed(change)} за сутки" if change else "")
+    head = _fmt(count) + (t(", {delta} за сутки").format(delta=_signed(change)) if change else "")
     try:
         age_days = (utcnow() - parse_utc(latest["collected_at"])).days
     except (ValueError, TypeError):
         age_days = 0
     if latest["source"] == "manual":
         if age_days >= config.linkedin_stale_days:
-            return {"name": name, "level": "warning", "text": f"{head} — введено вручную {age_days} дн. назад"}
+            return {"name": name, "level": "warning", "text": t("{head} — введено вручную {days} дн. назад").format(head=head, days=age_days)}
     elif age_days >= AUTO_STALE_DAYS:
-        return {"name": name, "level": "warning", "text": f"{head} — свежие данные собрать не удаётся"}
+        return {"name": name, "level": "warning", "text": t("{head} — свежие данные собрать не удаётся").format(head=head)}
     if errors.get(platform.id):
-        return {"name": name, "level": "warning", "text": f"{head} — сегодня собрать не удалось"}
+        return {"name": name, "level": "warning", "text": t("{head} — сегодня собрать не удалось").format(head=head)}
     if platform.id == "linkedin" and errors.get("linkedin_cookie_aging"):
         return {"name": name, "level": "warning",
-                "text": f"{head} — cookie живёт {errors['linkedin_cookie_aging']} дн., пора обновить"}
+                "text": t("{head} — cookie живёт {days} дн., пора обновить").format(
+                    head=head, days=errors["linkedin_cookie_aging"])}
     # The same bar as this bot's own drop alert: −2 of 1 157 is daily noise.
     if yesterday and followers.is_drop(yesterday["count"], count):
         return {"name": name, "level": "warning", "text": head}
     return {"name": name, "level": "ok", "text": head}
-
-
-def _followers(n: int) -> str:
-    """подписчик / подписчика / подписчиков — as Russian counts them."""
-    if n % 10 == 1 and n % 100 != 11:
-        return "подписчик"
-    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
-        return "подписчика"
-    return "подписчиков"
 
 
 async def _title(db: Database, enabled) -> str:
@@ -111,9 +104,9 @@ async def _title(db: Database, enabled) -> str:
         if latest is not None:
             known.append(latest["count"])
     if not known:
-        return TITLE
+        return t(TITLE)
     total = sum(known)
-    return f"{TITLE} · {_fmt(total)} {_followers(total)}"
+    return f"{t(TITLE)} · {_fmt(total)} {plural(total, 'подписчик', 'подписчика', 'подписчиков')}"
 
 
 async def build(db: Database, config: Config, errors: dict | None = None, bot_username: str | None = None) -> dict:

@@ -30,6 +30,7 @@ from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.config import Config
 from bot.db import Database
+from bot.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ async def report_startup_changes(bot: Bot, config: Config, db: Database) -> list
     lines: list[str] = []
     if current["commit"] and prev.get("commit") != current["commit"]:
         old = (prev.get("commit") or "?")[:7]
-        lines.append(f"  • сборка {old} → {current['commit'][:7]}")
+        lines.append(t("  • сборка {old} → {new}").format(old=old, new=current["commit"][:7]))
     if prev.get("python") != current["python"]:
         lines.append(f"  • Python {prev.get('python')} → {current['python']}")
     old_packages = prev.get("packages") or {}
@@ -92,7 +93,7 @@ async def report_startup_changes(bot: Bot, config: Config, db: Database) -> list
         if old_packages.get(name) and old_packages[name] != version:
             lines.append(f"  • {name} {old_packages[name]} → {version}")
     if lines:
-        await bot.send_message(chat_id=config.admin_chat_id, text="🔄 Бот обновился:\n" + "\n".join(lines))
+        await bot.send_message(chat_id=config.admin_chat_id, text=t("🔄 Бот обновился:\n") + "\n".join(lines))
     return lines
 
 
@@ -176,19 +177,19 @@ async def run_deploy_watch(bot: Bot, config: Config, db: Database) -> None:
 
     rows = []
     if failed["log"].startswith("https://"):
-        rows.append([InlineKeyboardButton("📄 Лог сборки", url=failed["log"])])
+        rows.append([InlineKeyboardButton(t("📄 Лог сборки"), url=failed["log"])])
     if failed["url"].startswith("https://"):
-        rows.append([InlineKeyboardButton("🔗 Что в этой версии", url=failed["url"])])
+        rows.append([InlineKeyboardButton(t("🔗 Что в этой версии"), url=failed["url"])])
     try:
         await bot.send_message(
             chat_id=config.admin_chat_id,
-            text=(
+            text=t(
                 "🟠 Новая версия бота не запустилась\n"
-                f"Railway не смог выкатить «{failed['title']}» ({failed['sha']}). Я работаю на прежней "
-                f"версии ({config.app_commit[:7]}), но и следующие обновления не встанут, пока сборка падает.\n\n"
+                "Railway не смог выкатить «{title}» ({sha}). Я работаю на прежней "
+                "версии ({running}), но и следующие обновления не встанут, пока сборка падает.\n\n"
                 "Что делать: открой лог сборки — обычно там видно, какой пакет не поставился. "
                 "Быстрый выход — откатить этот коммит в GitHub (Revert)."
-            ),
+            ).format(title=failed["title"], sha=failed["sha"], running=config.app_commit[:7]),
             reply_markup=InlineKeyboardMarkup(rows) if rows else None,
         )
     except Exception:
@@ -268,20 +269,28 @@ async def run_dependency_watch(bot: Bot, config: Config, db: Database) -> None:
                     for name, ids in vulns.items()
                 )
                 parts.append(
-                    "🛡 В пакетах бота нашлись известные уязвимости:\n" + listed + "\n"
-                    "Dependabot откроет PR с исправлением; после мержа я напишу, что обновился."
+                    t(
+                        "🛡 В пакетах бота нашлись известные уязвимости:\n{listed}\n"
+                        "Dependabot откроет PR с исправлением; после мержа я напишу, что обновился."
+                    ).format(listed=listed)
                 )
             else:
-                parts.append("✅ Уязвимых зависимостей больше нет.")
+                parts.append(t("✅ Уязвимых зависимостей больше нет."))
 
     for pr in prs or []:
         if pr["major"]:
             parts.append(
-                f"🔀 Ждёт твоего решения: {short_bump(pr['title'])} — крупное обновление, само не вливается. "
-                f"Прочитай «что поменялось» и нажми Merge: {pr['url']}"
+                t(
+                    "🔀 Ждёт твоего решения: {bump} — крупное обновление, само не вливается. "
+                    "Прочитай «что поменялось» и нажми Merge: {url}"
+                ).format(bump=short_bump(pr["title"]), url=pr["url"])
             )
         else:
-            parts.append(f"🟠 Обновление не встало само — тесты не прошли: {short_bump(pr['title'])} {pr['url']}")
+            parts.append(
+                t("🟠 Обновление не встало само — тесты не прошли: {bump} {url}").format(
+                    bump=short_bump(pr["title"]), url=pr["url"]
+                )
+            )
 
     if not parts:
         return
