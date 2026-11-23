@@ -9,15 +9,36 @@ from bot.config import Config
 from bot.db import Database
 from bot.handlers import register_handlers
 from bot.i18n import set_language, t
+from bot.redact import RedactingFormatter
 from bot.scheduler import setup_scheduler
 from bot.updates import report_startup_changes
 
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-)
-# httpx logs every request URL at INFO, and Bot API URLs contain the bot token.
-logging.getLogger("httpx").setLevel(logging.WARNING)
+LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+_config: Config | None = None
+
+
+def secret_values() -> list[str]:
+    """What must never reach a log line, as the bot knows it right now: read
+    at the moment a line is written, so before the config exists only the
+    patterns (bot token, keys in a query, the li_at cookie) mask."""
+    c = _config
+    if c is None:
+        return []
+    return [c.bot_token, c.youtube_api_key or "", c.instagram_access_token or "", c.linkedin_li_at or "",
+            c.site_ingest_url or "", c.site_ingest_token or "", c.healthcheck_url or "",
+            c.github_token or "", c.security_mail_url or "", c.security_mail_token or ""]
+
+
+def setup_logging() -> None:
+    handler = logging.StreamHandler()
+    handler.setFormatter(RedactingFormatter(LOG_FORMAT, secret_values))
+    logging.basicConfig(level=logging.INFO, handlers=[handler])
+    # httpx logs every request URL at INFO — the Bot API URL with the token
+    # on each call. The formatter would mask it; the line is still noise.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -62,7 +83,9 @@ async def _post_shutdown(app: Application) -> None:
 
 
 def main() -> None:
+    global _config
     config = Config.from_env()
+    _config = config
     set_language(config.lang)
     db = Database(config.db_path)
 
