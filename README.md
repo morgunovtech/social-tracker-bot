@@ -1,6 +1,6 @@
 # Social Tracker Bot
 
-> A Telegram bot that watches your social accounts: followers on Telegram, YouTube and LinkedIn with weekly trends, and the account's security — profile changes a hijacker makes, new sign-ins and password changes from your security emails, and a 2FA/password checklist. It stays quiet while things are fine and speaks up the moment something breaks.
+> A Telegram bot that watches your social accounts: followers on Telegram, YouTube, Instagram and LinkedIn with weekly trends, and the account's security — profile changes a hijacker makes, new sign-ins and password changes from your security emails, and a 2FA/password checklist. It stays quiet while things are fine and speaks up the moment something breaks.
 
 🇷🇺 [По-русски](README.ru.md)
 
@@ -16,7 +16,7 @@ The bot is modular: connect only the platforms you have, and switch monitors on 
 - **Signals, not noise**: milestones (1k, 5k, 10k…) on the day they're crossed, a forecast to the next one, growth speeding up or slowing down, a bot-influx detector (a jump ×5 above the usual daily gain).
 - **Problems arrive at once**: an expired LinkedIn cookie, collection failing 2+ days in a row, a drop in followers, data that has gone stale.
 - **Self-recovering**: failed platforms are retried hourly (up to 3 times), a run missed while the bot was down is caught up on start, a dead man's switch (`HEALTHCHECK_URL`) tells you when the bot itself dies. Point it at a [TofsDevOps](https://github.com/morgunovtech/Tofs_DevOps_bot) heartbeat address and the ping also carries a line per network («✅ Telegram · 12 340, +18 за сутки», «🔴 LinkedIn · профиль не читается») to TofsDevOps's main screen, next to your sites; refreshed after every profile check.
-- **Your data stays yours**: SQLite on your volume, a weekly backup sent to your chat (without the LinkedIn cookie), and `/restore` to merge a backup back without overwriting anything collected since.
+- **Your data stays yours**: SQLite on your volume, a weekly backup sent to your chat (without the LinkedIn cookie and the Instagram token), and `/restore` to merge a backup back without overwriting anything collected since.
 - **Quiet mode**: a one-liner instead of the full report when nothing changed.
 
 **Security**
@@ -29,9 +29,10 @@ The bot is modular: connect only the platforms you have, and switch monitors on 
 
 1. **Telegram (required).** Create a bot with [@BotFather](https://t.me/BotFather) → `BOT_TOKEN`. Get your user id from [@userinfobot](https://t.me/userinfobot) → `ADMIN_CHAT_ID`: only you can use the bot. To track a channel, make the bot an **admin** of it → `TELEGRAM_CHANNEL_ID`.
 2. **YouTube (optional).** In [Google Cloud Console](https://console.cloud.google.com/) enable YouTube Data API v3 and create an API key → `YOUTUBE_API_KEY`; your channel id (`UC…`) → `YOUTUBE_CHANNEL_ID`.
-3. **LinkedIn (optional).** Your profile URL → `LINKEDIN_PROFILE_URL`. Then either send the bot `/setcookie <li_at>` with the `li_at` cookie of a logged-in browser (DevTools → Application → Cookies → linkedin.com) — the bot checks it, deletes your message and watches the cookie's age — or enter the number by hand with the «✏️ Ввести число LinkedIn» button on the home screen.
+3. **Instagram (optional).** The account must be professional (Creator or Business: Settings → Account type in the app, free). On [developers.facebook.com](https://developers.facebook.com/) create an app, add the **Instagram** product and open «API setup with Instagram login»: add your account and press **Generate token**. Your @username → `INSTAGRAM_USERNAME`, then send the bot `/igtoken <token>` — it checks the token against the API, deletes your message and refreshes the token itself before its 60 days run out (or set `INSTAGRAM_ACCESS_TOKEN` in `.env`). This is the official Instagram API: the bot reads only its own account's public data (followers, name, bio, post count) and watches those for a hijack.
+4. **LinkedIn (optional).** Your profile URL → `LINKEDIN_PROFILE_URL`. Then either send the bot `/setcookie <li_at>` with the `li_at` cookie of a logged-in browser (DevTools → Application → Cookies → linkedin.com) — the bot checks it, deletes your message and watches the cookie's age — or enter the number by hand with the «✏️ Ввести число LinkedIn» button on the home screen.
 
-4. **Security emails (optional).** Deploy the [mail-worker](mail-worker/README.md) → `SECURITY_MAIL_URL`, `SECURITY_MAIL_TOKEN`, and set up forwarding in your mailbox.
+5. **Security emails (optional).** Deploy the [mail-worker](mail-worker/README.md) → `SECURITY_MAIL_URL`, `SECURITY_MAIL_TOKEN`, and set up forwarding in your mailbox.
 
 > ⚠️ **About LinkedIn.** There is no official API for a personal profile's follower count, so the bot opens your profile page with your cookie, once a day. LinkedIn's User Agreement prohibits automated access: use it at your own risk, LinkedIn may restrict the account. Leave the cookie out and type the number in by hand if you'd rather not take that risk.
 
@@ -63,6 +64,7 @@ Everything is a button away; the «🏠 Меню» button under the input field 
 ├── ✏️ Enter LinkedIn — only while the number is typed in by hand
 ├── ⚙️ Settings — report days (checkboxes), report hour (a grid), time zone, quiet mode
 │   ├── 🧩 Monitors — switch each one on and off
+│   ├── 📸 Instagram — how the number is collected, the token's age
 │   └── 💼 LinkedIn — how the number is collected, the cookie's age
 └── ❓ Help — how the bot works, what the icons mean, every command
 ```
@@ -89,6 +91,7 @@ The `/` menu lists the six entry points; the rest are for typing.
 | `/settz <zone>` | Your time zone, an IANA name such as `Europe/Moscow`; without an argument, a list of common ones |
 | `/setquiet on\|off` | Quiet mode |
 | `/setcookie <li_at>`, `/cookieage` | Set the LinkedIn cookie, check its age |
+| `/igtoken <token>` | Set the Instagram access token (checked against the API) |
 | `/restore` | Reply it to a backup message (or send a `.db` captioned `/restore`) to merge the history back |
 
 ## Schedule
@@ -111,7 +114,7 @@ The bot keeps itself up to date without touching its own container:
 
 ## What it creates outside the repo
 
-- A Telegram bot (@BotFather) and, if you use it, a YouTube Data API key in a Google Cloud project.
+- A Telegram bot (@BotFather) and, if you use them, a YouTube Data API key in a Google Cloud project and a Meta app with the Instagram product on developers.facebook.com.
 - Optionally a [healthchecks.io](https://healthchecks.io) check (`HEALTHCHECK_URL`) and your own site's ingest endpoint (`SITE_INGEST_URL`).
 - Optionally, for security emails: a Cloudflare Worker, a KV namespace, an Email Routing rule with its DNS records, and a forwarding address + filter in your mailbox — listed with teardown steps in [mail-worker/README.md](mail-worker/README.md).
 

@@ -233,8 +233,9 @@ async def _build_chart_png(db: Database, days: int = 30) -> bytes | None:
 async def _send_backup(bot: Bot, config: Config, db: Database) -> None:
     """Weekly DB backup straight into the admin chat — free offsite storage.
 
-    The LinkedIn cookie is wiped from the copy: /setcookie deletes it from the
-    chat, so the backup must not bring it back.
+    The LinkedIn cookie and the Instagram token are wiped from the copy:
+    /setcookie and /igtoken delete them from the chat, so the backup must not
+    bring them back.
     """
     try:
         with tempfile.TemporaryDirectory() as tmp:
@@ -249,8 +250,8 @@ async def _send_backup(bot: Bot, config: Config, db: Database) -> None:
             filename=f"followers-{today}.db",
             caption=(
                 "📦 Еженедельный бэкап базы. Чтобы вернуть из него историю, ответь на это сообщение "
-                "командой /restore. LinkedIn cookie в копию не входит: после восстановления пришли его "
-                "заново через /setcookie."
+                "командой /restore. LinkedIn cookie и токен Instagram в копию не входят: после "
+                "восстановления пришли их заново через /setcookie и /igtoken."
             ),
         )
         logger.info("DB backup sent (%d bytes)", len(data))

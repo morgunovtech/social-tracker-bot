@@ -221,6 +221,8 @@ async def test_hygiene_reminder_rides_with_the_report(bot, config, db, insert, f
 
 async def test_not_a_report_day_stays_silent(bot, config, db, insert, fake_collect, job_scheduler, monkeypatch):
     monkeypatch.setattr(scheduler, "_today_matches_dow", lambda *_: False)
+    # A Wednesday: not the 1st (monthly digest) and not a Sunday (backup) either.
+    monkeypatch.setattr(scheduler, "utcnow", lambda: datetime(2026, 11, 4, 9, 0, tzinfo=UTC))
     insert("telegram", 1000, 0)
     await _scheduled_job(bot, config, db, job_scheduler)
     assert bot.messages == [] and bot.documents == []

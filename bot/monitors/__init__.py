@@ -56,13 +56,13 @@ def _has_mail(config: Config) -> bool:
 
 MONITORS: tuple[Monitor, ...] = (
     Monitor("followers", "Подписчики", "падения, наплыв ботов, круглые числа"),
-    Monitor("collection", "Сбор данных", "сбои несколько дней подряд, истёкший cookie LinkedIn"),
+    Monitor("collection", "Сбор данных", "сбои несколько дней подряд, истёкший cookie LinkedIn или токен Instagram"),
     Monitor(
         "profile",
         "Профиль",
         "смена названия, описания и ссылок, аватарки; новые админы; пропавшие видео",
         requires=_has_profiles,
-        needs="Telegram-канал или YouTube",
+        needs="Telegram-канал, YouTube или Instagram",
     ),
     Monitor("hygiene", "Чек-лист безопасности", "2FA и пароли: балл в отчёте, напоминание раз в месяц"),
     Monitor(

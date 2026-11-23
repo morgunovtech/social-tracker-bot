@@ -23,6 +23,7 @@ from bot.config import DOW_ORDER, Config
 from bot.db import Database, parse_utc, utcnow
 from bot.monitors import hygiene
 from bot.platforms import BY_ID, PLATFORMS
+from bot.platforms import instagram as ig
 from bot.platforms.base import Platform
 from bot.platforms.linkedin import COOKIE_AGING_DAYS, get_active_cookie, get_cookie_age_days
 from bot.reporter import _fmt, build_history_all, build_history_table, build_week_report
@@ -38,6 +39,7 @@ SECURITY = "sec"
 SETTINGS = "set"
 MONITORS = "mod"
 LINKEDIN = "li"
+INSTAGRAM = "ig"
 LI_ENTER = "li:enter"
 LI_CANCEL = "li:cancel"
 HELP = "help"
@@ -425,6 +427,8 @@ async def settings(db: Database, config: Config) -> Screen:
         f"<i>Версия: {build}Python {py_platform.python_version()}</i>",
     ])
     tools = [_button("🧩 Мониторинги", MONITORS)]
+    if BY_ID["instagram"].enabled(config):
+        tools.append(_button("📸 Instagram", INSTAGRAM))
     if BY_ID["linkedin"].enabled(config):
         tools.append(_button("💼 LinkedIn", LINKEDIN))
     rows = [
@@ -546,6 +550,43 @@ async def linkedin(db: Database, config: Config) -> Screen:
     return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
 
 
+async def instagram(db: Database, config: Config) -> Screen:
+    """How the Instagram number is collected and how long the token lives."""
+    lines = ["<b>📸 Instagram</b>", "", f"Аккаунт: {esc(BY_ID['instagram'].target(config) or 'не задан')}"]
+    latest = await db.get_latest("instagram")
+    if latest:
+        when = parse_utc(latest["collected_at"]).strftime("%d.%m")
+        lines.append(f"Последнее значение: {_fmt(latest['count'])} — собрано {when}")
+    else:
+        lines.append("Последнее значение: пока нет")
+    lines.append("")
+
+    token = await ig.get_active_token(db, config)
+    days_left = await ig.get_token_days_left(db)
+    if not token:
+        lines.append("⚠️ Токена нет: без него число не собирается.")
+    elif await db.get_setting("instagram_token_alerted") == "1":
+        lines.append("🔴 Instagram отклонил токен: истёк или отозван — пришли новый через /igtoken.")
+    elif days_left is None:
+        lines.append(
+            "✅ Токен задан в переменных окружения. Он живёт 60 дней; "
+            "я попробую продлить его сам при ближайшем сборе."
+        )
+    elif days_left <= ig.TOKEN_EXPIRING_DAYS:
+        lines.append(f"⚠️ Токен истекает через {days_left} дн., продлить его не удаётся — пришли новый.")
+    else:
+        lines.append(f"✅ Число собирается само по токену. Он действует ещё {days_left} дн.; я продлеваю его сам.")
+    lines += [
+        "",
+        "<b>Как подключить</b>: аккаунт должен быть профессиональным (Автор или Бизнес). "
+        "На developers.facebook.com создай приложение с продуктом «Instagram», в разделе "
+        "«API setup with Instagram login» добавь свой аккаунт и нажми «Generate token». "
+        "Отправь /igtoken и токен одним сообщением — я проверю его и сразу удалю сообщение.",
+        "<i>Это официальный API: бот читает только публичные данные своего аккаунта.</i>",
+    ]
+    return Screen("\n".join(lines), InlineKeyboardMarkup([_back(SETTINGS, "Настройки")]))
+
+
 async def linkedin_prompt(db: Database) -> Screen:
     latest = await db.get_latest("linkedin")
     current = f"\nСейчас: {_fmt(latest['count'])}" if latest else ""
@@ -600,6 +641,7 @@ def help_screen() -> Screen:
         "/history [платформа] [дни] — таблица по дням, до 90 дней",
         "/linkedin &lt;число&gt; — ввести LinkedIn вручную",
         "/setcookie &lt;li_at&gt; — cookie LinkedIn для автосбора",
+        "/igtoken &lt;токен&gt; — токен Instagram для автосбора",
         "/settime ЧЧ:ММ — время отчёта",
         "/setday &lt;дни&gt; — дни отчёта: sat, mon-fri, mon,thu, daily",
         "/settz &lt;пояс&gt; — часовой пояс, например Europe/Moscow",

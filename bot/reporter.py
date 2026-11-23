@@ -13,6 +13,8 @@ _BLOCKS = "▁▂▃▄▅▆▇█"
 
 # Collected values are refreshed daily; older than this means collection is failing.
 AUTO_STALE_DAYS = 2
+# Telegram's message limit is 4096 characters; the rest is headroom for HTML tags.
+HISTORY_LIMIT = 4000
 
 NBSP = "\u00a0"
 MINUS = "\u2212"
@@ -126,6 +128,13 @@ async def build_report(
     elif errors.get("linkedin_cookie_aging"):
         age = errors["linkedin_cookie_aging"]
         lines += ["", f"⏰ LinkedIn cookie живёт уже {age} дн. — пора обновить: /setcookie"]
+    if errors.get("instagram_token_missing"):
+        lines += ["", "⚠️ Instagram подключён, но токена нет — пришли его через /igtoken"]
+    elif errors.get("instagram_token_expired"):
+        lines += ["", "⚠️ Instagram отклонил токен — пришли новый через /igtoken"]
+    elif errors.get("instagram_token_expiring") is not None:
+        left = errors["instagram_token_expiring"]
+        lines += ["", f"⏰ Токен Instagram истекает через {left} дн., продлить не удаётся — пришли новый: /igtoken"]
 
     total_current = 0
     total_yesterday: int | None = 0
@@ -149,6 +158,10 @@ async def build_report(
                 continue
             if platform == "linkedin":
                 lines += ["", f"{label} — пока нет данных: число вводится вручную"]
+            elif platform == "instagram" and (
+                errors.get("instagram_token_missing") or errors.get("instagram_token_expired")
+            ):
+                lines += ["", f"{label} — пока нет данных: нужен токен, см. /igtoken"]
             elif errors.get(platform):
                 lines += ["", f"{label} — ⚠️ собрать не удалось"]
             continue
@@ -419,14 +432,31 @@ async def build_history_all(db: Database, days: int) -> str:
     columns = [p for p in PLATFORM_IDS if any(p in row for row in data.values())]
 
     # Narrow columns keep the table unwrapped on a phone; the legend names them.
+    # Each column is as wide as its widest number, not a fixed width: with four
+    # networks a 90-day table must still fit one Telegram message.
     legend = ", ".join(f"{BY_ID[p].short} — {LABELS[p]}" for p in columns)
-    table = [f"{'Дата':<6}" + "".join(f" {BY_ID[p].short:>9}" for p in columns)]
+    widths = {
+        p: max([len(BY_ID[p].short)] + [len(_fmt(row[p])) for row in data.values() if p in row])
+        for p in columns
+    }
+    table = [f"{'Дата':<5}" + "".join(f" {BY_ID[p].short:>{widths[p]}}" for p in columns)]
     for d in sorted_dates:
         row = data[d]
-        cells = "".join(f" {_fmt(row[p]) if p in row else '—':>9}" for p in columns)
-        table.append(f"{d.strftime('%d.%m'):<6}{cells}")
+        cells = "".join(f" {_fmt(row[p]) if p in row else '—':>{widths[p]}}" for p in columns)
+        table.append(f"{d.strftime('%d.%m'):<5}{cells}")
 
-    return f"{title}\n{legend}\n\n<pre>" + "\n".join(table) + "</pre>"
+    def render(rows: list[str], note: str = "") -> str:
+        return f"{title}\n{legend}{note}\n\n<pre>" + "\n".join([table[0]] + rows) + "</pre>"
+
+    text = render(table[1:])
+    if len(text) > HISTORY_LIMIT:
+        # Still too long: the oldest days go, and the note says so. Every row
+        # is the same width, so the number that fits is plain arithmetic.
+        row_len = len(table[1]) + 1
+        overhead = len(render([], " (поместились последние 999 дн.)"))
+        shown = max(1, (HISTORY_LIMIT - overhead) // row_len)
+        text = render(table[-shown:], f" (поместились последние {shown} дн.)")
+    return text
 
 
 async def build_history_table(db: Database, platform: str, days: int) -> str:

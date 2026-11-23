@@ -1,4 +1,5 @@
-"""Collection health: failure streaks per platform and the LinkedIn cookie."""
+"""Collection health: failure streaks per platform, the LinkedIn cookie and
+the Instagram token."""
 
 from __future__ import annotations
 
@@ -15,6 +16,7 @@ async def alert_lines(db: Database, outcome: CollectOutcome) -> list[str]:
     """Alert lines with dedup state in settings.
 
     - cookie expiry: alerted once until the cookie works again;
+    - a missing or dead Instagram token: alerted once until a token works;
     - failure streaks: alerted at 2 consecutive days, then weekly while broken.
     """
     today_iso = utcnow().date().isoformat()
@@ -26,6 +28,16 @@ async def alert_lines(db: Database, outcome: CollectOutcome) -> list[str]:
             lines.append("🔴 LinkedIn cookie истёк или отклонён — обнови через /setcookie")
     elif outcome.collected.get("linkedin", (None, None))[1] == "cookie":
         await db.set_setting("cookie_expired_alerted", "0")
+
+    if outcome.errors.get("instagram_token_expired") or outcome.errors.get("instagram_token_missing"):
+        if await db.get_setting("instagram_token_alerted") != "1":
+            await db.set_setting("instagram_token_alerted", "1")
+            if outcome.errors.get("instagram_token_expired"):
+                lines.append("🔴 Instagram отклонил токен: истёк или отозван — пришли новый через /igtoken")
+            else:
+                lines.append("⚠️ Instagram подключён, но токена нет — пришли его через /igtoken")
+    elif "instagram" in outcome.collected:
+        await db.set_setting("instagram_token_alerted", "0")
 
     for platform in PLATFORMS:
         if outcome.errors.get(platform.id):

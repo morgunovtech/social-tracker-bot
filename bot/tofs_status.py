@@ -26,7 +26,7 @@ from bot.reporter import AUTO_STALE_DAYS, _fmt, _signed
 logger = logging.getLogger(__name__)
 
 TITLE = "Соцсети"
-# The last collection's problems (a failed platform, LinkedIn cookie age):
+# The last collection's problems (a failed platform, LinkedIn cookie age, Instagram token):
 # the profile check between two collections must not forget them.
 LAST_ERRORS_KEY = "tofs_last_errors"
 
@@ -57,6 +57,10 @@ async def _item(db: Database, config: Config, platform, errors: dict) -> dict:
     latest = await db.get_latest(platform.id)
     if platform.id == "linkedin" and errors.get("linkedin_cookie_expired"):
         return {"name": name, "level": "warning", "text": "cookie истёк — обнови через /setcookie"}
+    if platform.id == "instagram" and errors.get("instagram_token_expired"):
+        return {"name": name, "level": "warning", "text": "токен истёк — пришли новый через /igtoken"}
+    if platform.id == "instagram" and errors.get("instagram_token_missing"):
+        return {"name": name, "level": "warning", "text": "нет токена — пришли его через /igtoken"}
     if latest is None:
         if errors.get(platform.id):
             return {"name": name, "level": "warning", "text": "собрать не удалось"}
@@ -78,6 +82,9 @@ async def _item(db: Database, config: Config, platform, errors: dict) -> dict:
         return {"name": name, "level": "warning", "text": f"{head} — свежие данные собрать не удаётся"}
     if errors.get(platform.id):
         return {"name": name, "level": "warning", "text": f"{head} — сегодня собрать не удалось"}
+    if platform.id == "instagram" and errors.get("instagram_token_expiring") is not None:
+        return {"name": name, "level": "warning",
+                "text": f"{head} — токен истекает через {errors['instagram_token_expiring']} дн., продлить не удаётся"}
     if platform.id == "linkedin" and errors.get("linkedin_cookie_aging"):
         return {"name": name, "level": "warning",
                 "text": f"{head} — cookie живёт {errors['linkedin_cookie_aging']} дн., пора обновить"}
