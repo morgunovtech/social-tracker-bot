@@ -562,25 +562,24 @@ async def instagram(db: Database, config: Config) -> Screen:
     lines.append("")
 
     token = await ig.get_active_token(db, config)
-    days_left = await ig.get_token_days_left(db)
+    age = await ig.get_token_age_days(db)
     if not token:
         lines.append("⚠️ Токена нет: без него число не собирается.")
     elif await db.get_setting("instagram_token_alerted") == "1":
-        lines.append("🔴 Instagram отклонил токен: истёк или отозван — пришли новый через /igtoken.")
-    elif days_left is None:
-        lines.append(
-            "✅ Токен задан в переменных окружения. Он живёт 60 дней; "
-            "я попробую продлить его сам при ближайшем сборе."
-        )
-    elif days_left <= ig.TOKEN_EXPIRING_DAYS:
-        lines.append(f"⚠️ Токен истекает через {days_left} дн., продлить его не удаётся — пришли новый.")
+        lines.append("🔴 Instagram отклонил токен: отозван или истёк — пришли новый через /igtoken.")
+    elif age is None:
+        lines.append("✅ Число собирается само по токену из переменных окружения.")
     else:
-        lines.append(f"✅ Число собирается само по токену. Он действует ещё {days_left} дн.; я продлеваю его сам.")
+        lines.append(
+            f"✅ Число собирается само по токену. Он задан {age} дн. назад и бессрочный: "
+            "если Meta его отзовёт, я скажу."
+        )
     lines += [
         "",
         "<b>Как подключить</b>: аккаунт должен быть профессиональным (Автор или Бизнес). "
-        "На developers.facebook.com создай приложение с продуктом «Instagram», в разделе "
-        "«API setup with Instagram login» добавь свой аккаунт и нажми «Generate token». "
+        "На developers.facebook.com создай приложение с вариантом «Instagram API», открой "
+        "«API setup with Unified login», добавь свой аккаунт как Instagram Tester, прими приглашение "
+        "в Instagram (Настройки → Website permissions → Tester invitations) и нажми «Generate token». "
         "Отправь /igtoken и токен одним сообщением — я проверю его и сразу удалю сообщение.",
         "<i>Это официальный API: бот читает только публичные данные своего аккаунта.</i>",
     ]
