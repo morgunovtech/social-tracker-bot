@@ -2,7 +2,7 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
-## 1.2.0 — unreleased
+## 1.2.0 — 2026-11-23
 
 Prohibited content in the channel's comments, reported with one-tap actions; the bot no longer talks to strangers in groups.
 
