@@ -17,6 +17,7 @@ Railway redeploys from `main` on every push (project «Social Tacker Bot», serv
 - Every menu screen is a function in `bot/ui.py` (text and buttons, no Telegram calls); `bot/handlers.py` routes to them. A new network is one module in `bot/platforms/`; a new alert goes through a monitor in `bot/monitors/` that the user can switch off in `/modules`.
 - Every proactive message goes through `bot/notifier.py` (priorities, quiet hours, `/mute`, the digest); nothing else reasons about silence.
 - The comment monitor (`bot/monitors/comments.py`, the Claude call in `bot/classifier.py`) only reports: a card with delete / ban / «all fine» buttons, never an action of its own. The owner's taps are the labels (`comment_reviews.label`) that `/comments` turns into the accuracy table; any automatic action must be calibrated on that table first. The classifier never receives the author's id, name or @username. `handlers.on_group_update` (group −1) stops every non-private update, so the owner-only handlers never answer in a group.
+- `scripts/clean_deleted.py` (Telethon, not in the bot's requirements) removes deleted accounts from the channel's subscribers; it runs from the owner's laptop, dry run by default. The Bot API cannot list members, so this never moves into the bot.
 - Alerts are «silent when healthy»: one message when something breaks, one when it recovers, nothing in between.
 - Keep README.md and README.ru.md in step with the code in the same PR.
 

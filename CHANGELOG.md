@@ -2,6 +2,10 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.2.1 — unreleased
+
+- `scripts/clean_deleted.py`: remove deleted accounts from the channel's subscribers over MTProto (Telethon), by hand from a laptop, dry run by default; `--session bot` or `--session user`.
+
 ## 1.2.0 — 2026-11-23
 
 Prohibited content in the channel's comments, reported with one-tap actions; the bot no longer talks to strangers in groups.
