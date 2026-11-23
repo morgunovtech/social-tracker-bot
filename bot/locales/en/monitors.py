@@ -248,8 +248,36 @@ STRINGS: dict[str, str] = {
         "⚠️ Instagram is connected but there is no token — send it with /igtoken"
     ),
     "🟠 {label}: не удаётся собрать данные {streak} дн. подряд": "🟠 {label}: data collection has failed {streak} days in a row",
+    # bot/monitors/channel.py — life of the channel
+    "Жизнь канала": "Life of the channel",
+    "подписки и отписки, откуда пришли, посты и реакции — экран 📣 Канал и строка в отчёте": (
+        "joins and leaves, where they came from, posts and reactions — the 📣 Channel screen and a line in the report"
+    ),
+    "Telegram-канал, бот в его админах": "a Telegram channel with the bot among its admins",
+    "по ссылке без имени": "by an unnamed link",
+    "по заявке": "by join request",
+    "через папку": "via a chat folder",
+    "напрямую": "directly",
+    "по ссылке «{name}»": 'by the link "{name}"',
+    "📣 Канал за {days} дн.: {parts}": "📣 Channel, last {days} days: {parts}",
+    "Пока пусто. Подписки, отписки, посты и реакции приходят, когда бот — админ канала; "
+    "первые цифры появятся с первым событием.": (
+        "Nothing yet. Joins, leaves, posts and reactions arrive while the bot is an admin of the channel; "
+        "the first numbers come with the first event."
+    ),
+    "За 24 часа": "Last 24 hours",
+    "За {days} дней": "Last {days} days",
+    "Подписки · отписки · посты · реакции на посты за период": "Joins · leaves · posts · reactions on the period's posts",
+    "<b>Откуда приходят</b> · {days} дней": "<b>Where they come from</b> · {days} days",
+    "<b>Больше всего реакций</b> · {days} дней": "<b>Most reactions</b> · {days} days",
+    "пост": "post",
+    "<b>Последние</b>": "<b>Latest</b>",
 }
 
 PLURALS: dict[str, tuple[str, str]] = {
     "проверку": ("check", "checks"),
+    "пост": ("post", "posts"),
+    "реакция": ("reaction", "reactions"),
+    "подписка": ("join", "joins"),
+    "отписка": ("leave", "leaves"),
 }

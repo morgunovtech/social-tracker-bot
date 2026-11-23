@@ -29,7 +29,7 @@ from bot import monitors, notifier, ui
 from bot.config import DOW_ORDER, Config, normalize_dow, normalize_tz
 from bot.db import Database, utcnow
 from bot.i18n import t
-from bot.monitors import NO_PREVIEW, comments, hygiene
+from bot.monitors import NO_PREVIEW, channel, comments, hygiene
 from bot.platforms import BY_ID, PLATFORM_IDS
 from bot.platforms import instagram as ig
 from bot.platforms.linkedin import collect_linkedin, plausible_count
@@ -63,6 +63,19 @@ RESTORE_MAX_BYTES = 20 * 1024 * 1024
 # Messages queued while the bot restarts (a deploy) are handled after start;
 # older ones (a long outage) are dropped rather than replayed.
 PENDING_MAX_AGE = timedelta(minutes=10)
+
+# What the bot asks Telegram for. Joins and leaves (chat_member) and the
+# reactions on posts (message_reaction_count) are not sent unless asked
+# for; the list replaces Telegram's default, so everything else the bot
+# handles is named too.
+ALLOWED_UPDATES = (
+    Update.MESSAGE,
+    Update.CALLBACK_QUERY,
+    Update.MY_CHAT_MEMBER,
+    Update.CHANNEL_POST,
+    Update.CHAT_MEMBER,
+    Update.MESSAGE_REACTION_COUNT,
+)
 
 
 
@@ -192,19 +205,23 @@ def _watch(context: ContextTypes.DEFAULT_TYPE) -> comments.Watch:
 
 
 async def on_group_update(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Runs before every handler. Nothing from a group or a channel reaches the
-    owner-only handlers (they would answer «⛔ Доступ запрещён» to every
-    comment); a new message in the channel's discussion group is reviewed in
-    the background, so a slow classifier never holds up the owner's chat."""
+    """Runs first, before every other handler. Nothing from a group or a
+    channel reaches the owner-only handlers (they would answer «⛔ Доступ
+    запрещён» to every comment). A new message in the channel's discussion
+    group is reviewed in the background, so a slow classifier never holds up
+    the owner's chat; a join, a leave, a post or a reaction in the channel is
+    recorded (bot/monitors/channel.py)."""
     chat = update.effective_chat
     if chat is None or chat.type == ChatType.PRIVATE:
         return
+    config, db = _deps(context)
     message = update.message
     if message is not None and chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
-        config, db = _deps(context)
         context.application.create_task(
             comments.review(context.bot, config, db, _watch(context), message), update=update
         )
+    elif chat.type == ChatType.CHANNEL:
+        await channel.record(db, config, update)
     raise ApplicationHandlerStop
 
 
@@ -387,6 +404,12 @@ async def cmd_modules(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def cmd_comments(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config, db = _deps(context)
     await _reply(update, await ui.comments_screen(db, config))
+
+
+@_admin_only
+async def cmd_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config, db = _deps(context)
+    await _reply(update, await ui.channel_screen(db, config))
 
 
 @_admin_only
@@ -967,6 +990,11 @@ async def _cb_comments(press: _Press, context, args: list[str]) -> None:
     await _safe_edit(press.query, text, reply_markup=markup, link_preview_options=NO_PREVIEW)
 
 
+async def _cb_channel(press: _Press, context, args: list[str]) -> None:
+    config, db = _deps(context)
+    await _show(press.query, await ui.channel_screen(db, config))
+
+
 async def _cb_linkedin(press: _Press, context, args: list[str]) -> None:
     """li | li:save:<count> (confirmed after the typo check) | li:cancel of a timed-out prompt."""
     config, db = _deps(context)
@@ -1004,6 +1032,7 @@ _ROUTES: dict[str, Route] = {
     ui.INSTAGRAM: _cb_instagram,
     ui.HELP: _cb_help,
     ui.COMMENTS: _cb_comments,
+    ui.CHANNEL: _cb_channel,
 }
 # Screen ids of the menu before the redesign: their buttons stay in the chat history.
 _LEGACY = {"menu": ui.HOME, "stats": ui.HOME, "week": ui.DYNAMICS, "settings": ui.SETTINGS, "history": ui.TABLE}
@@ -1104,6 +1133,7 @@ COMMANDS = {
     "settings": cmd_settings,
     "modules": cmd_modules,
     "comments": cmd_comments,
+    "channel": cmd_channel,
     "linkedin": cmd_linkedin,
     "history": cmd_history,
     "settime": cmd_settime,
@@ -1123,10 +1153,11 @@ def register_handlers(app, config: Config, db: Database) -> None:
     app.bot_data["config"] = config
     app.bot_data["db"] = db
 
-    # Before everything else: drop messages that waited through a long outage,
-    # and keep group and channel traffic away from the owner-only handlers.
+    # Before everything else, each in a group of its own (PTB runs one handler
+    # per group): group and channel traffic goes to its monitors and stops
+    # there; then messages that waited through a long outage are dropped.
+    app.add_handler(TypeHandler(Update, on_group_update), group=-2)
     app.add_handler(TypeHandler(Update, drop_stale_messages), group=-1)
-    app.add_handler(TypeHandler(Update, on_group_update), group=-1)
 
     li_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(li_conv_start, pattern=r"^(?:li:enter|linkedin_prompt)$")],

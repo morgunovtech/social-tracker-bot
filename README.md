@@ -19,6 +19,7 @@ The bot is modular: connect only the platforms you have, and switch monitors on 
 **Followers**
 
 - **Daily collection, weekly report**: deltas for the day / week / month, a 14-day sparkline, a 30-day PNG chart, the week's leader by growth, a monthly digest on the 1st. Every platform is optional.
+- **Life of the channel** (Telegram, the bot as a channel admin): who joined and who left for 24 hours, 7 and 30 days, through which invite link they came, every post and the reactions it gathered, the most reacted posts of the month, the latest events with names — the part of TGStat an admin bot can do by itself, on your own server. One line of it in every report. Views, forwards and the citation index are not in the Bot API: those stay in Telegram's own statistics.
 - **Signals, not noise**: milestones (1k, 5k, 10k…) on the day they're crossed, a forecast to the next one, growth speeding up or slowing down, a bot-influx detector (a jump ×5 above the usual daily gain).
 - **Problems arrive at once**: a revoked Instagram token or an expired LinkedIn cookie, collection failing 2+ days in a row, a drop in followers (20 or more and at least 1%), data that has gone stale.
 - **Self-recovering**: failed platforms are retried hourly (up to 3 times), a run missed while the bot was down is caught up on start, a dead man's switch (`HEALTHCHECK_URL`) tells you when the bot itself dies. Point it at a [TofsDevOps](https://github.com/morgunovtech/Tofs_DevOps_bot) heartbeat address and the ping also carries a line per network («✅ Telegram · 12 340, +18 today», «🔴 LinkedIn · profile unreadable») to TofsDevOps's main screen, next to your sites; refreshed after every profile check.
@@ -39,7 +40,7 @@ What leaves your server and what does not, as the code does it:
 
 | Where | What and why |
 |---|---|
-| Telegram Bot API | The bot's messages to you, and the public data of your channel (follower count, title, description, admins when the bot is a channel admin). |
+| Telegram Bot API | The bot's messages to you, and the public data of your channel (follower count, title, description, admins when the bot is a channel admin). As a channel admin the bot also receives what Telegram sends admins: every join and leave (who, and through which invite link), every post, and the reactions a post gathers. Nothing of that leaves your server. |
 | YouTube Data API (`googleapis.com`) | Your channel's statistics with your own key, once a day. Only with `YOUTUBE_API_KEY`. |
 | Instagram API (`graph.facebook.com`) | Your account's follower count and profile with your own token, once a day. Only with a token. |
 | LinkedIn (`linkedin.com`) | Your profile page, opened with your `li_at` cookie once a day. Only with the cookie; without it you type the number in. |
@@ -49,12 +50,12 @@ What leaves your server and what does not, as the code does it:
 | Your mail-worker | The bot fetches the security emails you forwarded yourself; the worker accepts only the senders in `ALLOWED_SENDERS`. |
 | Claude API (`api.anthropic.com`) | Every new comment in the channel's discussion group — its text and picture (or a video / sticker thumbnail), the group's title, and whether it is the author's first message or a forward. No user id, name or @username. Only with `ANTHROPIC_API_KEY`, and only for a group the bot is an admin of; comments are public to begin with. Anthropic's API data retention applies to what is sent. |
 
-Everything else stays with you: follower history, profile baselines, checklist answers and security events live in SQLite on your volume. The Instagram token and the LinkedIn cookie are stored there too; the message carrying either is deleted from the chat at once, and the Sunday backup is made without them. Only the owner — the first `/start`, or `ADMIN_CHAT_ID` when set — can use the bot. Logs carry no Bot API URL with the token (the httpx logger stays at WARNING). Links quoted from mails and profile descriptions are defanged in alerts (`hxxps://evil[.]example`) and previews are off. Details: [SECURITY.md](SECURITY.md).
+Everything else stays with you: follower history, the channel's joins, leaves, posts and reactions, profile baselines, checklist answers and security events live in SQLite on your volume. The Instagram token and the LinkedIn cookie are stored there too; the message carrying either is deleted from the chat at once, and the Sunday backup is made without them. Only the owner — the first `/start`, or `ADMIN_CHAT_ID` when set — can use the bot. Logs carry no Bot API URL with the token (the httpx logger stays at WARNING). Links quoted from mails and profile descriptions are defanged in alerts (`hxxps://evil[.]example`) and previews are off. Details: [SECURITY.md](SECURITY.md).
 
 ## Setup
 
 0. **Language.** `BOT_LANG=en` or `ru` (the default): every screen, report, alert and the `/` menu. The examples below show the Russian bot.
-1. **Telegram (required).** Create a bot with [@BotFather](https://t.me/BotFather) → `BOT_TOKEN`, start it and send it `/start` right away: **the first person to do so becomes its owner**, and the bot answers nobody else. `ADMIN_CHAT_ID` (your user id, from [@userinfobot](https://t.me/userinfobot)) is optional: set it to pin the owner or to take the bot over; it wins over the stored one. To track a channel, make the bot an **admin** of it → `TELEGRAM_CHANNEL_ID`.
+1. **Telegram (required).** Create a bot with [@BotFather](https://t.me/BotFather) → `BOT_TOKEN`, start it and send it `/start` right away: **the first person to do so becomes its owner**, and the bot answers nobody else. `ADMIN_CHAT_ID` (your user id, from [@userinfobot](https://t.me/userinfobot)) is optional: set it to pin the owner or to take the bot over; it wins over the stored one. To track a channel, make the bot an **admin** of it → `TELEGRAM_CHANNEL_ID`; as an admin it also sees who joins and leaves, every post and its reactions (the 📣 Channel screen).
 2. **YouTube (optional).** In [Google Cloud Console](https://console.cloud.google.com/) enable YouTube Data API v3 and create an API key → `YOUTUBE_API_KEY`; your channel id (`UC…`) → `YOUTUBE_CHANNEL_ID`.
 3. **Instagram (optional).** The account must be professional (Creator or Business: Settings → Account type in the app, free). On [developers.facebook.com](https://developers.facebook.com/) create an app with the **Instagram API** use case (Meta also asks for a business portfolio: free, no verification needed for your own account), open «API setup with Unified login», create the configuration from the template, add your account as an **Instagram Tester**, accept the invitation in Instagram (Settings → Website permissions → Tester invitations) and press **Generate token**. Your @username → `INSTAGRAM_USERNAME`, then send the bot `/igtoken <token>` — it checks that the token was granted for that account, deletes your message and keeps the token (or set `INSTAGRAM_ACCESS_TOKEN` in `.env`). The token does not expire; if Meta revokes it, the bot says so once and in every report until a new one arrives. This is the official Instagram API: the bot reads only its own account's public data (followers, name, bio, post count) and watches those for a hijack.
 4. **LinkedIn (optional).** Your profile URL → `LINKEDIN_PROFILE_URL`. Then either send the bot `/setcookie <li_at>` with the `li_at` cookie of a logged-in browser (DevTools → Application → Cookies → linkedin.com) — the bot checks it, deletes your message and watches the cookie's age — or enter the number by hand with the «✏️ Enter LinkedIn count» button on the home screen.
@@ -91,6 +92,7 @@ Everything is a button away; the «🏠 Menu» button under the input field alwa
 ├── 📈 Trends — this week vs last week
 │   ├── 🖼 30-day chart
 │   └── 📋 Day by day — platform and period switched on the same screen
+├── 📣 Channel — joins and leaves, where they came from, posts and their reactions
 ├── 🛡 Security — score, each account, what to do first, recent events
 │   ├── an account's checklist → one question at a time, with why it matters
 │   └── 💬 Channel comments — mode, how many were checked, the accuracy of your marks
@@ -120,6 +122,7 @@ The `/` menu lists the six entry points; the rest are for typing.
 | `/stats` | The home screen without the greeting |
 | `/modules` | Connected platforms; switch monitors on and off |
 | `/comments` | The channel's comments: mode, how many were checked, the accuracy table of your marks |
+| `/channel` | Life of the channel: joins and leaves for 24 h / 7 / 30 days, where they came from, the most reacted posts, the latest events |
 | `/history [platform] [days]` | Day-by-day table for one platform or `all`, up to 90 days (the combined table keeps the latest days that fit one message) |
 | `/linkedin <number>` | Enter the LinkedIn number by hand |
 | `/settime HH:MM`, `/setday <days>` | Report time and day(s) in your time zone: `sat`, `mon,thu`, `mon-fri`, `daily`; without an argument, the picker |
@@ -151,6 +154,9 @@ entered by hand on 20.11
 
 🏆 Leader of the week: Instagram, +4.0%
 🔮 Instagram: 250 in about 10 wk. (+7 a week)
+
+📣 Channel, last 7 days: +14 joins · −3 leaves · 4 posts · 37 reactions
+
 🛡 Security: 7 of 10 — /security
 ```
 

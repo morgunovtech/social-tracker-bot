@@ -7,7 +7,7 @@ from telegram.ext import Application
 
 from bot.config import Config
 from bot.db import Database
-from bot.handlers import register_handlers, restore_owner
+from bot.handlers import ALLOWED_UPDATES, register_handlers, restore_owner
 from bot.i18n import set_language, t
 from bot.redact import RedactingFormatter
 from bot.scheduler import setup_scheduler
@@ -102,8 +102,9 @@ def main() -> None:
 
     logger.info("Bot starting...")
     # Keep what was sent while the bot was down for a deploy; stale messages are
-    # dropped by handlers.drop_stale_messages.
-    app.run_polling(drop_pending_updates=False)
+    # dropped by handlers.drop_stale_messages. Joins, leaves and reactions in
+    # the channel only come when asked for (ALLOWED_UPDATES).
+    app.run_polling(drop_pending_updates=False, allowed_updates=list(ALLOWED_UPDATES))
 
 
 if __name__ == "__main__":
