@@ -2,7 +2,7 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
-## 1.3.0 — unreleased
+## 1.3.0 — 2026-11-23
 
 Life of the channel without TGStat in the admins, and the group router that #43 left unreachable.
 
