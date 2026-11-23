@@ -2,7 +2,7 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
-## 1.4.0 — unreleased
+## 1.4.0 — 2026-11-23
 
 A code review, fixed end to end: what could give a wrong answer, what could cost money or leave a secret in the chat, and the small things. Then a walk through the owner's journeys: everything a command did is a button away, and the alerts carry the next step.
 
