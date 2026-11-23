@@ -28,6 +28,7 @@ from telegram.ext import (
 from bot import monitors, ui
 from bot.config import DOW_ORDER, Config, normalize_dow, normalize_tz
 from bot.db import Database, utcnow
+from bot.i18n import t
 from bot.monitors import NO_PREVIEW, hygiene
 from bot.platforms import BY_ID, PLATFORM_IDS
 from bot.platforms import instagram as ig
@@ -63,10 +64,28 @@ RESTORE_MAX_BYTES = 20 * 1024 * 1024
 # older ones (a long outage) are dropped rather than replayed.
 PENDING_MAX_AGE = timedelta(minutes=10)
 
-# The persistent menu button, including the labels of older versions.
-_MENU_BUTTON = filters.Regex(
-    "^(?:" + "|".join(re.escape(t) for t in (ui.MENU_BUTTON_TEXT, *ui.LEGACY_MENU_BUTTON_TEXTS)) + ")$"
-)
+
+
+class _MenuButton(filters.MessageFilter):
+    """The persistent menu button, by its text: the current label, the labels
+    of older versions and their English translations — a user who switched
+    BOT_LANG still has the old keyboard on screen. The set is built per message,
+    after the language is set."""
+
+    @staticmethod
+    def texts() -> set[str]:
+        return {ui.MENU_BUTTON_TEXT, *ui.LEGACY_MENU_BUTTON_TEXTS, t(ui.MENU_BUTTON_TEXT), "🏠 Menu"}
+
+    @property
+    def pattern(self) -> re.Pattern[str]:
+        """The same labels as a regex, for callers that match by pattern."""
+        return re.compile("^(?:" + "|".join(re.escape(text) for text in sorted(self.texts())) + ")$")
+
+    def filter(self, message) -> bool:
+        return bool(message.text) and message.text in self.texts()
+
+
+_MENU_BUTTON = _MenuButton(name="menu_button")
 
 
 def _deps(context: ContextTypes.DEFAULT_TYPE) -> tuple[Config, Database]:
@@ -126,9 +145,9 @@ async def _answer(query, text: str | None = None, show_alert: bool = False) -> N
 
 async def _deny(update: Update) -> None:
     if update.callback_query:
-        await _answer(update.callback_query, "⛔ Доступ запрещён.", show_alert=True)
+        await _answer(update.callback_query, t("⛔ Доступ запрещён."), show_alert=True)
     elif update.message:
-        await update.message.reply_text("⛔ Доступ запрещён.")
+        await update.message.reply_text(t("⛔ Доступ запрещён."))
 
 
 def _admin_only(handler):
@@ -168,10 +187,9 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         try:
             await context.bot.send_message(
                 chat_id=config.admin_chat_id,
-                text=(
-                    f"⚠️ Что-то пошло не так ({type(context.error).__name__}). "
-                    "Попробуй ещё раз; подробности — в логах бота."
-                ),
+                text=t(
+                    "⚠️ Что-то пошло не так ({error}). Попробуй ещё раз; подробности — в логах бота."
+                ).format(error=type(context.error).__name__),
             )
         except Exception:
             logger.exception("Error notice send failed")
@@ -201,7 +219,7 @@ async def _collect_now(
         except Exception:
             logger.exception("Manual collection failed")
             await show((await ui.home(db, config)).noted(
-                "⚠️ Собрать данные не получилось — подробности в логах. Ниже последние сохранённые."
+                t("⚠️ Собрать данные не получилось — подробности в логах. Ниже последние сохранённые.")
             ))
             return True
         await show(await ui.home(db, config, report=outcome.report))
@@ -235,8 +253,10 @@ async def _set_report_tz(context: ContextTypes.DEFAULT_TYPE, tz: ZoneInfo) -> st
     await db.set_setting("report_tz", tz.key)
     await _apply_schedule(context)
     if tz.key == old.key:
-        return f"✅ Часовой пояс: {ui.tz_name(tz)}"
-    return f"✅ Часовой пояс: {ui.tz_name(tz)}. Отчёт придёт в тот же момент, что и раньше, — ниже его время по этому поясу"
+        return t("✅ Часовой пояс: {tz}").format(tz=ui.tz_name(tz))
+    return t(
+        "✅ Часовой пояс: {tz}. Отчёт придёт в тот же момент, что и раньше, — ниже его время по этому поясу"
+    ).format(tz=ui.tz_name(tz))
 
 
 def _parse_count(text: str) -> int | None:
@@ -247,7 +267,7 @@ def _parse_count(text: str) -> int | None:
 
 async def _save_linkedin(db: Database, config: Config, count: int) -> ui.Screen:
     await db.upsert("linkedin", count, source="manual")
-    return (await ui.home(db, config)).noted(f"✅ LinkedIn: {_fmt(count)} — сохранено")
+    return (await ui.home(db, config)).noted(t("✅ LinkedIn: {count} — сохранено").format(count=_fmt(count)))
 
 
 # ---------------------------------------------------------------------------
@@ -257,10 +277,10 @@ async def _save_linkedin(db: Database, config: Config, count: int) -> ui.Screen:
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config, db = _deps(context)
     if not _is_admin(update, config):
-        await update.message.reply_text("Это личный бот: он отвечает только своему владельцу.")
+        await update.message.reply_text(t("Это личный бот: он отвечает только своему владельцу."))
         return
     # Two messages: a message carries either the persistent keyboard or inline buttons.
-    await update.message.reply_text(ui.WELCOME, reply_markup=ui.persistent_keyboard())
+    await update.message.reply_text(ui.welcome(), reply_markup=ui.persistent_keyboard())
     await _reply(update, await ui.home(db, config))
 
 
@@ -288,7 +308,7 @@ async def cmd_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await sent.edit_text(screen.text, **_markup(screen))
 
     if not await _collect_now(context, show):
-        await update.message.reply_text("⏳ Уже собираю данные — результат появится в сообщении выше.")
+        await update.message.reply_text(t("⏳ Уже собираю данные — результат появится в сообщении выше."))
 
 
 @_admin_only
@@ -297,7 +317,7 @@ async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply(update, await ui.dynamics(db))
     chart = await _build_chart_png(db)
     if chart:
-        await update.message.reply_photo(chart, caption=CHART_CAPTION)
+        await update.message.reply_photo(chart, caption=t(CHART_CAPTION))
 
 
 @_admin_only
@@ -322,11 +342,11 @@ async def cmd_modules(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def cmd_linkedin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config, db = _deps(context)
     if not context.args or len(context.args) != 1:
-        await update.message.reply_text("Пришли число вместе с командой, например: /linkedin 4520")
+        await update.message.reply_text(t("Пришли число вместе с командой, например: /linkedin 4520"))
         return
     count = _parse_count(context.args[0])
     if count is None:
-        await update.message.reply_text("Нужно целое число без знака, например: /linkedin 4520")
+        await update.message.reply_text(t("Нужно целое число без знака, например: /linkedin 4520"))
         return
     await _reply(update, await _save_linkedin(db, config, count))
 
@@ -337,21 +357,23 @@ async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     config, db = _deps(context)
     args = context.args or []
     if len(args) > 2:
-        await update.message.reply_text("Формат: /history [платформа] [дни], например: /history telegram 30")
+        await update.message.reply_text(t("Формат: /history [платформа] [дни], например: /history telegram 30"))
         return
     platform = args[0].lower() if args else "all"
     if platform != "all" and platform not in PLATFORM_IDS:
-        await update.message.reply_text(f"Неизвестная платформа. Доступны: all, {', '.join(PLATFORM_IDS)}")
+        await update.message.reply_text(
+            t("Неизвестная платформа. Доступны: all, {platforms}").format(platforms=", ".join(PLATFORM_IDS))
+        )
         return
     days = 7
     if len(args) == 2:
         try:
             days = int(args[1])
         except ValueError:
-            await update.message.reply_text("Количество дней должно быть числом, например: /history all 30")
+            await update.message.reply_text(t("Количество дней должно быть числом, например: /history all 30"))
             return
         if not 1 <= days <= HISTORY_MAX_DAYS:
-            await update.message.reply_text(f"Количество дней — от 1 до {HISTORY_MAX_DAYS}.")
+            await update.message.reply_text(t("Количество дней — от 1 до {max}.").format(max=HISTORY_MAX_DAYS))
             return
     await _reply(update, await ui.table(db, config, platform, days))
 
@@ -368,11 +390,11 @@ async def cmd_settime(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if len(context.args) != 1 or not (0 <= hour <= 23 and 0 <= minute <= 59):
             raise ValueError
     except (ValueError, AttributeError):
-        await update.message.reply_text("Неверный формат. Нужно ЧЧ:ММ, например: /settime 08:00")
+        await update.message.reply_text(t("Неверный формат. Нужно ЧЧ:ММ, например: /settime 08:00"))
         return
     await _set_report_time(context, hour, minute)
     tz = await get_report_tz(db, config)
-    await _reply(update, (await ui.settings(db, config)).noted(f"✅ Отчёт теперь в {ui.clock(hour, minute, tz)}"))
+    await _reply(update, (await ui.settings(db, config)).noted(t("✅ Отчёт теперь в {time}").format(time=ui.clock(hour, minute, tz))))
 
 
 @_admin_only
@@ -387,13 +409,15 @@ async def cmd_setday(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         normalized = normalize_dow(context.args[0])
     except ValueError:
         await update.message.reply_text(
-            f"❌ Не понял дни: «{' '.join(context.args)}».\n"
-            "Примеры: /setday sat, /setday mon,thu, /setday mon-fri, /setday daily"
+            t(
+                "❌ Не понял дни: «{days}».\n"
+                "Примеры: /setday sat, /setday mon,thu, /setday mon-fri, /setday daily"
+            ).format(days=" ".join(context.args))
         )
         return
     await save_schedule(db, config, dow=normalized)
     await _apply_schedule(context)
-    await _reply(update, (await ui.settings(db, config)).noted(f"✅ Отчёт: {ui.dow_pretty(normalized)}"))
+    await _reply(update, (await ui.settings(db, config)).noted(t("✅ Отчёт: {days}").format(days=ui.dow_pretty(normalized))))
 
 
 @_admin_only
@@ -408,9 +432,11 @@ async def cmd_settz(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         name = normalize_tz(context.args[0])
     except ValueError:
         await update.message.reply_text(
-            f"❌ Не знаю такой часовой пояс: «{' '.join(context.args)}».\n"
-            "Нужно название из базы IANA, например /settz Europe/Moscow или /settz Asia/Almaty. "
-            "Частые пояса — кнопками: /settz без названия."
+            t(
+                "❌ Не знаю такой часовой пояс: «{tz}».\n"
+                "Нужно название из базы IANA, например /settz Europe/Moscow или /settz Asia/Almaty. "
+                "Частые пояса — кнопками: /settz без названия."
+            ).format(tz=" ".join(context.args))
         )
         return
     note = await _set_report_tz(context, ZoneInfo(name))
@@ -425,7 +451,7 @@ async def cmd_setquiet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await _reply(update, await ui.settings(db, config))
         return
     await db.set_setting("quiet_if_no_change", "1" if choice == "on" else "0")
-    note = "✅ Тихий режим включён" if choice == "on" else "✅ Тихий режим выключен"
+    note = t("✅ Тихий режим включён") if choice == "on" else t("✅ Тихий режим выключен")
     await _reply(update, (await ui.settings(db, config)).noted(note))
 
 
@@ -435,9 +461,11 @@ async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if not context.args:
         await update.message.reply_text(
-            "Пришли cookie вместе с командой: /setcookie <значение li_at>\n\n"
-            "Где взять: linkedin.com → DevTools → Application → Cookies → li_at → Value. "
-            "Сообщение с cookie я сразу удалю."
+            t(
+                "Пришли cookie вместе с командой: /setcookie <значение li_at>\n\n"
+                "Где взять: linkedin.com → DevTools → Application → Cookies → li_at → Value. "
+                "Сообщение с cookie я сразу удалю."
+            )
         )
         return
 
@@ -449,18 +477,18 @@ async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.delete()
     except Exception:
         deleted = False
-    note = "" if deleted else "\n⚠️ Удалить сообщение с cookie не получилось — удали его из чата вручную."
+    note = "" if deleted else "\n" + t("⚠️ Удалить сообщение с cookie не получилось — удали его из чата вручную.")
 
     cookie = " ".join(context.args).strip()
     if len(cookie) < 50:
-        await chat.send_message(f"❌ Это не похоже на cookie: значение слишком короткое.{note}")
+        await chat.send_message(t("❌ Это не похоже на cookie: значение слишком короткое.") + note)
         return
 
     if not config.linkedin_profile_url:
-        await chat.send_message(f"❌ Не задан LINKEDIN_PROFILE_URL — не на чем проверить cookie.{note}")
+        await chat.send_message(t("❌ Не задан LINKEDIN_PROFILE_URL — не на чем проверить cookie.") + note)
         return
 
-    await chat.send_message("⏳ Проверяю cookie…")
+    await chat.send_message(t("⏳ Проверяю cookie…"))
 
     prev_row = await db.get_latest("linkedin")
     prev = prev_row["count"] if prev_row else None
@@ -474,13 +502,15 @@ async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if count is None:
         reason = (
-            "LinkedIn отклонил cookie"
+            t("LinkedIn отклонил cookie")
             if source == "cookie_expired"
-            else "не удалось получить число подписчиков (подробности в логах)"
+            else t("не удалось получить число подписчиков (подробности в логах)")
         )
         await chat.send_message(
-            f"❌ Cookie не сохранён: {reason}.\n"
-            f"Проверь, что значение скопировано целиком, без лишних символов.{note}"
+            t(
+                "❌ Cookie не сохранён: {reason}.\n"
+                "Проверь, что значение скопировано целиком, без лишних символов."
+            ).format(reason=reason) + note
         )
         return
 
@@ -492,13 +522,13 @@ async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     # likely someone else's counter and must not become the new baseline.
     if plausible_count(prev, count):
         await db.upsert("linkedin", count, source="cookie")
-        fetched = f"Проверка прошла: {_fmt(count)} подписчиков."
+        fetched = t("Проверка прошла: {count} подписчиков.").format(count=_fmt(count))
     else:
-        fetched = (
-            f"Проверка вернула {_fmt(count)} — слишком далеко от прошлого {_fmt(prev)}, число не записано. "
-            f"Если оно верное, введи его: /linkedin {count}"
-        )
-    screen = (await ui.linkedin(db, config)).noted(f"✅ Cookie сохранён. {fetched}{note}")
+        fetched = t(
+            "Проверка вернула {count} — слишком далеко от прошлого {prev}, число не записано. "
+            "Если оно верное, введи его: /linkedin {raw}"
+        ).format(count=_fmt(count), prev=_fmt(prev), raw=count)
+    screen = (await ui.linkedin(db, config)).noted(t("✅ Cookie сохранён. {fetched}").format(fetched=fetched) + note)
     await chat.send_message(screen.text, **_markup(screen))
 
 
@@ -508,9 +538,11 @@ async def cmd_igtoken(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if not context.args:
         await update.message.reply_text(
-            "Пришли токен вместе с командой: /igtoken <токен>\n\n"
-            "Где взять: developers.facebook.com → твоё приложение → Instagram API → "
-            "«API setup with Unified login» → Generate token. Сообщение с токеном я сразу удалю."
+            t(
+                "Пришли токен вместе с командой: /igtoken <токен>\n\n"
+                "Где взять: developers.facebook.com → твоё приложение → Instagram API → "
+                "«API setup with Unified login» → Generate token. Сообщение с токеном я сразу удалю."
+            )
         )
         return
 
@@ -521,18 +553,18 @@ async def cmd_igtoken(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.delete()
     except Exception:
         deleted = False
-    note = "" if deleted else "\n⚠️ Удалить сообщение с токеном не получилось — удали его из чата вручную."
+    note = "" if deleted else "\n" + t("⚠️ Удалить сообщение с токеном не получилось — удали его из чата вручную.")
 
     token = "".join(context.args).strip()
     if len(token) < 50:
-        await chat.send_message(f"❌ Это не похоже на токен: значение слишком короткое.{note}")
+        await chat.send_message(t("❌ Это не похоже на токен: значение слишком короткое.") + note)
         return
 
     if not config.instagram_username:
-        await chat.send_message(f"❌ Не задан INSTAGRAM_USERNAME — Instagram не подключён.{note}")
+        await chat.send_message(t("❌ Не задан INSTAGRAM_USERNAME — Instagram не подключён.") + note)
         return
 
-    await chat.send_message("⏳ Проверяю токен…")
+    await chat.send_message(t("⏳ Проверяю токен…"))
 
     async with aiohttp.ClientSession() as session:
         try:
@@ -540,23 +572,27 @@ async def cmd_igtoken(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             user = await ig.fetch_user(session, token, user_id) if user_id else None
         except ig.InstagramAuthError:
             user_id = user = None
-            reason = "Instagram отклонил токен"
+            reason = t("Instagram отклонил токен")
         except Exception:
             logger.exception("Instagram token check failed")
             user_id = user = None
-            reason = "не удалось связаться с Instagram (подробности в логах)"
+            reason = t("не удалось связаться с Instagram (подробности в логах)")
         else:
             reason = (
-                f"токен выдан не для @{config.instagram_username} — проверь INSTAGRAM_USERNAME "
-                "и какой аккаунт добавлен в приложение Meta"
+                t(
+                    "токен выдан не для @{username} — проверь INSTAGRAM_USERNAME "
+                    "и какой аккаунт добавлен в приложение Meta"
+                ).format(username=config.instagram_username)
                 if user_id is None
-                else "Instagram не ответил (подробности в логах)"
+                else t("Instagram не ответил (подробности в логах)")
             )
 
     if user_id is None or user is None:
         await chat.send_message(
-            f"❌ Токен не сохранён: {reason}.\n"
-            f"Проверь, что значение скопировано целиком, без лишних символов.{note}"
+            t(
+                "❌ Токен не сохранён: {reason}.\n"
+                "Проверь, что значение скопировано целиком, без лишних символов."
+            ).format(reason=reason) + note
         )
         return
 
@@ -569,10 +605,10 @@ async def cmd_igtoken(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         count = None
     if count is not None:
         await db.upsert("instagram", count, source="api")
-        fetched = f"Проверка прошла: @{username}, {_fmt(count)} подписчиков."
+        fetched = t("Проверка прошла: @{username}, {count} подписчиков.").format(username=username, count=_fmt(count))
     else:
-        fetched = f"Проверка прошла: @{username}, но число подписчиков API не вернул."
-    screen = (await ui.instagram(db, config)).noted(f"✅ Токен сохранён. {fetched}{note}")
+        fetched = t("Проверка прошла: @{username}, но число подписчиков API не вернул.").format(username=username)
+    screen = (await ui.instagram(db, config)).noted(t("✅ Токен сохранён. {fetched}").format(fetched=fetched) + note)
     await chat.send_message(screen.text, **_markup(screen))
 
 
@@ -593,16 +629,18 @@ async def cmd_restore(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     document = message.document or (replied.document if replied else None)
     if document is None:
         await message.reply_text(
-            "Чтобы вернуть историю, ответь командой /restore на сообщение с бэкапом "
-            "(«📦 Еженедельный бэкап базы») или пришли файл .db с подписью /restore.\n\n"
-            "Данные из бэкапа добавятся к текущим: уже собранное не перезапишется."
+            t(
+                "Чтобы вернуть историю, ответь командой /restore на сообщение с бэкапом "
+                "(«📦 Еженедельный бэкап базы») или пришли файл .db с подписью /restore.\n\n"
+                "Данные из бэкапа добавятся к текущим: уже собранное не перезапишется."
+            )
         )
         return
     if document.file_size and document.file_size > RESTORE_MAX_BYTES:
-        await message.reply_text("❌ Файл больше 20 МБ — Telegram не даст боту его скачать.")
+        await message.reply_text(t("❌ Файл больше 20 МБ — Telegram не даст боту его скачать."))
         return
 
-    await message.reply_text("⏳ Восстанавливаю…")
+    await message.reply_text(t("⏳ Восстанавливаю…"))
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "backup.db")
         tg_file = await document.get_file()
@@ -610,30 +648,31 @@ async def cmd_restore(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         try:
             result = await db.restore_from(path)
         except ValueError as e:
-            await message.reply_text(f"❌ Не похоже на бэкап этого бота: {e}.")
+            await message.reply_text(t("❌ Не похоже на бэкап этого бота: {error}.").format(error=e))
             return
 
     # The backup may carry another report time: apply it to the running job.
     await _apply_schedule(context)
 
-    period = f"{result['first']} — {result['last']}" if result["first"] else "пусто"
-    note = (
-        f"✅ Восстановлено, добавлено записей: {_fmt(result['added'])}. "
-        f"Всего: {_fmt(result['total'])} ({period})."
-    )
+    period = f"{result['first']} — {result['last']}" if result["first"] else t("пусто")
+    note = t(
+        "✅ Восстановлено, добавлено записей: {added}. Всего: {total} ({period})."
+    ).format(added=_fmt(result["added"]), total=_fmt(result["total"]), period=period)
     await _reply(update, (await ui.home(db, config)).noted(note))
 
 
 @_admin_only
 async def on_unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text("Такой команды нет. Все команды — в /help.")
+    await update.message.reply_text(t("Такой команды нет. Все команды — в /help."))
 
 
 @_admin_only
 async def on_unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # The persistent keyboard again: the user may have hidden or lost it.
     await update.message.reply_text(
-        f"Не понимаю это сообщение. Главная — кнопка «{ui.MENU_BUTTON_TEXT}» внизу, все команды — /help.",
+        t("Не понимаю это сообщение. Главная — кнопка «{button}» внизу, все команды — /help.").format(
+            button=t(ui.MENU_BUTTON_TEXT)
+        ),
         reply_markup=ui.persistent_keyboard(),
     )
 
@@ -666,7 +705,7 @@ async def _cb_home(press: _Press, context, args: list[str]) -> None:
 
 async def _cb_now(press: _Press, context, args: list[str]) -> None:
     if _collect_lock(context).locked():
-        await press.answer("Уже собираю данные — подожди несколько секунд")
+        await press.answer(t("Уже собираю данные — подожди несколько секунд"))
         return
     await press.answer()  # before the collection: it takes seconds
 
@@ -685,10 +724,10 @@ async def _cb_chart(press: _Press, context, args: list[str]) -> None:
     config, db = _deps(context)
     chart = await _build_chart_png(db)
     if chart is None:
-        await press.answer("Для графика пока мало данных: нужно хотя бы два дня")
+        await press.answer(t("Для графика пока мало данных: нужно хотя бы два дня"))
         return
-    await press.answer("График — ниже")
-    await context.bot.send_photo(chat_id=config.admin_chat_id, photo=chart, caption=CHART_CAPTION)
+    await press.answer(t("График — ниже"))
+    await context.bot.send_photo(chat_id=config.admin_chat_id, photo=chart, caption=t(CHART_CAPTION))
 
 
 async def _cb_table(press: _Press, context, args: list[str]) -> None:
@@ -733,7 +772,7 @@ async def _cb_security(press: _Press, context, args: list[str]) -> None:
     else:
         return
     if action in ("set", "pwd"):
-        await press.answer("Сохранено")
+        await press.answer(t("Сохранено"))
     await _show(press.query, screen)
 
 
@@ -755,7 +794,7 @@ async def _cb_settings(press: _Press, context, args: list[str]) -> None:
     elif action == "quiet" and len(args) == 1:
         quiet = not await is_quiet_mode(db, config)
         await db.set_setting("quiet_if_no_change", "1" if quiet else "0")
-        await press.answer("Тихий режим включён" if quiet else "Тихий режим выключен")
+        await press.answer(t("Тихий режим включён") if quiet else t("Тихий режим выключен"))
         screen = await ui.settings(db, config)
     elif action == "days" and len(args) == 1:
         screen = await ui.report_days(db, config)
@@ -769,7 +808,7 @@ async def _cb_settings(press: _Press, context, args: list[str]) -> None:
         dow, _, _ = await get_report_schedule(db, config)
         days = set(ui.dow_days(dow)) ^ {value}
         if not days:
-            await press.answer("Нужен хотя бы один день")
+            await press.answer(t("Нужен хотя бы один день"))
             return
         await save_schedule(db, config, dow=ui.dow_expr(days))
         screen = await ui.report_days(db, config)
@@ -778,7 +817,7 @@ async def _cb_settings(press: _Press, context, args: list[str]) -> None:
     elif action == "hour" and value is not None and value.isdigit() and int(value) <= 23:
         await _set_report_time(context, int(value), 0)
         tz = await get_report_tz(db, config)
-        await press.answer(f"Отчёт будет приходить в {ui.clock(int(value), 0, tz)}")
+        await press.answer(t("Отчёт будет приходить в {time}").format(time=ui.clock(int(value), 0, tz)))
         screen = await ui.settings(db, config)
     elif action == "tz" and len(args) == 1:
         screen = await ui.timezone(db, config)
@@ -800,7 +839,8 @@ async def _cb_monitors(press: _Press, context, args: list[str]) -> None:
         if len(args) != 1 or args[0] not in monitors.BY_ID:
             return
         on = await monitors.toggle(db, args[0])
-        await press.answer(f"{monitors.BY_ID[args[0]].label}: {'включено' if on else 'выключено'}")
+        label = t(monitors.BY_ID[args[0]].label)
+        await press.answer(f"{label}: {t('включено') if on else t('выключено')}")
     await _show(press.query, await ui.monitors_screen(db, config))
 
 
@@ -811,7 +851,7 @@ async def _cb_linkedin(press: _Press, context, args: list[str]) -> None:
         screen = await ui.linkedin(db, config)
     elif len(args) == 2 and args[0] == "save" and args[1].isdigit():
         screen = await _save_linkedin(db, config, int(args[1]))
-        await press.answer("Сохранено")
+        await press.answer(t("Сохранено"))
     elif args == ["cancel"]:
         screen = await ui.home(db, config)
     else:
@@ -859,7 +899,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     route = _ROUTES.get(_LEGACY.get(head, head))
     try:
         if route is None:
-            await press.answer("Это меню устарело — вот актуальное")
+            await press.answer(t("Это меню устарело — вот актуальное"))
             await _show(query, await ui.home(db, config))
         else:
             await route(press, context, args)
@@ -907,10 +947,10 @@ async def li_conv_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     config, db = _deps(context)
     screen = await ui.home(db, config)
     if update.callback_query:
-        await _answer(update.callback_query, "Отменено")
+        await _answer(update.callback_query, t("Отменено"))
         await _show(update.callback_query, screen)
     elif update.message:
-        await _reply(update, screen.noted("Отменено."))
+        await _reply(update, screen.noted(t("Отменено.")))
     return ConversationHandler.END
 
 

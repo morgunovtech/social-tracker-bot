@@ -19,6 +19,7 @@ from bot import monitors, platforms, tofs_status
 from bot.chart import render_chart
 from bot.config import DOW_ORDER, Config, normalize_tz
 from bot.db import Database, parse_utc, utcnow
+from bot.i18n import t
 from bot.monitors import collection, followers, hygiene, mail, profile
 from bot.platforms import LABELS, PLATFORM_IDS
 from bot.platforms.base import Context
@@ -38,6 +39,7 @@ DAILY_MISFIRE_GRACE_S = 3600
 CATCH_UP_DELAY = timedelta(seconds=30)
 LAST_DAILY_RUN_KEY = "last_daily_run"
 
+# Translated where it is sent: t(CHART_CAPTION).
 CHART_CAPTION = "📉 Подписчики за 30 дней"
 
 logger = logging.getLogger(__name__)
@@ -248,7 +250,7 @@ async def _send_backup(bot: Bot, config: Config, db: Database) -> None:
             chat_id=config.admin_chat_id,
             document=data,
             filename=f"followers-{today}.db",
-            caption=(
+            caption=t(
                 "📦 Еженедельный бэкап базы. Чтобы вернуть из него историю, ответь на это сообщение "
                 "командой /restore. LinkedIn cookie и токен Instagram в копию не входят: после "
                 "восстановления пришли их заново через /setcookie и /igtoken."
@@ -344,7 +346,7 @@ async def _scheduled_job(
             if quiet and not outcome.has_change:
                 await bot.send_message(
                     chat_id=config.admin_chat_id,
-                    text="😴 Без изменений за неделю — всё стабильно ✅",
+                    text=t("😴 Без изменений за неделю — всё стабильно ✅"),
                 )
                 logger.info("Quiet mode: sent no-change one-liner")
             else:
@@ -354,7 +356,7 @@ async def _scheduled_job(
                     await bot.send_photo(
                         chat_id=config.admin_chat_id,
                         photo=chart,
-                        caption=CHART_CAPTION,
+                        caption=t(CHART_CAPTION),
                     )
                 logger.info("Scheduled report sent to admin")
         except Exception:

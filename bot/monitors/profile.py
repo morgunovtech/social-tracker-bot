@@ -19,6 +19,7 @@ from telegram import Bot
 from bot import platforms
 from bot.config import Config
 from bot.db import Database, utcnow
+from bot.i18n import plural, t
 from bot.monitors import NO_PREVIEW, defang
 from bot.platforms.base import ADMINS, COUNT, IMAGE, TEXT, Context, Platform
 
@@ -47,19 +48,29 @@ _LINK = re.compile(r"(?:https?://|www\.|t\.me/)[^\s<>\"«»]+", re.IGNORECASE)
 def _snippet(text: str) -> str:
     text = " ".join(text.split())
     if not text:
-        return "(пусто)"
+        return t("(пусто)")
     return defang(text if len(text) <= SNIPPET_LEN else text[: SNIPPET_LEN - 1] + "…")
 
 
 def _admin_lines(label: str, before: str, after: str) -> list[str]:
     old = {a["id"]: a for a in json.loads(before)}
     new = {a["id"]: a for a in json.loads(after)}
-    lines = [f"🚨 {label}: новый админ — {new[uid]['name']}" for uid in new.keys() - old.keys()]
-    lines += [f"🟠 {label}: админ удалён — {old[uid]['name']}" for uid in old.keys() - new.keys()]
+    lines = [
+        t("🚨 {label}: новый админ — {name}").format(label=label, name=new[uid]["name"])
+        for uid in new.keys() - old.keys()
+    ]
+    lines += [
+        t("🟠 {label}: админ удалён — {name}").format(label=label, name=old[uid]["name"])
+        for uid in old.keys() - new.keys()
+    ]
     owner_before = next((a for a in old.values() if a["status"] == "creator"), None)
     owner_after = next((a for a in new.values() if a["status"] == "creator"), None)
     if owner_before and owner_after and owner_before["id"] != owner_after["id"]:
-        lines.append(f"🚨 {label}: сменился владелец — {owner_before['name']} → {owner_after['name']}")
+        lines.append(
+            t("🚨 {label}: сменился владелец — {before} → {after}").format(
+                label=label, before=owner_before["name"], after=owner_after["name"]
+            )
+        )
     return lines
 
 
@@ -74,13 +85,21 @@ def diff(platform: Platform, old: dict[str, str], new: dict[str, str]) -> list[s
         if kind == TEXT:
             # A link that wasn't there before is the classic hijack payload.
             added = sorted(set(_LINK.findall(after)) - set(_LINK.findall(before)))
-            line = f"{'🚨' if added else '🟠'} {platform.label}: {label} — «{_snippet(before)}» → «{_snippet(after)}»"
+            line = t("{icon} {platform}: {field} — «{before}» → «{after}»").format(
+                icon="🚨" if added else "🟠",
+                platform=platform.label,
+                field=t(label),
+                before=_snippet(before),
+                after=_snippet(after),
+            )
             if added:
-                more = f" и ещё {len(added) - MAX_LINKS}" if len(added) > MAX_LINKS else ""
-                line += "\n    новые ссылки: " + defang(", ".join(added[:MAX_LINKS])) + more
+                more = t(" и ещё {n}").format(n=len(added) - MAX_LINKS) if len(added) > MAX_LINKS else ""
+                line += "\n    " + t("новые ссылки: {links}{more}").format(
+                    links=defang(", ".join(added[:MAX_LINKS])), more=more
+                )
             lines.append(line)
         elif kind == IMAGE:
-            lines.append(f"🟠 {platform.label}: новая {label}")
+            lines.append(t("🟠 {platform}: новая {field}").format(platform=platform.label, field=t(label)))
         elif kind == ADMINS:
             lines += _admin_lines(platform.label, before, after)
         elif kind == COUNT:
@@ -90,27 +109,35 @@ def diff(platform: Platform, old: dict[str, str], new: dict[str, str]) -> list[s
                 continue
             drop = was - now
             if drop >= COUNT_DROP_MIN_ABS and drop >= math.ceil(was * COUNT_DROP_MIN_PCT / 100):
-                lines.append(f"🚨 {platform.label}: {label} — было {was}, стало {now} (−{drop})")
+                lines.append(
+                    t("🚨 {platform}: {field} — было {was}, стало {now} (−{drop})").format(
+                        platform=platform.label, field=t(label), was=was, now=now, drop=drop
+                    )
+                )
     return lines
 
 
 def _reachability(platform: Platform, fails: int, reachable: bool) -> tuple[list[str], int]:
     """(alert lines, new count of consecutive failed fetches)."""
     if reachable:
-        return ([f"✅ {platform.label}: профиль снова доступен"] if fails >= UNREACHABLE_AFTER else []), 0
+        if fails >= UNREACHABLE_AFTER:
+            return [t("✅ {label}: профиль снова доступен").format(label=platform.label)], 0
+        return [], 0
     fails += 1
     if fails == UNREACHABLE_AFTER:
         return [
-            f"🔴 {platform.label}: профиль не читается {fails} проверки подряд — "
-            f"канал удалён или скрыт, или у бота отобрали права?"
+            t(
+                "🔴 {label}: профиль не читается {n} {checks} подряд — "
+                "канал удалён или скрыт, или у бота отобрали права?"
+            ).format(label=platform.label, n=fails, checks=plural(fails, "проверку", "проверки", "проверок"))
         ], fails
     return [], fails
 
 
 async def _send(bot: Bot, config: Config, lines: list[str]) -> bool:
-    text = "🛡 Профиль\n\n" + "\n".join(lines)
+    text = t("🛡 Профиль") + "\n\n" + "\n".join(lines)
     if any(line.startswith(("🚨", "🟠")) for line in lines):
-        text += f"\n\n{ADVICE}"
+        text += f"\n\n{t(ADVICE)}"
     if len(text) > MESSAGE_LIMIT:
         text = text[: MESSAGE_LIMIT - 1] + "…"
     try:

@@ -23,6 +23,7 @@ os.environ.update({
     "REPORT_MINUTE": "0",
     "REPORT_DOW": "sat",
     "QUIET_IF_NO_CHANGE": "0",
+    "BOT_LANG": "",
     "SITE_INGEST_URL": "",
     "SOCIALBOT_INGEST_TOKEN": "",
     "HEALTHCHECK_URL": "",

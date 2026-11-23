@@ -21,6 +21,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton,
 from bot import monitors, platforms
 from bot.config import DOW_ORDER, Config
 from bot.db import Database, parse_utc, utcnow
+from bot.i18n import language, plural, t
 from bot.monitors import hygiene
 from bot.platforms import BY_ID, PLATFORMS
 from bot.platforms import instagram as ig
@@ -45,6 +46,7 @@ LI_CANCEL = "li:cancel"
 HELP = "help"
 
 # The persistent reply-keyboard button: tapping it sends this text back.
+# Russian is the key; the keyboard shows t(MENU_BUTTON_TEXT).
 MENU_BUTTON_TEXT = "🏠 Меню"
 # Reply keyboards of earlier versions stay on the user's screen until replaced.
 LEGACY_MENU_BUTTON_TEXTS = ("📊 Меню",)
@@ -54,6 +56,7 @@ TABLE_PERIODS = (7, 14, 30, 90)
 # One meaning per icon across the bot: on / chosen, off, unavailable.
 ON, OFF, UNAVAILABLE = "✅", "⬜", "➖"
 
+# Russian names, translated with t() where they are shown (see bot/i18n.py).
 _DOW_SHORT = {"mon": "Пн", "tue": "Вт", "wed": "Ср", "thu": "Чт", "fri": "Пт", "sat": "Сб", "sun": "Вс"}
 _DOW_EVERY = {
     "mon": "по понедельникам", "tue": "по вторникам", "wed": "по средам", "thu": "по четвергам",
@@ -78,12 +81,14 @@ COMMON_ZONES = (
 )
 _ZONE_NAMES = dict(COMMON_ZONES)
 
-WELCOME = (
-    "👋 Привет! Я слежу за подписчиками и безопасностью твоих аккаунтов.\n\n"
-    "Пока всё в порядке, я молчу. О падении подписчиков, накрутке, смене названия, ссылок "
-    "или админов и о письмах про новые входы пишу сразу, а сводку присылаю по расписанию.\n\n"
-    f"Кнопка «{MENU_BUTTON_TEXT}» внизу экрана всегда возвращает на главную."
-)
+def welcome() -> str:
+    """The /start greeting in the chat language."""
+    return t(
+        "👋 Привет! Я слежу за подписчиками и безопасностью твоих аккаунтов.\n\n"
+        "Пока всё в порядке, я молчу. О падении подписчиков, накрутке, смене названия, ссылок "
+        "или админов и о письмах про новые входы пишу сразу, а сводку присылаю по расписанию.\n\n"
+        "Кнопка «{menu}» внизу экрана всегда возвращает на главную."
+    ).format(menu=t(MENU_BUTTON_TEXT))
 
 
 @dataclass(frozen=True)
@@ -124,6 +129,11 @@ def _cap(text: str) -> str:
     return text[:1].upper() + text[1:]
 
 
+def _days(n: int) -> str:
+    """The unit after a number of days: 'дн.' in Russian, day/days in English."""
+    return plural(n, "дн.", "дн.", "дн.")
+
+
 def _titled(report: str) -> str:
     """A plain-text report with its first line as the bold title."""
     title, _, body = report.partition("\n")
@@ -132,10 +142,10 @@ def _titled(report: str) -> str:
 
 def persistent_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        [[KeyboardButton(MENU_BUTTON_TEXT)]],
+        [[KeyboardButton(t(MENU_BUTTON_TEXT))]],
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder="Меню — кнопкой ниже, команды — через /",
+        input_field_placeholder=t("Меню — кнопкой ниже, команды — через /"),
     )
 
 
@@ -168,13 +178,13 @@ def dow_pretty(dow: str) -> str:
     """'каждый день', 'по будням', 'по субботам', 'Пн–Ср, Пт'."""
     days = dow_days(dow)
     if len(days) == len(DOW_ORDER):
-        return "каждый день"
+        return t("каждый день")
     if days == DOW_ORDER[:5]:
-        return "по будням"
+        return t("по будням")
     if days == DOW_ORDER[5:]:
-        return "по выходным"
+        return t("по выходным")
     if len(days) == 1:
-        return _DOW_EVERY[days[0]]
+        return t(_DOW_EVERY[days[0]])
     runs: list[list[str]] = []
     for day in days:
         if runs and DOW_ORDER.index(runs[-1][-1]) == DOW_ORDER.index(day) - 1:
@@ -184,10 +194,10 @@ def dow_pretty(dow: str) -> str:
     parts: list[str] = []
     for run in runs:
         if len(run) > 2:
-            parts.append(f"{_DOW_SHORT[run[0]]}–{_DOW_SHORT[run[-1]]}")
+            parts.append(f"{t(_DOW_SHORT[run[0]])}–{t(_DOW_SHORT[run[-1]])}")
         else:
-            parts += [_DOW_SHORT[d] for d in run]
-    return ", ".join(parts) or "ни в один день"
+            parts += [t(_DOW_SHORT[d]) for d in run]
+    return ", ".join(parts) or t("ни в один день")
 
 
 def utc_offset(tz: ZoneInfo, now: datetime | None = None) -> str:
@@ -202,7 +212,8 @@ def tz_name(tz: ZoneInfo, now: datetime | None = None) -> str:
     """'Москва (UTC+3)', 'Asia/Kolkata (UTC+5:30)', 'UTC'."""
     if tz.key == "UTC":
         return "UTC"
-    return f"{_ZONE_NAMES.get(tz.key, tz.key)} ({utc_offset(tz, now)})"
+    name = t(_ZONE_NAMES[tz.key]) if tz.key in _ZONE_NAMES else tz.key
+    return f"{name} ({utc_offset(tz, now)})"
 
 
 def clock(hour: int, minute: int, tz: ZoneInfo) -> str:
@@ -220,9 +231,16 @@ def next_report(dow: str, hour: int, minute: int, tz: ZoneInfo, now: datetime | 
         code = DOW_ORDER[day.weekday()]
         if at <= now or code not in days:
             continue
-        when = {0: "сегодня", 1: "завтра"}.get(offset) or f"{_DOW_SHORT[code].lower()} {day:%d.%m}"
-        return f"{when} в {clock(hour, minute, tz)}"
-    return "не запланирован"
+        if offset == 0:
+            when = t("сегодня")
+        elif offset == 1:
+            when = t("завтра")
+        else:
+            # Russian writes the weekday in lower case mid-sentence; English keeps 'Sat'.
+            short = t(_DOW_SHORT[code])
+            when = f"{short.lower() if language() == 'ru' else short} {day:%d.%m}"
+        return t("{when} в {time}").format(when=when, time=clock(hour, minute, tz))
+    return t("не запланирован")
 
 
 def shift_schedule(
@@ -266,25 +284,25 @@ async def home(db: Database, config: Config, report: str | None = None) -> Scree
     if report is None:
         report, _ = await build_stats(db, config)
     dow, hour, minute, tz = await _schedule(db, config)
-    text = f"{_titled(report)}\n\n⏭ Следующий отчёт: {next_report(dow, hour, minute, tz)}"
+    text = f"{_titled(report)}\n\n" + t("⏭ Следующий отчёт: {next}").format(next=next_report(dow, hour, minute, tz))
     rows = [
-        [_button("🔄 Обновить данные", NOW)],
-        [_button("📈 Динамика", DYNAMICS), _button("🛡 Безопасность", SECURITY)],
+        [_button(t("🔄 Обновить данные"), NOW)],
+        [_button(t("📈 Динамика"), DYNAMICS), _button(t("🛡 Безопасность"), SECURITY)],
     ]
     if await linkedin_is_manual(db, config):
-        rows.append([_button("✏️ Ввести число LinkedIn", LI_ENTER)])
-    rows.append([_button("⚙️ Настройки", SETTINGS), _button("❓ Помощь", HELP)])
+        rows.append([_button(t("✏️ Ввести число LinkedIn"), LI_ENTER)])
+    rows.append([_button(t("⚙️ Настройки"), SETTINGS), _button(t("❓ Помощь"), HELP)])
     return Screen(text, InlineKeyboardMarkup(rows))
 
 
 def loading() -> Screen:
-    return Screen("⏳ Собираю свежие данные — это займёт несколько секунд…")
+    return Screen(t("⏳ Собираю свежие данные — это займёт несколько секунд…"))
 
 
 async def dynamics(db: Database) -> Screen:
     rows = [
-        [_button("🖼 График за 30 дней", CHART), _button("📋 По дням", TABLE)],
-        _back(HOME, "Главная"),
+        [_button(t("🖼 График за 30 дней"), CHART), _button(t("📋 По дням"), TABLE)],
+        _back(HOME, t("Главная")),
     ]
     return Screen(_titled(await build_week_report(db)), InlineKeyboardMarkup(rows))
 
@@ -295,12 +313,14 @@ async def table(db: Database, config: Config, platform_id: str = "all", days: in
         text = await build_history_all(db, days)
     else:
         text = await build_history_table(db, platform_id, days)
-    choices = [("all", "Все")] + [(p.id, p.label) for p in platforms.enabled(config)]
+    choices = [("all", t("Все"))] + [(p.id, p.label) for p in platforms.enabled(config)]
     if platform_id not in dict(choices):  # a disconnected platform asked for by /history
         choices.append((platform_id, BY_ID[platform_id].label))
     which = [_button(_picked(pid == platform_id, label), f"{TABLE}:{pid}:{days}") for pid, label in choices]
-    period = [_button(_picked(d == days, f"{d} дн."), f"{TABLE}:{platform_id}:{d}") for d in TABLE_PERIODS]
-    return Screen(text, InlineKeyboardMarkup(_rows(which) + [period, _back(DYNAMICS, "Динамика")]))
+    period = [
+        _button(_picked(d == days, f"{d} {_days(d)}"), f"{TABLE}:{platform_id}:{d}") for d in TABLE_PERIODS
+    ]
+    return Screen(text, InlineKeyboardMarkup(_rows(which) + [period, _back(DYNAMICS, t("Динамика"))]))
 
 
 # ---------------------------------------------------------------------------
@@ -309,8 +329,9 @@ async def table(db: Database, config: Config, platform_id: str = "all", days: in
 
 def _platform_state(ans: dict[str, str], points: int) -> tuple[str, str]:
     if not ans:
-        return "❓", "не заполнено"
-    return ("✅" if points == hygiene.MAX_SCORE else "⚠️"), f"{points} из {hygiene.MAX_SCORE}"
+        return "❓", t("не заполнено")
+    state = t("{points} из {max}").format(points=points, max=hygiene.MAX_SCORE)
+    return ("✅" if points == hygiene.MAX_SCORE else "⚠️"), state
 
 
 async def security(db: Database, config: Config, top: int = 5) -> Screen:
@@ -318,30 +339,30 @@ async def security(db: Database, config: Config, top: int = 5) -> Screen:
     result = await hygiene.overall(db, config)
     if result is None:
         return Screen(
-            "<b>🛡 Безопасность</b>\n\nНет подключённых платформ — подключи хотя бы одну в .env.",
-            InlineKeyboardMarkup([_back(HOME, "Главная")]),
+            t("<b>🛡 Безопасность</b>\n\nНет подключённых платформ — подключи хотя бы одну в .env."),
+            InlineKeyboardMarkup([_back(HOME, t("Главная"))]),
         )
     total, recs = result
     today = utcnow().date()
-    lines = [f"<b>🛡 Безопасность: {total} из {hygiene.MAX_SCORE}</b>", ""]
+    lines = [t("<b>🛡 Безопасность: {total} из {max}</b>").format(total=total, max=hygiene.MAX_SCORE), ""]
     rows: list[list[InlineKeyboardButton]] = []
     for platform in platforms.enabled(config):
         ans = await hygiene.answers(db, platform)
         icon, state = _platform_state(ans, hygiene.score(platform, ans, today))
-        lines.append(f"{icon} {platform.label} ({esc(platform.account)}) — {state}")
+        lines.append(f"{icon} {platform.label} ({esc(t(platform.account))}) — {state}")
         rows.append([_button(f"{icon} {platform.label} · {state}", f"{SECURITY}:edit:{platform.id}")])
     if recs:
-        lines += ["", "<b>Что сделать в первую очередь</b>"] + [f"• {esc(r)}" for r in recs[:top]]
+        lines += ["", t("<b>Что сделать в первую очередь</b>")] + [f"• {esc(t(r))}" for r in recs[:top]]
         if len(recs) > top:
-            lines.append(f"…и ещё {len(recs) - top} — в чек-листах аккаунтов")
+            lines.append(t("…и ещё {n} — в чек-листах аккаунтов").format(n=len(recs) - top))
     events = await db.recent_events(5)
     if events:
-        lines += ["", "<b>Последние события</b>"]
+        lines += ["", t("<b>Последние события</b>")]
         for e in events:
             day = parse_utc(e["occurred_at"]).strftime("%d.%m")
             lines.append(f"• {day} {esc(e['detail'].splitlines()[0])}")
-    lines += ["", "Нажми на аккаунт, чтобы отметить пункты. Пароли я не спрашиваю и не храню."]
-    rows.append(_back(HOME, "Главная"))
+    lines += ["", t("Нажми на аккаунт, чтобы отметить пункты. Пароли я не спрашиваю и не храню.")]
+    rows.append(_back(HOME, t("Главная")))
     return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
 
 
@@ -360,20 +381,27 @@ async def checklist(db: Database, platform: Platform) -> Screen:
     """One account: a button per item with its current answer."""
     ans = await hygiene.answers(db, platform)
     today = utcnow().date()
-    text = (
-        f"<b>🛡 {esc(platform.label)}: {hygiene.score(platform, ans, today)} из {hygiene.MAX_SCORE}</b>\n"
-        f"{esc(platform.account)}\n\n"
+    text = t(
+        "<b>🛡 {label}: {points} из {max}</b>\n"
+        "{account}\n\n"
         "Нажми на пункт, чтобы отметить, как сейчас. Пароль вводить не нужно — только отметки."
+    ).format(
+        label=esc(platform.label),
+        points=hygiene.score(platform, ans, today),
+        max=hygiene.MAX_SCORE,
+        account=esc(t(platform.account)),
     )
     rows: list[list[InlineKeyboardButton]] = []
     for item in hygiene.items(platform):
         icon, answer = hygiene.item_status(item, ans)
-        rows.append([_button(f"{icon} {item.label}: {answer}", f"{SECURITY}:ask:{platform.id}:{item.key}")])
+        rows.append([_button(f"{icon} {t(item.label)}: {t(answer)}", f"{SECURITY}:ask:{platform.id}:{item.key}")])
     icon, when = hygiene.password_status(ans, today)
     rows.append([
-        _button(f"{icon} {hygiene.PASSWORD_LABEL}: {when}", f"{SECURITY}:ask:{platform.id}:{hygiene.PASSWORD_KEY}")
+        _button(
+            f"{icon} {t(hygiene.PASSWORD_LABEL)}: {t(when)}", f"{SECURITY}:ask:{platform.id}:{hygiene.PASSWORD_KEY}"
+        )
     ])
-    rows.append(_back(SECURITY, "Безопасность"))
+    rows.append(_back(SECURITY, t("Безопасность")))
     return Screen(text, InlineKeyboardMarkup(rows))
 
 
@@ -382,26 +410,34 @@ async def question(db: Database, platform: Platform, key: str) -> Screen:
     ans = await hygiene.answers(db, platform)
     keys = question_keys(platform)
     if key == hygiene.PASSWORD_KEY:
-        asked, advice = hygiene.PASSWORD_QUESTION, hygiene.PASSWORD_ADVICE
+        asked, advice = t(hygiene.PASSWORD_QUESTION), t(hygiene.PASSWORD_ADVICE)
         _, current = hygiene.password_status(ans, utcnow().date())
+        current = t(current)
         choices = _rows([
-            _button(_cap(label), f"{SECURITY}:pwd:{platform.id}:{days}")
+            _button(_cap(t(label)), f"{SECURITY}:pwd:{platform.id}:{days}")
             for label, days in hygiene.PASSWORD_AGES.items()
         ])
     else:
         item = next(i for i in hygiene.items(platform) if i.key == key)
-        asked, advice = item.question, item.advice
+        asked, advice = t(item.question), t(item.advice)
         chosen = hygiene.chosen(item, ans)
-        current = chosen.button if chosen else "не отмечено"
+        current = t(chosen.button) if chosen else t("не отмечено")
         choices = [[
-            _button(_picked(c is chosen, _cap(c.button)), f"{SECURITY}:set:{platform.id}:{key}:{c.value}")
+            _button(_picked(c is chosen, _cap(t(c.button))), f"{SECURITY}:set:{platform.id}:{key}:{c.value}")
             for c in item.choices
         ]]
-    text = (
-        f"<b>🛡 {esc(platform.label)} · вопрос {keys.index(key) + 1} из {len(keys)}</b>\n\n"
-        f"<b>{esc(asked)}</b>\n\n"
-        f"Совет: {esc(advice)}.\n\n"
-        f"Сейчас: {esc(current)}"
+    text = t(
+        "<b>🛡 {label} · вопрос {n} из {total}</b>\n\n"
+        "<b>{question}</b>\n\n"
+        "Совет: {advice}.\n\n"
+        "Сейчас: {current}"
+    ).format(
+        label=esc(platform.label),
+        n=keys.index(key) + 1,
+        total=len(keys),
+        question=esc(asked),
+        advice=esc(advice),
+        current=esc(current),
     )
     return Screen(text, InlineKeyboardMarkup(choices + [_back(f"{SECURITY}:edit:{platform.id}", platform.label)]))
 
@@ -413,30 +449,30 @@ async def question(db: Database, platform: Platform, key: str) -> Screen:
 async def settings(db: Database, config: Config) -> Screen:
     dow, hour, minute, tz = await _schedule(db, config)
     quiet = await is_quiet_mode(db, config)
-    build = f"сборка {esc(config.app_commit[:7])} · " if config.app_commit else ""
+    build = t("сборка {commit} · ").format(commit=esc(config.app_commit[:7])) if config.app_commit else ""
     text = "\n".join([
-        "<b>⚙️ Настройки</b>",
+        t("<b>⚙️ Настройки</b>"),
         "",
-        f"📅 Отчёт: {dow_pretty(dow)}, в {clock(hour, minute, tz)}",
-        f"🌍 Часовой пояс: {esc(tz_name(tz))}",
-        "Данные собираются каждый день в это время, а отчёт приходит в выбранные дни.",
+        t("📅 Отчёт: {days}, в {time}").format(days=dow_pretty(dow), time=clock(hour, minute, tz)),
+        t("🌍 Часовой пояс: {tz}").format(tz=esc(tz_name(tz))),
+        t("Данные собираются каждый день в это время, а отчёт приходит в выбранные дни."),
         "",
-        f"🔕 Тихий режим: {'включён' if quiet else 'выключен'}",
-        "Когда включён, неделя без изменений — это одна строка вместо отчёта.",
+        t("🔕 Тихий режим: {state}").format(state=t("включён") if quiet else t("выключен")),
+        t("Когда включён, неделя без изменений — это одна строка вместо отчёта."),
         "",
-        f"<i>Версия: {build}Python {py_platform.python_version()}</i>",
+        t("<i>Версия: {build}Python {python}</i>").format(build=build, python=py_platform.python_version()),
     ])
-    tools = [_button("🧩 Мониторинги", MONITORS)]
+    tools = [_button(t("🧩 Мониторинги"), MONITORS)]
     if BY_ID["instagram"].enabled(config):
         tools.append(_button("📸 Instagram", INSTAGRAM))
     if BY_ID["linkedin"].enabled(config):
         tools.append(_button("💼 LinkedIn", LINKEDIN))
     rows = [
-        [_button("📅 Дни отчёта", f"{SETTINGS}:days"), _button("🕗 Время отчёта", f"{SETTINGS}:time")],
-        [_button("🌍 Часовой пояс", f"{SETTINGS}:tz")],
-        [_button(f"{_check(quiet)} Тихий режим", f"{SETTINGS}:quiet")],
+        [_button(t("📅 Дни отчёта"), f"{SETTINGS}:days"), _button(t("🕗 Время отчёта"), f"{SETTINGS}:time")],
+        [_button(t("🌍 Часовой пояс"), f"{SETTINGS}:tz")],
+        [_button(f"{_check(quiet)} {t('Тихий режим')}", f"{SETTINGS}:quiet")],
         tools,
-        _back(HOME, "Главная"),
+        _back(HOME, t("Главная")),
     ]
     return Screen(text, InlineKeyboardMarkup(rows))
 
@@ -444,173 +480,202 @@ async def settings(db: Database, config: Config) -> Screen:
 async def report_days(db: Database, config: Config) -> Screen:
     dow, hour, minute, tz = await _schedule(db, config)
     days = dow_days(dow)
-    text = (
+    text = t(
         "<b>📅 Дни отчёта</b>\n\n"
-        f"Сейчас: {dow_pretty(dow)}, в {clock(hour, minute, tz)}\n\n"
+        "Сейчас: {days}, в {time}\n\n"
         "Отметь дни, когда присылать отчёт. Данные собираются каждый день, "
         "а о проблемах я пишу сразу, в любой день."
-    )
-    toggles = [_button(f"{_check(d in days)} {_DOW_SHORT[d]}", f"{SETTINGS}:day:{d}") for d in DOW_ORDER]
+    ).format(days=dow_pretty(dow), time=clock(hour, minute, tz))
+    toggles = [_button(f"{_check(d in days)} {t(_DOW_SHORT[d])}", f"{SETTINGS}:day:{d}") for d in DOW_ORDER]
     presets = [
-        _button(_picked(dow_days(expr) == days, label), f"{SETTINGS}:days:{expr}") for label, expr in _DAY_PRESETS
+        _button(_picked(dow_days(expr) == days, t(label)), f"{SETTINGS}:days:{expr}") for label, expr in _DAY_PRESETS
     ]
-    rows = [toggles[:4], toggles[4:], presets, _back(SETTINGS, "Настройки")]
+    rows = [toggles[:4], toggles[4:], presets, _back(SETTINGS, t("Настройки"))]
     return Screen(text, InlineKeyboardMarkup(rows))
 
 
 async def report_time(db: Database, config: Config) -> Screen:
     _, hour, minute, tz = await _schedule(db, config)
     if tz.key == "UTC":
-        zone = "Часы ниже — по UTC. Чтобы выбирать по своим часам, укажи часовой пояс."
+        zone = t("Часы ниже — по UTC. Чтобы выбирать по своим часам, укажи часовой пояс.")
     else:
-        zone = f"Часы ниже — по поясу {esc(tz_name(tz))}."
-    text = (
+        zone = t("Часы ниже — по поясу {tz}.").format(tz=esc(tz_name(tz)))
+    text = t(
         "<b>🕗 Время отчёта</b>\n\n"
-        f"Сейчас: {clock(hour, minute, tz)}\n\n"
-        f"{zone} Точное время с минутами — командой, например /settime 08:30"
-    )
+        "Сейчас: {time}\n\n"
+        "{zone} Точное время с минутами — командой, например /settime 08:30"
+    ).format(time=clock(hour, minute, tz), zone=zone)
     hours = [
         _button(_picked((h, 0) == (hour, minute), f"{h:02d}:00"), f"{SETTINGS}:hour:{h}") for h in range(24)
     ]
-    rows = _rows(hours, 4) + [[_button("🌍 Часовой пояс", f"{SETTINGS}:tz")], _back(SETTINGS, "Настройки")]
+    rows = _rows(hours, 4) + [[_button(t("🌍 Часовой пояс"), f"{SETTINGS}:tz")], _back(SETTINGS, t("Настройки"))]
     return Screen(text, InlineKeyboardMarkup(rows))
 
 
 async def timezone(db: Database, config: Config) -> Screen:
     tz = await get_report_tz(db, config)
-    text = (
+    text = t(
         "<b>🌍 Часовой пояс</b>\n\n"
-        f"Сейчас: {esc(tz_name(tz))}, там {utcnow().astimezone(tz):%H:%M}\n\n"
+        "Сейчас: {tz}, там {now:%H:%M}\n\n"
         "По этому поясу считаются время и дни отчёта. Выбери свой или пришли его название командой, "
         "например /settz Asia/Kolkata"
-    )
+    ).format(tz=esc(tz_name(tz)), now=utcnow().astimezone(tz))
     picks = []
     for key, name in COMMON_ZONES:
-        label = name if key == "UTC" else f"{name} {utc_offset(ZoneInfo(key)).removeprefix('UTC')}"
+        label = name if key == "UTC" else f"{t(name)} {utc_offset(ZoneInfo(key)).removeprefix('UTC')}"
         picks.append(_button(_picked(key == tz.key, label), f"{SETTINGS}:tz:{key}"))
-    return Screen(text, InlineKeyboardMarkup(_rows(picks) + [_back(SETTINGS, "Настройки")]))
+    return Screen(text, InlineKeyboardMarkup(_rows(picks) + [_back(SETTINGS, t("Настройки"))]))
 
 
 async def monitors_screen(db: Database, config: Config) -> Screen:
-    lines = ["<b>🧩 Мониторинги</b>", "", "<b>Платформы</b> — подключаются в .env"]
+    lines = [t("<b>🧩 Мониторинги</b>"), "", t("<b>Платформы</b> — подключаются в .env")]
     for p in PLATFORMS:
         if p.enabled(config):
             lines.append(f"{ON} {p.label} — {esc(p.target(config))}")
         else:
-            lines.append(f"{UNAVAILABLE} {p.label} — не подключено")
-    lines += ["", "<b>Проверки</b> — нажми, чтобы включить или выключить"]
+            lines.append(f"{UNAVAILABLE} {p.label} — {t('не подключено')}")
+    lines += ["", t("<b>Проверки</b> — нажми, чтобы включить или выключить")]
     rows: list[list[InlineKeyboardButton]] = []
     for m in monitors.MONITORS:
         if not m.requires(config):
-            lines.append(f"{UNAVAILABLE} {esc(m.label)} — нужно: {esc(m.needs)}")
+            lines.append(
+                t("{icon} {label} — нужно: {needs}").format(icon=UNAVAILABLE, label=esc(t(m.label)), needs=esc(t(m.needs)))
+            )
             continue
         on = await monitors.is_switched_on(db, m.id)
-        lines.append(f"{_check(on)} {esc(m.label)} — {esc(m.description)}")
-        rows.append([_button(f"{_check(on)} {m.label}", f"{MONITORS}:{m.id}")])
-    rows.append(_back(SETTINGS, "Настройки"))
+        lines.append(f"{_check(on)} {esc(t(m.label))} — {esc(t(m.description))}")
+        rows.append([_button(f"{_check(on)} {t(m.label)}", f"{MONITORS}:{m.id}")])
+    rows.append(_back(SETTINGS, t("Настройки")))
     return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
 
 
 async def linkedin(db: Database, config: Config) -> Screen:
     """How the LinkedIn number is collected, the cookie's age, the manual input."""
-    lines = ["<b>💼 LinkedIn</b>", "", f"Профиль: {esc(config.linkedin_profile_url or 'не задан')}"]
+    lines = [
+        "<b>💼 LinkedIn</b>",
+        "",
+        t("Профиль: {url}").format(url=esc(config.linkedin_profile_url or t("не задан"))),
+    ]
     latest = await db.get_latest("linkedin")
     if latest:
-        how = "введено вручную" if latest["source"] == "manual" else "собрано по cookie"
+        how = t("введено вручную") if latest["source"] == "manual" else t("собрано по cookie")
         when = parse_utc(latest["collected_at"]).strftime("%d.%m")
-        lines.append(f"Последнее значение: {_fmt(latest['count'])} — {how} {when}")
+        lines.append(
+            t("Последнее значение: {count} — {how} {when}").format(count=_fmt(latest["count"]), how=how, when=when)
+        )
     else:
-        lines.append("Последнее значение: пока нет")
+        lines.append(t("Последнее значение: пока нет"))
     lines.append("")
 
     age = await get_cookie_age_days(db)
     if await db.get_setting("cookie_expired_alerted") == "1":
-        lines.append("🔴 LinkedIn отклонил cookie: пришли новый через /setcookie или вводи число вручную.")
+        lines.append(t("🔴 LinkedIn отклонил cookie: пришли новый через /setcookie или вводи число вручную."))
     elif age is not None and age >= COOKIE_AGING_DAYS:
-        lines.append(f"⚠️ Cookie установлен {age} дн. назад и скоро истечёт — пора обновить.")
-    elif age is not None:
         lines.append(
-            f"✅ Число собирается само по cookie. Он установлен {age} дн. назад, "
-            f"напомню обновить через ~{COOKIE_AGING_DAYS - age} дн."
+            t("⚠️ Cookie установлен {age} {d} назад и скоро истечёт — пора обновить.").format(age=age, d=_days(age))
+        )
+    elif age is not None:
+        left = COOKIE_AGING_DAYS - age
+        lines.append(
+            t(
+                "✅ Число собирается само по cookie. Он установлен {age} {d} назад, "
+                "напомню обновить через ~{left} {ld}."
+            ).format(age=age, d=_days(age), left=left, ld=_days(left))
         )
     elif await db.get_setting("linkedin_li_at") or config.linkedin_li_at:
         lines.append(
-            "✅ Число собирается само по cookie, но срок его жизни я не вижу. "
-            "Пришли cookie через /setcookie — и я напомню, когда его обновить."
+            t(
+                "✅ Число собирается само по cookie, но срок его жизни я не вижу. "
+                "Пришли cookie через /setcookie — и я напомню, когда его обновить."
+            )
         )
     else:
-        lines.append("✏️ Число вводится вручную: cookie не задан.")
+        lines.append(t("✏️ Число вводится вручную: cookie не задан."))
     lines += [
         "",
-        "<b>Автосбор</b>: отправь /setcookie и значение cookie li_at "
-        "(linkedin.com → DevTools → Application → Cookies). Я проверю его и сразу удалю сообщение.",
-        "<i>LinkedIn запрещает автоматический доступ, так что автосбор — на твой риск.</i>",
+        t(
+            "<b>Автосбор</b>: отправь /setcookie и значение cookie li_at "
+            "(linkedin.com → DevTools → Application → Cookies). Я проверю его и сразу удалю сообщение."
+        ),
+        t("<i>LinkedIn запрещает автоматический доступ, так что автосбор — на твой риск.</i>"),
     ]
-    rows = [[_button("✏️ Ввести число вручную", LI_ENTER)], _back(SETTINGS, "Настройки")]
+    rows = [[_button(t("✏️ Ввести число вручную"), LI_ENTER)], _back(SETTINGS, t("Настройки"))]
     return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
 
 
 async def instagram(db: Database, config: Config) -> Screen:
     """How the Instagram number is collected and how long the token lives."""
-    lines = ["<b>📸 Instagram</b>", "", f"Аккаунт: {esc(BY_ID['instagram'].target(config) or 'не задан')}"]
+    lines = [
+        "<b>📸 Instagram</b>",
+        "",
+        t("Аккаунт: {account}").format(account=esc(BY_ID["instagram"].target(config) or t("не задан"))),
+    ]
     latest = await db.get_latest("instagram")
     if latest:
         when = parse_utc(latest["collected_at"]).strftime("%d.%m")
-        lines.append(f"Последнее значение: {_fmt(latest['count'])} — собрано {when}")
+        lines.append(t("Последнее значение: {count} — собрано {when}").format(count=_fmt(latest["count"]), when=when))
     else:
-        lines.append("Последнее значение: пока нет")
+        lines.append(t("Последнее значение: пока нет"))
     lines.append("")
 
     token = await ig.get_active_token(db, config)
     age = await ig.get_token_age_days(db)
     if not token:
-        lines.append("⚠️ Токена нет: без него число не собирается.")
+        lines.append(t("⚠️ Токена нет: без него число не собирается."))
     elif await db.get_setting("instagram_token_alerted") == "1":
-        lines.append("🔴 Instagram отклонил токен: отозван или истёк — пришли новый через /igtoken.")
+        lines.append(t("🔴 Instagram отклонил токен: отозван или истёк — пришли новый через /igtoken."))
     elif age is None:
-        lines.append("✅ Число собирается само по токену из переменных окружения.")
+        lines.append(t("✅ Число собирается само по токену из переменных окружения."))
     else:
         lines.append(
-            f"✅ Число собирается само по токену. Он задан {age} дн. назад и бессрочный: "
-            "если Meta его отзовёт, я скажу."
+            t(
+                "✅ Число собирается само по токену. Он задан {age} {d} назад и бессрочный: "
+                "если Meta его отзовёт, я скажу."
+            ).format(age=age, d=_days(age))
         )
     lines += [
         "",
-        "<b>Как подключить</b>: аккаунт должен быть профессиональным (Автор или Бизнес). "
-        "На developers.facebook.com создай приложение с вариантом «Instagram API», открой "
-        "«API setup with Unified login», добавь свой аккаунт как Instagram Tester, прими приглашение "
-        "в Instagram (Настройки → Website permissions → Tester invitations) и нажми «Generate token». "
-        "Отправь /igtoken и токен одним сообщением — я проверю его и сразу удалю сообщение.",
-        "<i>Это официальный API: бот читает только публичные данные своего аккаунта.</i>",
+        t(
+            "<b>Как подключить</b>: аккаунт должен быть профессиональным (Автор или Бизнес). "
+            "На developers.facebook.com создай приложение с вариантом «Instagram API», открой "
+            "«API setup with Unified login», добавь свой аккаунт как Instagram Tester, прими приглашение "
+            "в Instagram (Настройки → Website permissions → Tester invitations) и нажми «Generate token». "
+            "Отправь /igtoken и токен одним сообщением — я проверю его и сразу удалю сообщение."
+        ),
+        t("<i>Это официальный API: бот читает только публичные данные своего аккаунта.</i>"),
     ]
-    return Screen("\n".join(lines), InlineKeyboardMarkup([_back(SETTINGS, "Настройки")]))
+    return Screen("\n".join(lines), InlineKeyboardMarkup([_back(SETTINGS, t("Настройки"))]))
 
 
 async def linkedin_prompt(db: Database) -> Screen:
     latest = await db.get_latest("linkedin")
-    current = f"\nСейчас: {_fmt(latest['count'])}" if latest else ""
+    current = t("\nСейчас: {count}").format(count=_fmt(latest["count"])) if latest else ""
     return Screen(
-        f"<b>✏️ LinkedIn вручную</b>\n\nПришли число подписчиков одним сообщением, например 4520.{current}",
-        InlineKeyboardMarkup([[_button("Отмена", LI_CANCEL)]]),
+        t("<b>✏️ LinkedIn вручную</b>\n\nПришли число подписчиков одним сообщением, например 4520.{current}").format(
+            current=current
+        ),
+        InlineKeyboardMarkup([[_button(t("Отмена"), LI_CANCEL)]]),
     )
 
 
 def linkedin_retry() -> Screen:
     return Screen(
-        "Это не похоже на число. Пришли только цифры, например 4520, или нажми «Отмена».",
-        InlineKeyboardMarkup([[_button("Отмена", LI_CANCEL)]]),
+        t("Это не похоже на число. Пришли только цифры, например 4520, или нажми «Отмена»."),
+        InlineKeyboardMarkup([[_button(t("Отмена"), LI_CANCEL)]]),
     )
 
 
 def linkedin_confirm(prev: int, count: int) -> Screen:
     """A number far from the last one is likely a typo: ask before it becomes the baseline."""
     return Screen(
-        f"<b>⚠️ Проверь число</b>\n\n{_fmt(count)} сильно отличается от прошлого значения "
-        f"{_fmt(prev)}. Возможно, это опечатка.",
+        t(
+            "<b>⚠️ Проверь число</b>\n\n{count} сильно отличается от прошлого значения "
+            "{prev}. Возможно, это опечатка."
+        ).format(count=_fmt(count), prev=_fmt(prev)),
         InlineKeyboardMarkup([
-            [_button(f"Сохранить {_fmt(count)}", f"{LINKEDIN}:save:{count}")],
-            [_button("✏️ Ввести заново", LI_ENTER)],
-            [_button("Отмена", HOME)],
+            [_button(t("Сохранить {count}").format(count=_fmt(count)), f"{LINKEDIN}:save:{count}")],
+            [_button(t("✏️ Ввести заново"), LI_ENTER)],
+            [_button(t("Отмена"), HOME)],
         ]),
     )
 
@@ -621,34 +686,38 @@ def linkedin_confirm(prev: int, count: int) -> Screen:
 
 def help_screen() -> Screen:
     text = "\n".join([
-        "<b>❓ Помощь</b>",
+        t("<b>❓ Помощь</b>"),
         "",
-        "Каждый день я собираю подписчиков и слежу за безопасностью аккаунтов. "
-        "Пока всё в порядке — молчу; о проблеме пишу сразу, а сводку присылаю по расписанию.",
+        t(
+            "Каждый день я собираю подписчиков и слежу за безопасностью аккаунтов. "
+            "Пока всё в порядке — молчу; о проблеме пишу сразу, а сводку присылаю по расписанию."
+        ),
         "",
-        "<b>Значки</b>",
-        "✅ в порядке или включено · ⬜ выключено · ➖ не подключено",
-        "⚠️ нужно внимание · ❓ не отмечено",
-        "🟠 изменение · 🔴 сбой · 🚨 похоже на взлом",
+        t("<b>Значки</b>"),
+        t("✅ в порядке или включено · ⬜ выключено · ➖ не подключено"),
+        t("⚠️ нужно внимание · ❓ не отмечено"),
+        t("🟠 изменение · 🔴 сбой · 🚨 похоже на взлом"),
         "",
-        "<b>Команды</b>",
-        "/start — главная",
-        "/now — обновить данные",
-        "/week — динамика за неделю и график",
-        "/security — безопасность аккаунтов",
-        "/settings — настройки",
-        "/history [платформа] [дни] — таблица по дням, до 90 дней",
-        "/linkedin &lt;число&gt; — ввести LinkedIn вручную",
-        "/setcookie &lt;li_at&gt; — cookie LinkedIn для автосбора",
-        "/igtoken &lt;токен&gt; — токен Instagram для автосбора",
-        "/settime ЧЧ:ММ — время отчёта",
-        "/setday &lt;дни&gt; — дни отчёта: sat, mon-fri, mon,thu, daily",
-        "/settz &lt;пояс&gt; — часовой пояс, например Europe/Moscow",
-        "/setquiet on|off — тихий режим",
-        "/modules — мониторинги",
+        t("<b>Команды</b>"),
+        t("/start — главная"),
+        t("/now — обновить данные"),
+        t("/week — динамика за неделю и график"),
+        t("/security — безопасность аккаунтов"),
+        t("/settings — настройки"),
+        t("/history [платформа] [дни] — таблица по дням, до 90 дней"),
+        t("/linkedin &lt;число&gt; — ввести LinkedIn вручную"),
+        t("/setcookie &lt;li_at&gt; — cookie LinkedIn для автосбора"),
+        t("/igtoken &lt;токен&gt; — токен Instagram для автосбора"),
+        t("/settime ЧЧ:ММ — время отчёта"),
+        t("/setday &lt;дни&gt; — дни отчёта: sat, mon-fri, mon,thu, daily"),
+        t("/settz &lt;пояс&gt; — часовой пояс, например Europe/Moscow"),
+        t("/setquiet on|off — тихий режим"),
+        t("/modules — мониторинги"),
         "",
-        "<b>Бэкап</b>",
-        "По воскресеньям я присылаю файл с базой. Чтобы вернуть историю, ответь на него "
-        "командой /restore — уже собранное не перезапишется.",
+        t("<b>Бэкап</b>"),
+        t(
+            "По воскресеньям я присылаю файл с базой. Чтобы вернуть историю, ответь на него "
+            "командой /restore — уже собранное не перезапишется."
+        ),
     ])
-    return Screen(text, InlineKeyboardMarkup([_back(HOME, "Главная")]))
+    return Screen(text, InlineKeyboardMarkup([_back(HOME, t("Главная"))]))

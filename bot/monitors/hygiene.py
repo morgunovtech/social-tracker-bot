@@ -14,6 +14,7 @@ from datetime import date, timedelta
 from bot import platforms
 from bot.config import Config
 from bot.db import Database, utcnow
+from bot.i18n import t
 from bot.platforms.base import Platform
 
 # Past this age the password line turns into a recommendation. Not a forced
@@ -175,15 +176,15 @@ def item_status(item: Item, ans: dict[str, str]) -> tuple[str, str]:
     """(icon, answer) of one item: ✅ best answer, ⚠️ could be better, ❓ not marked."""
     choice = chosen(item, ans)
     if choice is None:
-        return "❓", "не отмечено"
-    return ("✅" if choice.points == item.best else "⚠️"), choice.button
+        return "❓", t("не отмечено")
+    return ("✅" if choice.points == item.best else "⚠️"), t(choice.button)
 
 
 def password_status(ans: dict[str, str], today: date) -> tuple[str, str]:
     age = password_age(ans, today)
     if age is None:
-        return "❓", "не отмечено"
-    when = "сегодня" if age == 0 else f"{age} дн. назад"
+        return "❓", t("не отмечено")
+    when = t("сегодня") if age == 0 else t("{age} дн. назад").format(age=age)
     return ("⚠️" if age > PASSWORD_MAX_AGE_DAYS else "✅"), when
 
 
@@ -198,19 +199,24 @@ def score(platform: Platform, ans: dict[str, str], today: date) -> int:
 def _todo(platform: Platform, ans: dict[str, str], today: date) -> list[tuple[int, str]]:
     """(points it would add, what to do) for everything short of the best answer."""
     if not ans:
-        return [(MAX_SCORE, f"{platform.label}: отметь пункты чек-листа — это пара минут")]
+        return [(MAX_SCORE, t("{label}: отметь пункты чек-листа — это пара минут").format(label=platform.label))]
     todo = [
-        (item.best, f"{platform.label}: {item.advice}")
+        (item.best, f"{platform.label}: {t(item.advice)}")
         for item in items(platform)
         if (c := chosen(item, ans)) is None or c.points < item.best
     ]
     age = password_age(ans, today)
     if age is None:
-        todo.append((PASSWORD_POINTS, f"{platform.label}: отметь, когда пароль менялся последний раз"))
+        todo.append((
+            PASSWORD_POINTS,
+            t("{label}: отметь, когда пароль менялся последний раз").format(label=platform.label),
+        ))
     elif age > PASSWORD_MAX_AGE_DAYS:
         todo.append((
             PASSWORD_POINTS,
-            f"{platform.label}: пароль не менялся {age} дн. — смени, если он не уникальный или где-то светился",
+            t("{label}: пароль не менялся {age} дн. — смени, если он не уникальный или где-то светился").format(
+                label=platform.label, age=age
+            ),
         ))
     return todo
 
@@ -240,7 +246,7 @@ async def report_line(db: Database, config: Config) -> str | None:
     result = await overall(db, config)
     if result is None:
         return None
-    return f"🛡 Безопасность: {result[0]} из {MAX_SCORE} — /security"
+    return t("🛡 Безопасность: {score} из {max} — /security").format(score=result[0], max=MAX_SCORE)
 
 
 async def nudge(db: Database, config: Config) -> str | None:
@@ -260,15 +266,17 @@ async def nudge(db: Database, config: Config) -> str | None:
         return None
 
     await db.set_setting("hygiene_nudged_at", today.isoformat())
-    lines = [f"🛡 Безопасность: {total} из {MAX_SCORE}", ""]
+    lines = [t("🛡 Безопасность: {score} из {max}").format(score=total, max=MAX_SCORE), ""]
     if reviewed is None:
         lines.append(
-            "Пройди короткий чек-лист по своим аккаунтам: 2FA, резервные коды, пароли. "
-            "Пароль вводить не нужно — только отметки."
+            t(
+                "Пройди короткий чек-лист по своим аккаунтам: 2FA, резервные коды, пароли. "
+                "Пароль вводить не нужно — только отметки."
+            )
         )
     else:
         lines += [f"• {r}" for r in recs[:NUDGE_TOP]]
         if review_due:
-            lines.append(f"Отметки не пересматривались {review_age} дн. — проверь, всё ли ещё так.")
-    lines += ["", "Открыть чек-лист: /security"]
+            lines.append(t("Отметки не пересматривались {age} дн. — проверь, всё ли ещё так.").format(age=review_age))
+    lines += ["", t("Открыть чек-лист: /security")]
     return "\n".join(lines)

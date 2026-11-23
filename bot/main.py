@@ -8,18 +8,9 @@ from telegram.ext import Application
 from bot.config import Config
 from bot.db import Database
 from bot.handlers import register_handlers
+from bot.i18n import set_language, t
 from bot.scheduler import setup_scheduler
 from bot.updates import report_startup_changes
-
-# Only the entry points: everything else is a button away, and /help lists all commands.
-_BOT_COMMANDS = [
-    BotCommand("start", "Главная: подписчики и статус"),
-    BotCommand("now", "Обновить данные"),
-    BotCommand("week", "Динамика за неделю"),
-    BotCommand("security", "Безопасность аккаунтов"),
-    BotCommand("settings", "Настройки"),
-    BotCommand("help", "Помощь и все команды"),
-]
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -28,6 +19,19 @@ logging.basicConfig(
 # httpx logs every request URL at INFO, and Bot API URLs contain the bot token.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
+
+
+def _bot_commands() -> list[BotCommand]:
+    """The / menu: only the entry points, everything else is a button away and
+    /help lists all commands. Built on demand, after the language is set."""
+    return [
+        BotCommand("start", t("Главная: подписчики и статус")),
+        BotCommand("now", t("Обновить данные")),
+        BotCommand("week", t("Динамика за неделю")),
+        BotCommand("security", t("Безопасность аккаунтов")),
+        BotCommand("settings", t("Настройки")),
+        BotCommand("help", t("Помощь и все команды")),
+    ]
 
 
 async def _post_init(app: Application) -> None:
@@ -40,7 +44,7 @@ async def _post_init(app: Application) -> None:
     scheduler.start()
     app.bot_data["scheduler"] = scheduler
 
-    await app.bot.set_my_commands(_BOT_COMMANDS)
+    await app.bot.set_my_commands(_bot_commands())
 
     # «🔄 Бот обновился» after a deploy; never let it block the start.
     try:
@@ -59,6 +63,7 @@ async def _post_shutdown(app: Application) -> None:
 
 def main() -> None:
     config = Config.from_env()
+    set_language(config.lang)
     db = Database(config.db_path)
 
     app = (

@@ -8,6 +8,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestServer
 
 from bot import scheduler, tofs_status
+from bot.i18n import plural
 
 NBSP = " "
 
@@ -122,7 +123,7 @@ async def test_no_data_no_total(config, db):
 
 
 def test_followers_are_counted_in_russian():
-    assert [tofs_status._followers(n) for n in (1, 2, 5, 11, 21, 22, 112, 6227)] == [
+    assert [plural(n, "подписчик", "подписчика", "подписчиков") for n in (1, 2, 5, 11, 21, 22, 112, 6227)] == [
         "подписчик", "подписчика", "подписчиков", "подписчиков", "подписчик", "подписчика", "подписчиков",
         "подписчиков"]
 

@@ -18,6 +18,7 @@ from telegram import Bot
 
 from bot.config import Config
 from bot.db import Database, utcnow
+from bot.i18n import t
 from bot.monitors import NO_PREVIEW, defang, hygiene
 
 logger = logging.getLogger(__name__)
@@ -169,7 +170,7 @@ def kind_of(mail: Mail) -> Kind | None:
 def _snippet(text: str) -> str:
     """The subject as quoted in an alert. Anyone who learns the worker's
     address can write it, so its links are defanged."""
-    text = " ".join(_FWD_PREFIX.sub("", text).split()) or "(без темы)"
+    text = " ".join(_FWD_PREFIX.sub("", text).split()) or t("(без темы)")
     return defang(text if len(text) <= SUBJECT_LEN else text[: SUBJECT_LEN - 1] + "…")
 
 
@@ -180,12 +181,14 @@ def _forwarding_notice(mail: Mail) -> str:
     settings, so a forged "confirmation" can't turn the bot into a phishing relay.
     """
     code = _CODE.search(mail.subject)
-    lines = ["📬 Gmail просит подтвердить пересылку писем на адрес бота."]
+    lines = [t("📬 Gmail просит подтвердить пересылку писем на адрес бота.")]
     if code:
-        lines.append(f"Код подтверждения: {code.group(1)} — введи его в Gmail: Настройки → Пересылка.")
+        lines.append(
+            t("Код подтверждения: {code} — введи его в Gmail: Настройки → Пересылка.").format(code=code.group(1))
+        )
     else:
-        lines.append(f"Кода в теме не нашёл: «{_snippet(mail.subject)}»")
-    lines.append("Потом создай фильтр по отправителям уведомлений безопасности — см. mail-worker/README.md.")
+        lines.append(t("Кода в теме не нашёл: «{subject}»").format(subject=_snippet(mail.subject)))
+    lines.append(t("Потом создай фильтр по отправителям уведомлений безопасности — см. mail-worker/README.md."))
     return "\n".join(lines)
 
 
@@ -197,10 +200,13 @@ def describe(mail: Mail) -> tuple[str, Kind | None, str, str | None]:
     kind = kind_of(mail)
     subject = _snippet(mail.subject)
     if kind is None:
-        return f"📨 Письмо без признаков тревоги: {network} — «{subject}»", None, network, platform_id
-    text = f"{kind.icon} {network}: {kind.title}\n«{subject}»\n{kind.advice}"
+        text = t("📨 Письмо без признаков тревоги: {network} — «{subject}»").format(network=network, subject=subject)
+        return text, None, network, platform_id
+    text = t("{icon} {network}: {title}\n«{subject}»\n{advice}").format(
+        icon=kind.icon, network=network, title=t(kind.title), subject=subject, advice=t(kind.advice)
+    )
     if kind.icon == "🚨" and network in RECOVERY:
-        text += f"\nВосстановление доступа: {RECOVERY[network]}"
+        text += "\n" + t("Восстановление доступа: {url}").format(url=RECOVERY[network])
     return text, kind, network, platform_id
 
 
@@ -241,14 +247,14 @@ async def _track_reachability(bot: Bot, config: Config, db: Database, reachable:
         if fails:
             await db.set_setting("mail_fail_streak", "0")
         if fails >= UNREACHABLE_AFTER:
-            await bot.send_message(chat_id=config.admin_chat_id, text="✅ Почтовый воркер снова отвечает")
+            await bot.send_message(chat_id=config.admin_chat_id, text=t("✅ Почтовый воркер снова отвечает"))
         return
     fails += 1
     await db.set_setting("mail_fail_streak", str(fails))
     if fails == UNREACHABLE_AFTER:
         await bot.send_message(
             chat_id=config.admin_chat_id,
-            text=(
+            text=t(
                 "🔴 Почтовый воркер не отвечает ~30 мин — письма безопасности не доходят. "
                 "Проверь SECURITY_MAIL_URL, SECURITY_MAIL_TOKEN и деплой воркера."
             ),
@@ -281,7 +287,7 @@ async def check(bot: Bot, config: Config, db: Database, session: aiohttp.ClientS
             continue
         text, kind, network, platform_id = describe(mail)
         if kind is not None and kind.id == "password_changed" and platform_id:
-            text += "\n✍️ Дата смены пароля отмечена в чек-листе /security."
+            text += "\n" + t("✍️ Дата смены пароля отмечена в чек-листе /security.")
         try:
             await bot.send_message(chat_id=config.admin_chat_id, text=text, link_preview_options=NO_PREVIEW)
         except Exception:

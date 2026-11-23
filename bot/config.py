@@ -9,6 +9,7 @@ from zoneinfo import available_timezones
 from dotenv import load_dotenv
 
 from bot import platforms
+from bot.i18n import LANGUAGES
 
 load_dotenv()
 
@@ -86,6 +87,13 @@ def _report_tz() -> str:
         raise RuntimeError(f"Invalid REPORT_TZ={raw!r}: {e}") from None
 
 
+def _lang() -> str:
+    raw = (os.getenv("BOT_LANG") or "ru").strip().lower()
+    if raw not in LANGUAGES:
+        raise RuntimeError(f"Invalid BOT_LANG={raw!r}: use one of {', '.join(LANGUAGES)}")
+    return raw
+
+
 def _repo_slug() -> str | None:
     slug = os.getenv("GITHUB_REPOSITORY", "").strip()
     if not slug:
@@ -122,6 +130,9 @@ class Config:
     report_dow: str  # APScheduler day_of_week expression: 'sat', 'mon,thu', '*', etc.
     report_tz: str  # IANA name: 'UTC', 'Europe/Moscow'
     quiet_if_no_change: bool
+
+    # Chat language: ru (default) or en. Reports, screens, alerts and the / menu.
+    lang: str
 
     # Database
     db_path: str
@@ -164,6 +175,7 @@ class Config:
             report_dow=_report_dow(),
             report_tz=_report_tz(),
             quiet_if_no_change=os.getenv("QUIET_IF_NO_CHANGE", "0") == "1",
+            lang=_lang(),
             db_path=os.getenv("DB_PATH", "data/followers.db"),
             site_ingest_url=os.getenv("SITE_INGEST_URL") or None,
             site_ingest_token=os.getenv("SOCIALBOT_INGEST_TOKEN"),

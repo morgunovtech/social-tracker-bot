@@ -7,6 +7,8 @@ from datetime import UTC, date, datetime, timedelta
 
 import aiosqlite
 
+from bot.i18n import t
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,13 +71,13 @@ def _check_backup(path: str) -> None:
     try:
         with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
             if conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
-                raise ValueError("файл повреждён")
+                raise ValueError(t("файл повреждён"))
             columns = {row[1] for row in conn.execute("PRAGMA table_info(followers)")}
             tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     except sqlite3.DatabaseError as e:
-        raise ValueError("это не файл базы SQLite") from e
+        raise ValueError(t("это не файл базы SQLite")) from e
     if not {"platform", "count", "source", "collected_at"} <= columns or "settings" not in tables:
-        raise ValueError("в файле нет таблиц бота")
+        raise ValueError(t("в файле нет таблиц бота"))
 
 
 async def _scalar(db: aiosqlite.Connection, sql: str, params: tuple = ()):
