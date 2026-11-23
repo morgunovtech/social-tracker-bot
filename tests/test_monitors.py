@@ -4,7 +4,7 @@ from datetime import timedelta
 
 import pytest
 
-from bot import monitors
+from bot import monitors, notifier
 from bot.db import utcnow
 from bot.monitors import hygiene, profile
 from bot.platforms import BY_ID
@@ -140,6 +140,19 @@ async def test_first_look_is_baseline_then_changes_are_alerted_once(bot, config,
     assert await profile.check(bot, config, db, None) == 0
     (event,) = await db.recent_events()
     assert event["kind"] == "profile" and event["detail"] == line
+
+
+async def test_hijack_signs_ring_through_a_mute_while_changes_wait(bot, config, db, watch):
+    watch += [CHANNEL, {**CHANNEL, "title": "Hacked"}, {**CHANNEL, "title": "Hacked", "photo": "p2"},
+              {**CHANNEL, "title": "Hacked", "photo": "p2", "description": "win https://scam.example"}]
+    await profile.check(bot, config, db, None)
+    assert await profile.check(bot, config, db, None) == 1          # 🟠 title: delivered, silently
+    assert bot.silent == [True]
+    await notifier.set_mute(db, timedelta(hours=1))
+    assert await profile.check(bot, config, db, None) == 1          # 🟠 avatar: queued, the baseline moves on
+    assert len(bot.messages) == 1 and len(await db.peek_notifications()) == 1
+    assert await profile.check(bot, config, db, None) == 1          # 🚨 a link: rings through the mute
+    assert bot.silent == [True, False] and "🚨 Telegram: описание канала" in bot.messages[1]
 
 
 async def test_failed_send_keeps_the_old_baseline_and_retries(bot, config, db, watch):

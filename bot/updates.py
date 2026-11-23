@@ -28,9 +28,11 @@ from importlib import metadata
 import aiohttp
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 
+from bot import notifier
 from bot.config import Config
 from bot.db import Database
 from bot.i18n import t
+from bot.notifier import Priority
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +95,7 @@ async def report_startup_changes(bot: Bot, config: Config, db: Database) -> list
         if old_packages.get(name) and old_packages[name] != version:
             lines.append(f"  • {name} {old_packages[name]} → {version}")
     if lines:
-        await bot.send_message(chat_id=config.admin_chat_id, text=t("🔄 Бот обновился:\n") + "\n".join(lines))
+        await notifier.send(bot, config, db, t("🔄 Бот обновился:\n") + "\n".join(lines))
     return lines
 
 
@@ -181,9 +183,9 @@ async def run_deploy_watch(bot: Bot, config: Config, db: Database) -> None:
     if failed["url"].startswith("https://"):
         rows.append([InlineKeyboardButton(t("🔗 Что в этой версии"), url=failed["url"])])
     try:
-        await bot.send_message(
-            chat_id=config.admin_chat_id,
-            text=t(
+        await notifier.send(
+            bot, config, db,
+            t(
                 "🟠 Новая версия бота не запустилась\n"
                 "Railway не смог выкатить «{title}» ({sha}). Я работаю на прежней "
                 "версии ({running}), но и следующие обновления не встанут, пока сборка падает.\n\n"
@@ -295,7 +297,7 @@ async def run_dependency_watch(bot: Bot, config: Config, db: Database) -> None:
     if not parts:
         return
     try:
-        await bot.send_message(chat_id=config.admin_chat_id, text="\n\n".join(parts))
+        await notifier.send(bot, config, db, "\n\n".join(parts), Priority.DIGEST)
     except Exception:
         logger.exception("Dependency watch send failed")
         return

@@ -120,6 +120,12 @@ STRINGS: dict[str, str] = {
     "Это меню устарело — вот актуальное": "That menu is outdated — here is the current one",
     "Отменено": "Cancelled",
     "Отменено.": "Cancelled.",
+    # /mute and /unmute
+    "Максимум — 7 дней: дольше тишина уже не пауза, а выключенный мониторинг.":
+        "Seven days at most: a longer silence is not a pause but monitoring switched off.",
+    "Использование: /mute <время>\nПримеры: /mute 1h, /mute 8h, /mute 30m, /mute 1d\nПо умолчанию: 8h":
+        "Usage: /mute <time>\nExamples: /mute 1h, /mute 8h, /mute 30m, /mute 1d\nDefault: 8h",
+    "🔔 Снова пишу обо всём.": "🔔 Writing about everything again.",
     # bot/main.py: the / menu
     "Главная: подписчики и статус": "Home: followers and status",
     "Обновить данные": "Refresh the data",

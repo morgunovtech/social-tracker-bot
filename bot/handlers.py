@@ -25,7 +25,7 @@ from telegram.ext import (
     filters,
 )
 
-from bot import monitors, ui
+from bot import monitors, notifier, ui
 from bot.config import DOW_ORDER, Config, normalize_dow, normalize_tz
 from bot.db import Database, utcnow
 from bot.i18n import t
@@ -455,6 +455,43 @@ async def cmd_setquiet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await _reply(update, (await ui.settings(db, config)).noted(note))
 
 
+async def _mute(db: Database, config: Config, arg: str) -> str | None:
+    """Mute for `arg` ('8h', '30m', '1d'); the note to show, None when the argument is not a duration."""
+    duration = notifier.parse_duration(arg)
+    if duration is None:
+        return None
+    if duration > notifier.MUTE_MAX:
+        return t("Максимум — 7 дней: дольше тишина уже не пауза, а выключенный мониторинг.")
+    await notifier.set_mute(db, duration)
+    return ui.mute_note(await notifier.mute_until_local(db, config))
+
+
+async def _unmute(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Lift the mute and deliver what it held back right away, not in a minute."""
+    config, db = _deps(context)
+    await notifier.set_mute(db, None)
+    await notifier.flush_queue(context.bot, config, db)
+
+
+@_admin_only
+async def cmd_mute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config, db = _deps(context)
+    note = await _mute(db, config, context.args[0] if context.args else "8h")
+    if note is None:
+        await update.message.reply_text(
+            t("Использование: /mute <время>\nПримеры: /mute 1h, /mute 8h, /mute 30m, /mute 1d\nПо умолчанию: 8h")
+        )
+        return
+    await _reply(update, (await ui.when_to_write(db, config)).noted(note))
+
+
+@_admin_only
+async def cmd_unmute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config, db = _deps(context)
+    await _unmute(context)
+    await _reply(update, (await ui.when_to_write(db, config)).noted(t("🔔 Снова пишу обо всём.")))
+
+
 @_admin_only
 async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config, db = _deps(context)
@@ -785,7 +822,8 @@ async def _after_answer(db: Database, platform, key: str) -> ui.Screen:
 
 
 async def _cb_settings(press: _Press, context, args: list[str]) -> None:
-    """set | set:quiet | set:days[:<preset>] | set:day:<day> | set:time | set:hour:<h> | set:tz[:<zone>]."""
+    """set | set:quiet | set:days[:<preset>] | set:day:<day> | set:time | set:hour:<h> | set:tz[:<zone>]
+    | set:when | set:qh:<preset|off> | set:mute:<duration|off>."""
     config, db = _deps(context)
     action = args[0] if args else ""
     value = args[1] if len(args) == 2 else None
@@ -796,6 +834,21 @@ async def _cb_settings(press: _Press, context, args: list[str]) -> None:
         await db.set_setting("quiet_if_no_change", "1" if quiet else "0")
         await press.answer(t("Тихий режим включён") if quiet else t("Тихий режим выключен"))
         screen = await ui.settings(db, config)
+    elif action == "when" and len(args) == 1:
+        screen = await ui.when_to_write(db, config)
+    elif action == "qh" and (value == "off" or value in notifier.QUIET_PRESETS):
+        # Only what the screen offers: a forged «qh:25-3» must not reach the settings.
+        await notifier.set_quiet_hours(db, None if value == "off" else value)
+        await press.answer(t("Сохранено"))
+        screen = await ui.when_to_write(db, config)
+        if value == "off":
+            await notifier.flush_queue(context.bot, config, db)
+    elif action == "mute" and value == "off":
+        await _unmute(context)
+        screen = (await ui.when_to_write(db, config)).noted(t("🔔 Снова пишу обо всём."))
+    elif action == "mute" and value in ui.MUTE_CHOICES:
+        note = await _mute(db, config, value)
+        screen = (await ui.when_to_write(db, config)).noted(note)
     elif action == "days" and len(args) == 1:
         screen = await ui.report_days(db, config)
     elif action == "days" and value is not None:
@@ -985,6 +1038,8 @@ COMMANDS = {
     "setday": cmd_setday,
     "settz": cmd_settz,
     "setquiet": cmd_setquiet,
+    "mute": cmd_mute,
+    "unmute": cmd_unmute,
     "setcookie": cmd_setcookie,
     "igtoken": cmd_igtoken,
     "cookieage": cmd_cookieage,

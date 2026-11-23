@@ -62,7 +62,7 @@ def alert_lines(outcome: CollectOutcome) -> list[str]:
     for platform, (prev, new) in outcome.spikes.items():
         lines.append(
             t(
-                "🚨 {label}: +{gain} за день ({prev} → {new}) — аномально резкий рост, возможен наплыв ботов"
+                "🟠 {label}: +{gain} за день ({prev} → {new}) — аномально резкий рост, возможен наплыв ботов"
             ).format(label=LABELS[platform], gain=_fmt(new - prev), prev=_fmt(prev), new=_fmt(new))
         )
     for platform, milestone in outcome.milestones:

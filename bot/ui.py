@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
-from bot import monitors, platforms
+from bot import monitors, notifier, platforms
 from bot.config import DOW_ORDER, Config
 from bot.db import Database, parse_utc, utcnow
 from bot.i18n import language, plural, t
@@ -52,6 +52,8 @@ MENU_BUTTON_TEXT = "🏠 Меню"
 LEGACY_MENU_BUTTON_TEXTS = ("📊 Меню",)
 
 TABLE_PERIODS = (7, 14, 30, 90)
+# «🔕 Помолчать» presets: the argument of /mute each button stands for.
+MUTE_CHOICES = ("1h", "4h", "8h", "1d")
 
 # One meaning per icon across the bot: on / chosen, off, unavailable.
 ON, OFF, UNAVAILABLE = "✅", "⬜", "➖"
@@ -285,6 +287,9 @@ async def home(db: Database, config: Config, report: str | None = None) -> Scree
         report, _ = await build_stats(db, config)
     dow, hour, minute, tz = await _schedule(db, config)
     text = f"{_titled(report)}\n\n" + t("⏭ Следующий отчёт: {next}").format(next=next_report(dow, hour, minute, tz))
+    silence = await notifier.silence_status(db, config)
+    if silence:
+        text += f"\n{esc(silence)}"
     rows = [
         [_button(t("🔄 Обновить данные"), NOW)],
         [_button(t("📈 Динамика"), DYNAMICS), _button(t("🛡 Безопасность"), SECURITY)],
@@ -460,6 +465,8 @@ async def settings(db: Database, config: Config) -> Screen:
         t("🔕 Тихий режим: {state}").format(state=t("включён") if quiet else t("выключен")),
         t("Когда включён, неделя без изменений — это одна строка вместо отчёта."),
         "",
+        t("🔔 Когда писать: {when}").format(when=esc(await _when_summary(db, config))),
+        "",
         t("<i>Версия: {build}Python {python}</i>").format(build=build, python=py_platform.python_version()),
     ])
     tools = [_button(t("🧩 Мониторинги"), MONITORS)]
@@ -470,11 +477,73 @@ async def settings(db: Database, config: Config) -> Screen:
     rows = [
         [_button(t("📅 Дни отчёта"), f"{SETTINGS}:days"), _button(t("🕗 Время отчёта"), f"{SETTINGS}:time")],
         [_button(t("🌍 Часовой пояс"), f"{SETTINGS}:tz")],
-        [_button(f"{_check(quiet)} {t('Тихий режим')}", f"{SETTINGS}:quiet")],
+        [_button(f"{_check(quiet)} {t('Тихий режим')}", f"{SETTINGS}:quiet"), _button(t("🔔 Когда писать"), f"{SETTINGS}:when")],
         tools,
         _back(HOME, t("Главная")),
     ]
     return Screen(text, InlineKeyboardMarkup(rows))
+
+
+async def _when_summary(db: Database, config: Config) -> str:
+    """One line for the settings screen: the quiet hours and a running mute."""
+    hours = await notifier.quiet_hours(db)
+    text = t("тихие часы {hours}").format(hours=notifier.quiet_hours_pretty(hours)) if hours else t("всегда")
+    until = await notifier.mute_until_local(db, config)
+    if until:
+        text += " · " + t("тишина до {until}").format(until=until)
+    return text
+
+
+async def when_to_write(db: Database, config: Config) -> Screen:
+    """Quiet hours (presets, off) and «🔕 Помолчать»: what rings through either is fixed."""
+    hours = await notifier.quiet_hours(db)
+    tz = await get_report_tz(db, config)
+    until = await notifier.mute_until_local(db, config)
+    lines = [
+        t("<b>🔔 Когда писать</b>"),
+        "",
+        t("🌙 Тихие часы: {state}").format(
+            state=notifier.quiet_hours_pretty(hours) if hours else t("выключены")
+        ),
+        t("Ночью некритичное ждёт до утра и приходит одной сводкой. Часы — по поясу {tz}.").format(
+            tz=esc(tz_name(tz))
+        ),
+        "",
+        t("🔕 Помолчать: {state}").format(state=t("до {until}").format(until=until) if until else t("сейчас не молчу")),
+        t("На время: всё, кроме критичного, ждёт и приходит сводкой, когда тишина закончится. Команда: /mute 8h, снять — /unmute."),
+        "",
+        esc(notifier.what_rings_through()),
+    ]
+    current = f"{hours[0]}-{hours[1]}" if hours else None
+    quiet_row = [
+        _button(_picked(preset == current, f"🌙 {notifier.quiet_hours_pretty(notifier.parse_quiet_hours(preset))}"), f"{SETTINGS}:qh:{preset}")
+        for preset in notifier.QUIET_PRESETS
+    ] + [_button(_picked(hours is None, t("🌙 выкл")), f"{SETTINGS}:qh:off")]
+    mute_row = [_button(f"🔕 {_duration_label(choice)}", f"{SETTINGS}:mute:{choice}") for choice in MUTE_CHOICES]
+    rows = [quiet_row, mute_row]
+    if until:
+        rows.append([_button(t("🔔 Снять тишину"), f"{SETTINGS}:mute:off")])
+    rows.append(_back(SETTINGS, t("Настройки")))
+    return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
+
+
+def _duration_label(choice: str) -> str:
+    """'1h' → '1 ч', '1d' → '1 д' — a mute button's label."""
+    n, unit = int(choice[:-1]), choice[-1]
+    if unit == "d":
+        return f"{n} {plural(n, 'день', 'дня', 'дней')}"
+    if unit == "h":
+        return f"{n} {plural(n, 'час', 'часа', 'часов')}"
+    return f"{n} {plural(n, 'минута', 'минуты', 'минут')}"
+
+
+def mute_note(until: str) -> str:
+    """The answer to /mute and the 🔕 buttons."""
+    return (
+        t("🔕 Молчу до {until}.").format(until=until) + "\n"
+        + notifier.what_rings_through() + "\n"
+        + t("Снова писать обо всём: /unmute")
+    )
 
 
 async def report_days(db: Database, config: Config) -> Screen:
@@ -569,7 +638,7 @@ async def linkedin(db: Database, config: Config) -> Screen:
 
     age = await get_cookie_age_days(db)
     if await db.get_setting("cookie_expired_alerted") == "1":
-        lines.append(t("🔴 LinkedIn отклонил cookie: пришли новый через /setcookie или вводи число вручную."))
+        lines.append(t("🟠 LinkedIn отклонил cookie: пришли новый через /setcookie или вводи число вручную."))
     elif age is not None and age >= COOKIE_AGING_DAYS:
         lines.append(
             t("⚠️ Cookie установлен {age} {d} назад и скоро истечёт — пора обновить.").format(age=age, d=_days(age))
@@ -623,7 +692,7 @@ async def instagram(db: Database, config: Config) -> Screen:
     if not token:
         lines.append(t("⚠️ Токена нет: без него число не собирается."))
     elif await db.get_setting("instagram_token_alerted") == "1":
-        lines.append(t("🔴 Instagram отклонил токен: отозван или истёк — пришли новый через /igtoken."))
+        lines.append(t("🟠 Instagram отклонил токен: отозван или истёк — пришли новый через /igtoken."))
     elif age is None:
         lines.append(t("✅ Число собирается само по токену из переменных окружения."))
     else:
@@ -696,7 +765,8 @@ def help_screen() -> Screen:
         t("<b>Значки</b>"),
         t("✅ в порядке или включено · ⬜ выключено · ➖ не подключено"),
         t("⚠️ нужно внимание · ❓ не отмечено"),
-        t("🟠 изменение · 🔴 сбой · 🚨 похоже на взлом"),
+        t("🚨 похоже на взлом · 🔴 аккаунт недоступен — звонят сразу, даже ночью"),
+        t("🟠 изменение или сбой — тихо; ночью и в тишине ждёт сводки"),
         "",
         t("<b>Команды</b>"),
         t("/start — главная"),
@@ -712,6 +782,7 @@ def help_screen() -> Screen:
         t("/setday &lt;дни&gt; — дни отчёта: sat, mon-fri, mon,thu, daily"),
         t("/settz &lt;пояс&gt; — часовой пояс, например Europe/Moscow"),
         t("/setquiet on|off — тихий режим"),
+        t("/mute &lt;время&gt; — помолчать: 1h, 8h, 1d (по умолчанию 8h); /unmute — снять"),
         t("/modules — мониторинги"),
         "",
         t("<b>Бэкап</b>"),

@@ -16,10 +16,12 @@ from datetime import timedelta
 import aiohttp
 from telegram import Bot
 
+from bot import notifier
 from bot.config import Config
 from bot.db import Database, utcnow
 from bot.i18n import t
-from bot.monitors import NO_PREVIEW, defang, hygiene
+from bot.monitors import defang, hygiene
+from bot.notifier import Priority
 
 logger = logging.getLogger(__name__)
 
@@ -247,15 +249,15 @@ async def _track_reachability(bot: Bot, config: Config, db: Database, reachable:
         if fails:
             await db.set_setting("mail_fail_streak", "0")
         if fails >= UNREACHABLE_AFTER:
-            await bot.send_message(chat_id=config.admin_chat_id, text=t("✅ Почтовый воркер снова отвечает"))
+            await notifier.send(bot, config, db, t("✅ Почтовый воркер снова отвечает"))
         return
     fails += 1
     await db.set_setting("mail_fail_streak", str(fails))
     if fails == UNREACHABLE_AFTER:
-        await bot.send_message(
-            chat_id=config.admin_chat_id,
-            text=t(
-                "🔴 Почтовый воркер не отвечает ~30 мин — письма безопасности не доходят. "
+        await notifier.send(
+            bot, config, db,
+            t(
+                "🟠 Почтовый воркер не отвечает ~30 мин — письма безопасности не доходят. "
                 "Проверь SECURITY_MAIL_URL, SECURITY_MAIL_TOKEN и деплой воркера."
             ),
         )
@@ -288,8 +290,11 @@ async def check(bot: Bot, config: Config, db: Database, session: aiohttp.ClientS
         text, kind, network, platform_id = describe(mail)
         if kind is not None and kind.id == "password_changed" and platform_id:
             text += "\n" + t("✍️ Дата смены пароля отмечена в чек-листе /security.")
+        # A 🚨 kind (a new sign-in, a changed password) rings through quiet
+        # hours and /mute; a login code or an unrecognised mail waits for the digest.
+        priority = Priority.CRITICAL if kind is not None and kind.icon == "🚨" else Priority.NORMAL
         try:
-            await bot.send_message(chat_id=config.admin_chat_id, text=text, link_preview_options=NO_PREVIEW)
+            await notifier.send(bot, config, db, text, priority, no_preview=True)
         except Exception:
             logger.exception("Mail alert send failed — will retry on the next poll")
             continue

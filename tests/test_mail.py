@@ -1,10 +1,12 @@
 import dataclasses
+from datetime import timedelta
 
 import aiohttp
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestServer
 
+from bot import notifier
 from bot.db import utcnow
 from bot.monitors import mail
 from bot.monitors.mail import Mail, describe, kind_of, sender_of
@@ -141,6 +143,20 @@ async def test_alert_ack_and_no_duplicate_on_redelivery(bot, mail_config, db, wo
     assert len(bot.messages) == 1 and worker["acked"] == ["evt:1"]
 
 
+async def test_a_sign_in_rings_a_login_code_waits(bot, mail_config, db, worker):
+    await notifier.set_mute(db, timedelta(hours=1))
+    worker["events"] += [
+        {"id": "evt:1", "from": "no-reply@accounts.google.com", "subject": "Security alert",
+         "text": "New sign-in on Windows"},
+        {"id": "evt:2", "from": "security@mail.instagram.com", "subject": "123456 is your Instagram code", "text": ""},
+    ]
+    assert await _check(bot, mail_config, db) == 2
+    assert bot.silent == [False] and bot.messages[0].startswith("🚨 Google: новый вход")
+    (held,) = await db.peek_notifications()
+    assert held["text"].startswith("🟠 Instagram: пришёл код входа")
+    assert sorted(worker["acked"]) == ["evt:1", "evt:2"]              # queued counts as handled
+
+
 async def test_unrecognized_mail_is_not_realerted_and_stays_out_of_events(bot, mail_config, db, worker):
     worker["events"].append({"id": "evt:1", "from": "news@linkedin.com", "subject": "5 people viewed your profile"})
     assert await _check(bot, mail_config, db) == 1
@@ -164,7 +180,7 @@ async def test_unreachable_worker_alerted_once_then_recovery(bot, mail_config, d
     worker["status"] = 500
     for _ in range(mail.UNREACHABLE_AFTER + 2):
         await _check(bot, mail_config, db)
-    assert len(bot.messages) == 1 and bot.messages[0].startswith("🔴 Почтовый воркер не отвечает")
+    assert len(bot.messages) == 1 and bot.messages[0].startswith("🟠 Почтовый воркер не отвечает")
     worker["status"] = 200
     await _check(bot, mail_config, db)
     assert bot.messages[-1] == "✅ Почтовый воркер снова отвечает"
