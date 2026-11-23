@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 import shutil
 from collections import deque
@@ -289,6 +290,37 @@ async def test_a_second_tap_while_collecting_does_not_collect_twice(make_update,
     await handlers.on_callback(update, context)
     assert update.callback_query.answers[0]["text"].startswith("Уже собираю") and calls == []
     lock.release()
+
+
+def test_updates_are_handled_concurrently_and_the_collect_lock_is_shared(config, db):
+    """A /now that collects for half a minute must not hold every other button:
+    PTB's default is one update after another. The scheduler gets the same
+    lock, so the daily run and a manual one never collect at once."""
+    from bot import main
+
+    app = main.build_application(config, db)
+    assert app.concurrent_updates > 1
+    assert handlers.collect_lock(app.bot_data) is handlers.collect_lock(app.bot_data)
+
+
+async def test_the_scheduled_run_waits_for_a_manual_collect(bot, config, db, monkeypatch):
+    from bot import scheduler as sched
+
+    order: list[str] = []
+
+    async def collect(*args, **kwargs):
+        order.append("collect")
+        return CollectOutcome(report="📊 report", has_change=False)
+
+    monkeypatch.setattr(sched, "collect_and_report", collect)
+    lock = handlers.collect_lock({})
+    await lock.acquire()
+    job = asyncio.ensure_future(sched._scheduled_job(bot, config, db, sched.AsyncIOScheduler(timezone=sched.UTC), lock))
+    await asyncio.sleep(0)
+    assert order == []                                   # waits, does not collect alongside
+    lock.release()
+    await job
+    assert order == ["collect"]
 
 
 async def test_failed_collect_keeps_the_menu(make_update, make_context, monkeypatch):

@@ -14,8 +14,8 @@ STRINGS: dict[str, str] = {
         "✅ Time zone: {tz}. The report will arrive at the same moment as before — its time in this zone is below",
     "✅ LinkedIn: {count} — сохранено": "✅ LinkedIn: {count} — saved",
     "Это личный бот: он отвечает только своему владельцу.": "This is a personal bot: it answers only its owner.",
-    "⏳ Уже собираю данные — результат появится в сообщении выше.":
-        "⏳ Already collecting — the result will appear in the message above.",
+    "⏳ Уже собираю данные — по расписанию или по другой команде. Подожди минуту и повтори.":
+        "⏳ Already collecting — on schedule or for another command. Wait a minute and try again.",
     "Пришли число вместе с командой, например: /linkedin 4520":
         "Send the number with the command, for example: /linkedin 4520",
     "Нужно целое число без знака, например: /linkedin 4520":

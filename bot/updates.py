@@ -36,10 +36,6 @@ from bot.notifier import Priority
 
 logger = logging.getLogger(__name__)
 
-PACKAGES = (
-    "python-telegram-bot", "aiohttp", "aiosqlite", "APScheduler",
-    "beautifulsoup4", "matplotlib", "python-dotenv",
-)
 GITHUB_API = "https://api.github.com"
 OSV_BATCH = "https://api.osv.dev/v1/querybatch"
 # A minor/patch PR still open after this long did not auto-merge: CI is red.
@@ -56,13 +52,16 @@ class _Unknown(Exception):
 
 
 def installed_versions() -> dict[str, str]:
+    """Every installed distribution, name → version. The image holds exactly
+    the hashed lock, transitive packages included, so this is what OSV should
+    be asked about and what «🔄 Бот обновился» compares; a hand-kept list of
+    direct dependencies used to leave out anthropic and everything it brought."""
     out: dict[str, str] = {}
-    for name in PACKAGES:
-        try:
-            out[name] = metadata.version(name)
-        except metadata.PackageNotFoundError:
-            continue
-    return out
+    for dist in metadata.distributions():
+        name = (dist.metadata["Name"] or "").strip()
+        if name and name not in out:
+            out[name] = dist.version
+    return dict(sorted(out.items(), key=lambda kv: kv[0].lower()))
 
 
 # --- Startup: "what changed since the last boot?" ---------------------------

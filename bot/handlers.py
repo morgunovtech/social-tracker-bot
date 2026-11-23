@@ -253,15 +253,22 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
 # Shared actions
 # ---------------------------------------------------------------------------
 
+def collect_lock(bot_data: dict) -> asyncio.Lock:
+    """The one lock around a collection: /now, the 🔄 button and the scheduler's
+    daily run (bot/scheduler.py) share it, so two collections never overlap."""
+    return bot_data.setdefault("collect_lock", asyncio.Lock())
+
+
 def _collect_lock(context: ContextTypes.DEFAULT_TYPE) -> asyncio.Lock:
-    return context.bot_data.setdefault("collect_lock", asyncio.Lock())
+    return collect_lock(context.bot_data)
 
 
 async def _collect_now(
     context: ContextTypes.DEFAULT_TYPE, show: Callable[[ui.Screen], Awaitable[None]]
 ) -> bool:
     """Collect, showing the progress and then the fresh home screen; False
-    while another collection runs (a double tap must not collect twice)."""
+    while another collection runs — a double tap, or the scheduler's daily
+    run — so nothing is collected twice."""
     config, db = _deps(context)
     lock = _collect_lock(context)
     if lock.locked():
@@ -370,7 +377,9 @@ async def cmd_now(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await sent.edit_text(screen.text, **_markup(screen))
 
     if not await _collect_now(context, show):
-        await update.message.reply_text(t("⏳ Уже собираю данные — результат появится в сообщении выше."))
+        await update.message.reply_text(
+            t("⏳ Уже собираю данные — по расписанию или по другой команде. Подожди минуту и повтори.")
+        )
 
 
 @_admin_only

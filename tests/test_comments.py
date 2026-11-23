@@ -124,6 +124,12 @@ def test_verdict_parsing():
     assert refused.category == classifier.REFUSED and refused.reason == "declined" and refused.flagged
     with pytest.raises(ValueError):
         classifier.parse_verdict(_response({"category": "weird", "confidence": 1, "reason": ""}))
+    # Thinking counts toward max_tokens: a reply that ends there has no text, and is not «fine».
+    with pytest.raises(ValueError, match="max_tokens"):
+        classifier.parse_verdict(_response(None, "max_tokens"))
+    with pytest.raises(ValueError, match="no text"):
+        classifier.parse_verdict(_response(None, "end_turn"))
+    assert classifier.MAX_TOKENS >= 4096                        # room for the thinking, not only the JSON
     assert set(classifier.SCHEMA["properties"]["category"]["enum"]) == set(classifier.CATEGORIES)
     # The API refuses minimum/maximum on an integer (HTTP 400): the range is clamped here instead.
     assert not {"minimum", "maximum"} & set(classifier.SCHEMA["properties"]["confidence"])

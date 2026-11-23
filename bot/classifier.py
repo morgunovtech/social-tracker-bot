@@ -32,8 +32,12 @@ CATEGORIES = (*DANGEROUS, "spam", "ok")
 # message (stop_reason "refusal"). Shown to the owner as a card of its own.
 REFUSED = "refused"
 
-# A classification is a short answer; 512 tokens hold the JSON with room.
-MAX_TOKENS = 512
+# The answer is ~60 tokens of JSON, but the model's thinking counts toward
+# max_tokens too, and on the current models it cannot be switched off (only
+# shortened with effort "low"). A cap sized for the JSON alone was used up by
+# the thinking on a picture, and the reply stopped before any text. This is a
+# ceiling, not a spend: a short answer still costs a short answer.
+MAX_TOKENS = 4096
 # Per-call deadline and retries (the SDK retries 408/409/429/5xx and
 # connection errors by itself): a comment is not worth a long wait, and the
 # monitor treats a failure as «could not check», never as «fine».
@@ -149,12 +153,21 @@ def build_content(sample: Sample) -> list[dict]:
 
 
 def parse_verdict(response) -> Verdict:
-    """The Verdict in a Message; a refusal is a Verdict of its own kind."""
+    """The Verdict in a Message; a refusal is a Verdict of its own kind.
+
+    Raises ValueError for an answer that is not a verdict: one cut off at
+    max_tokens (the thinking used the whole cap), one with no text block, or
+    one the schema should have made impossible. The caller treats these as
+    «could not check», never as «fine»."""
     if response.stop_reason == "refusal":
         details = getattr(response, "stop_details", None)
         explanation = (getattr(details, "explanation", None) or "").strip()
         return Verdict(REFUSED, 0, explanation)
+    if response.stop_reason == "max_tokens":
+        raise ValueError(f"answer cut off at max_tokens={MAX_TOKENS}: raise it")
     text = next((b.text for b in response.content if b.type == "text"), "")
+    if not text:
+        raise ValueError(f"no text in the answer (stop_reason={response.stop_reason!r})")
     data = json.loads(text)
     category = data["category"]
     if category not in CATEGORIES:

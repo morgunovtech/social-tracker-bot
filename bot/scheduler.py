@@ -296,15 +296,37 @@ async def _ping_healthcheck(config: Config, db: Database | None = None, bot=None
         logger.warning("Healthcheck ping failed", exc_info=True)
 
 
+def _schedule_retry(
+    scheduler: AsyncIOScheduler, bot: Bot, config: Config, db: Database, lock: asyncio.Lock | None, attempt: int
+) -> datetime:
+    """The next attempt of today's collect, an hour from now; replaces a pending one."""
+    run_at = utcnow() + COLLECT_RETRY_DELAY
+    scheduler.add_job(
+        _scheduled_job,
+        trigger=DateTrigger(run_date=run_at, timezone=UTC),
+        args=[bot, config, db, scheduler, lock],
+        kwargs={"attempt": attempt + 1},
+        id="collect_retry",
+        replace_existing=True,
+    )
+    return run_at
+
+
 async def _scheduled_job(
-    bot: Bot, config: Config, db: Database, scheduler: AsyncIOScheduler, attempt: int = 1
+    bot: Bot, config: Config, db: Database, scheduler: AsyncIOScheduler, lock: asyncio.Lock | None = None,
+    attempt: int = 1,
 ) -> None:
     """Daily collect. Pushes the report only on configured report day(s); other
     daily outputs: instant problem alerts, retries for failed platforms, monthly
     digest (1st), weekly DB backup (Sunday), watchdog ping.
+
+    lock is handlers.collect_lock: a /now in progress is waited for, never
+    doubled.
     """
+    lock = lock or asyncio.Lock()
     try:
-        outcome = await collect_and_report(bot, config, db)
+        async with lock:
+            outcome = await collect_and_report(bot, config, db)
     except Exception:
         # No healthcheck ping on failure — the watchdog will fire.
         logger.exception("Scheduled collection failed")
@@ -324,15 +346,7 @@ async def _scheduled_job(
     # Retry failed platforms in an hour (cookie expiry is excluded — retrying won't help).
     failed = [p for p in PLATFORM_IDS if outcome.errors.get(p)]
     if failed and attempt < COLLECT_MAX_ATTEMPTS:
-        run_at = utcnow() + COLLECT_RETRY_DELAY
-        scheduler.add_job(
-            _scheduled_job,
-            trigger=DateTrigger(run_date=run_at, timezone=UTC),
-            args=[bot, config, db, scheduler],
-            kwargs={"attempt": attempt + 1},
-            id="collect_retry",
-            replace_existing=True,
-        )
+        run_at = _schedule_retry(scheduler, bot, config, db, lock, attempt)
         logger.info(
             "Collection failed for %s — retry %d/%d at %s",
             failed, attempt + 1, COLLECT_MAX_ATTEMPTS, run_at.strftime("%H:%M UTC"),
@@ -486,14 +500,17 @@ async def reschedule(scheduler: AsyncIOScheduler, db: Database, config: Config) 
     logger.info("Rescheduled daily collect to %02d:%02d %s (push dow=%s)", hour, minute, tz.key, dow)
 
 
-async def setup_scheduler(bot: Bot, config: Config, db: Database) -> AsyncIOScheduler:
+async def setup_scheduler(
+    bot: Bot, config: Config, db: Database, lock: asyncio.Lock | None = None
+) -> AsyncIOScheduler:
+    """lock: handlers.collect_lock, so the daily run and /now never collect at once."""
     dow, hour, minute = await get_report_schedule(db, config)
     tz = await get_report_tz(db, config)
     scheduler = AsyncIOScheduler(timezone=UTC)
     scheduler.add_job(
         _scheduled_job,
         trigger=CronTrigger(hour=hour, minute=minute, timezone=tz),
-        args=[bot, config, db, scheduler],
+        args=[bot, config, db, scheduler, lock],
         id="scheduled_report",
         replace_existing=True,
         misfire_grace_time=DAILY_MISFIRE_GRACE_S,
@@ -550,7 +567,7 @@ async def setup_scheduler(bot: Bot, config: Config, db: Database) -> AsyncIOSche
         scheduler.add_job(
             _scheduled_job,
             trigger=DateTrigger(run_date=run_at, timezone=UTC),
-            args=[bot, config, db, scheduler],
+            args=[bot, config, db, scheduler, lock],
             id="collect_catch_up",
             replace_existing=True,
         )

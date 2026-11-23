@@ -7,7 +7,7 @@ from telegram.ext import Application
 
 from bot.config import Config
 from bot.db import Database
-from bot.handlers import ALLOWED_UPDATES, register_handlers, restore_owner
+from bot.handlers import ALLOWED_UPDATES, collect_lock, register_handlers, restore_owner
 from bot.i18n import set_language, t
 from bot.redact import RedactingFormatter
 from bot.scheduler import setup_scheduler
@@ -63,7 +63,7 @@ async def _post_init(app: Application) -> None:
     await db.init()
     await restore_owner(config, db)
 
-    scheduler = await setup_scheduler(app.bot, config, db)
+    scheduler = await setup_scheduler(app.bot, config, db, lock=collect_lock(app.bot_data))
     scheduler.start()
     app.bot_data["scheduler"] = scheduler
 
@@ -84,21 +84,32 @@ async def _post_shutdown(app: Application) -> None:
         scheduler.shutdown(wait=False)
 
 
+def build_application(config: Config, db: Database) -> Application:
+    """The bot with its handlers. Updates are handled concurrently: by default
+    python-telegram-bot awaits one update after another, so a /now that
+    collects for half a minute (four networks, each with a timeout) held every
+    other button and command until it was done. The collection itself is
+    behind one lock (handlers.collect_lock), shared with the scheduler's daily
+    run, so two collections never overlap."""
+    app = (
+        Application.builder()
+        .token(config.bot_token)
+        .concurrent_updates(True)
+        .post_init(_post_init)
+        .post_shutdown(_post_shutdown)
+        .build()
+    )
+    register_handlers(app, config, db)
+    return app
+
+
 def main() -> None:
     global _config
     config = Config.from_env()
     _config = config
     set_language(config.lang)
     db = Database(config.db_path)
-
-    app = (
-        Application.builder()
-        .token(config.bot_token)
-        .post_init(_post_init)
-        .post_shutdown(_post_shutdown)
-        .build()
-    )
-    register_handlers(app, config, db)
+    app = build_application(config, db)
 
     logger.info("Bot starting...")
     # Keep what was sent while the bot was down for a deploy; stale messages are
