@@ -6,6 +6,12 @@
 
 The bot talks to you in English or Russian (`BOT_LANG`); the setup is the same in both.
 
+<p align="center">
+  <img src="docs/images/home.png" width="31%" alt="Home: the follower report, the security score, the next report">
+  <img src="docs/images/security.png" width="31%" alt="Security: a score per account and what to do first">
+  <img src="docs/images/week-chart.png" width="31%" alt="The week compared with the last one, and the 30-day chart">
+</p>
+
 ## What you get
 
 The bot is modular: connect only the platforms you have, and switch monitors on or off in `/modules`.

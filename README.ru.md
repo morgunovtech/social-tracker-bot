@@ -4,6 +4,12 @@ Telegram-бот, который следит за вашими соцсетям�
 
 🇬🇧 [In English](README.md)
 
+<p align="center">
+  <img src="docs/images/home.png" width="31%" alt="Home: the follower report, the security score, the next report">
+  <img src="docs/images/security.png" width="31%" alt="Security: a score per account and what to do first">
+  <img src="docs/images/week-chart.png" width="31%" alt="The week compared with the last one, and the 30-day chart">
+</p>
+
 ## Возможности
 
 Бот модульный: подключите только те платформы, что у вас есть, а мониторинги включайте и выключайте в `/modules`.
