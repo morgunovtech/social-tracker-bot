@@ -28,6 +28,7 @@ The bot is modular: connect only the platforms you have, and switch monitors on 
 - **Short when unchanged**: a one-liner instead of the full report when nothing changed.
 - **Three buttons under the input field** — 🏠 Home, 📖 What I do, ❓ Icons — one tap from anywhere, however far up the menu has scrolled; «🔄 Refresh data» and «🔕 Mute…» are on the home screen. No ☰ command list: commands still work when typed, and «📖 What I do» lists them all. Every alert and report carries buttons to where to look into it (🛡 Security, 📈 Trends, 📣 Channel), a 🟠 one also «⚙️ Stop sending these».
 - **Rings only when it matters**: 🔴 — a likely hijack, a new sign-in, a changed password, a vanished profile, a silent mail worker — rings at once, even at night; everything else arrives silently, and during quiet hours or a `/mute` it waits and comes as one digest. One set of icons everywhere, the same as TofsDevOps's: see [Icons](#icons) and [When it writes](#when-it-writes).
+- **Instagram** — through the official API, with a non-expiring token of your own Meta app (`/igtoken`); **LinkedIn** — by itself with the `li_at` cookie (`/setcookie`) or by hand with a button.
 
 **Security**
 
@@ -51,13 +52,15 @@ What leaves your server and what does not, as the code does it:
 | Watchdog (⏱ Watchdog or `HEALTHCHECK_URL`) | An empty ping after the daily run, and one test ping when you set the address — healthchecks.io or a TofsDevOps address; TofsDevOps also gets one status line per network (count, delta). Only when set; the address is kept out of the logs and the backup. |
 | Your own site (`SITE_INGEST_URL`) | The final follower counts, POSTed with a Bearer token. Only when set. |
 | OSV (`api.osv.dev`) | On Sundays, the names and versions of the bot's packages, to report known vulnerabilities. `UPDATE_WATCH=0` turns it off. |
+| GitHub API (`api.github.com`) | The update watch (`bot/updates.py`): the newest commit on `main`, its deployments and their statuses — hourly, to tell a failed deploy — and the repository's open pull requests on Sundays, for the Dependabot PRs that wait for you. Only with `UPDATE_WATCH=1` and a repository name (Railway sets it by itself; elsewhere `GITHUB_REPOSITORY`). `GITHUB_TOKEN` is optional and only lifts the anonymous rate limit; the request carries the repository name and, if set, that token — nothing else. |
 | Search Console API (`googleapis.com`) | Once a week, with the service account key you sent: the list of properties it was added to, and for each the queries that match your brand words (sent as one regular expression) for two weeks. Only when connected. |
 | Yandex.Webmaster API (`api.webmaster.yandex.net`) | Once a week, with your OAuth token: your verified sites and their top queries for two weeks; the brand words never leave — they are matched here. Only when connected. |
 | Cloudflare API (`api.cloudflare.com`) | Once a week, with your read-only token: your zones and, per zone, one request count per AI-assistant user agent per day for two weeks. Only when connected. |
 | Your mail-worker | The bot fetches the security emails you forwarded yourself; the worker accepts only the senders in `ALLOWED_SENDERS`. |
 | Claude API (`api.anthropic.com`) | Every new comment in the channel's discussion group — its text and picture (or a video / sticker thumbnail), the group's title, and whether it is the author's first message or a forward. No user id, name or @username. Only with `ANTHROPIC_API_KEY`, and only for a group the bot is an admin of; comments are public to begin with; at most three at a time and `COMMENTS_DAILY_LIMIT` a day (300 by default). Anthropic's API data retention applies to what is sent. |
+| The sites your profile descriptions link to | Once a week, every link found in the stored descriptions (Telegram, YouTube, Instagram) is requested hop by hop (`bot/monitors/links.py`): one GET per hop, redirects not followed blindly — the next host is checked to be a public address first, at most 10 hops — no page body read, under a User-Agent that names this repository. Those sites get the request itself and nothing of yours. Monitor «Profile links» in `/modules`. |
 
-Everything else stays with you: follower history, the channel's joins, leaves, posts and reactions, profile baselines, checklist answers and security events live in SQLite on your volume. What names a person does not stay for ever: joins and leaves are dropped after 90 days, comments the model called fine (an author id and a verdict, no name or text) after 30, flagged ones with their card after 180. The Instagram token, the LinkedIn cookie and the watchdog address are stored there too; the message carrying any of them is deleted from the chat at once, and the Sunday backup is made without them. Only the owner — the first `/start`, or `ADMIN_CHAT_ID` when set — can use the bot. Logs carry no Bot API URL with the token (the httpx logger stays at WARNING). Links quoted from mails and profile descriptions are defanged in alerts (`hxxps://evil[.]example`) and previews are off. Details: [SECURITY.md](SECURITY.md).
+Everything else stays with you: follower history, the channel's joins, leaves, posts and reactions, profile baselines, checklist answers and security events live in SQLite on your volume. What names a person does not stay for ever: joins and leaves are dropped after 90 days, comments the model called fine (an author id and a verdict, no name or text) after 30, flagged ones with their card after 180. The Instagram token, the LinkedIn cookie, the watchdog address and the reputation report's three read-only keys — the Search Console service-account key, the Yandex OAuth token and the Cloudflare token — are stored there too (`_SECRET_SETTINGS` in `bot/db.py`); the message carrying any of them is deleted from the chat at once, the Sunday backup is made without them, and none of them reaches a screen or a log line. Only the owner — the first `/start`, or `ADMIN_CHAT_ID` when set — can use the bot. Logs carry no Bot API URL with the token (the httpx logger stays at WARNING). Links quoted from mails and profile descriptions are defanged in alerts (`hxxps://evil[.]example`) and previews are off. Details: [SECURITY.md](SECURITY.md).
 
 ## Setup
 
@@ -83,6 +86,8 @@ docker compose up -d
 ```
 
 `docker-compose.yml` pulls the image every green `main` publishes to `ghcr.io/morgunovtech/social-tracker-bot` (amd64 and arm64); to run your own changes, replace `image:` with `build: .` and add `--build`.
+
+Logs: `docker compose logs -f`. Stop: `docker compose down`.
 
 ### Railway
 
@@ -149,6 +154,8 @@ No ☰ command list is published: the three buttons under the input field are th
 | `/igtoken [token]` | Set the Instagram token (checked against the API, the message is deleted); without the value the bot asks for it as the next message |
 | `/restore` | Merge the history back: send the `.db` file and confirm with the button, reply `/restore` to a backup message, or caption the file `/restore` |
 | `/cancel` | Leave a text-input step — the LinkedIn number, a cookie, a token, a time zone — without saving |
+
+All commands are owner-only — the first `/start`, or `ADMIN_CHAT_ID` when set.
 
 ## What a report looks like
 
@@ -250,11 +257,15 @@ python scripts/clean_deleted.py @your_channel --yes    # remove them
 ## What it creates outside the repo
 
 - A Telegram bot (@BotFather) and, if you use it, a YouTube Data API key in a Google Cloud project.
+- On Railway: a project with one service built from this repository and a volume at `/app/data` — the template (`cL4hpn`) creates them; delete the project to tear down.
+- A public package on GitHub, `ghcr.io/morgunovtech/social-tracker-bot` — the image CI publishes on every green `main`; delete it under the repository's Packages.
 - For Instagram: a Meta app with the Instagram API use case, a business portfolio it belongs to, a «Facebook Login for Business» configuration and the Instagram Tester role on your account. Teardown: remove the app on [developers.facebook.com](https://developers.facebook.com/apps/) (Settings → Basic → Remove app), the portfolio in Meta Business Suite → Business settings → Business info, and the app under Instagram → Settings → Website permissions.
-- Optionally a [healthchecks.io](https://healthchecks.io) check (set in ⏱ Watchdog or `HEALTHCHECK_URL`; delete it there to tear down) and your own site's ingest endpoint (`SITE_INGEST_URL`).
+- Optionally a [healthchecks.io](https://healthchecks.io) check or a TofsDevOps heartbeat task (set in ⏱ Watchdog or `HEALTHCHECK_URL`; delete it there to tear down) and your own site's ingest endpoint (`SITE_INGEST_URL`).
+- Optionally a GitHub personal access token (`GITHUB_TOKEN`), only to lift the anonymous rate limit of the update watch; revoke it under Settings → Developer settings.
 - Optionally, for security emails: a Cloudflare Worker, a KV namespace, an Email Routing rule with its DNS records, and a forwarding address + filter in your mailbox — listed with teardown steps in [mail-worker/README.md](mail-worker/README.md).
 - Optionally, for the reputation report: a Google Cloud project with a service account and its JSON key, added as a user of your Search Console properties (remove the user and delete the key to tear down); a Yandex OAuth app at oauth.yandex.ru and its token (delete the app); a Cloudflare API token with Zone Read and Analytics Read (delete it under My Profile → API Tokens).
 - Optionally, for the comments: an API key in an Anthropic Console organization (`ANTHROPIC_API_KEY`), billed per comment checked; revoke it in the Console to tear down.
+- For `scripts/clean_deleted.py`: an API id and hash of an application at [my.telegram.org](https://my.telegram.org) (API development tools) and a local session file on your laptop — `~/.social-tracker-clean-bot.session`, or with `--session user` `~/.social-tracker-clean-user.session`, a signed-in session of your own account. Teardown: delete the files and end that session under Telegram → Settings → Devices; the application stays at my.telegram.org.
 
 ## Development
 

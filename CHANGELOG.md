@@ -2,6 +2,17 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.8.4 — 2026-11-24
+
+Documentation only: the privacy table and SECURITY.md now name every host the bot talks to and every secret it keeps, the two READMEs say the same things, and the list of what the bot creates outside the repository is complete. Nothing in the bot changes.
+
+**Docs**
+- README «Privacy» has the two hosts it was missing: `api.github.com` — the update watch, the newest commit on `main` with its deployments hourly and the open PRs on Sundays, only with `UPDATE_WATCH=1` and a repository name, `GITHUB_TOKEN` only lifting the rate limit — and the sites your profile descriptions link to: the weekly link check, one request per hop, no page body, a User-Agent that names this repository.
+- README «Privacy» and SECURITY.md name every secret the database holds: next to the Instagram token, the LinkedIn cookie and the watchdog address, the reputation report's three read-only keys — Search Console, Yandex, Cloudflare — set from the chat, deleted from the chat, left out of the backup and never shown or logged (`_SECRET_SETTINGS` in `bot/db.py`). SECURITY.md no longer says every key lives in environment variables: the ones you connect from the chat live in the database.
+- The Russian README caught up with the code and with the English one: the default report time is 08:00 in the bot's zone, not UTC (so since 1.5.0); the screenshots' alt texts are Russian; `/settime`·`/setday` and `/setcookie`·`/cookieage` share a row as in English. The English README got what only the Russian one said: the Instagram/LinkedIn line, `docker compose logs -f` / `down`, and that every command is owner-only. The first paragraph and setup step 8 of both name the reputation report (#76).
+- «What it creates outside the repo» lists the Railway project with its service and volume, the public `ghcr.io` package, the TofsDevOps heartbeat task, an optional `GITHUB_TOKEN` and, for `scripts/clean_deleted.py`, the my.telegram.org application with the local session files — each with how to tear it down.
+- `pyproject.toml` describes the reputation report too; Dependabot's comment names the report time in the bot's zone; `.claude/` is in `.gitignore`.
+
 ## 1.8.3 — 2026-11-24
 
 A wrong `BOT_TOKEN` — empty, the placeholder from `.env.example`, or one Telegram refuses — stops the bot with one line that says what to do, and a refused token is no longer printed in the log.

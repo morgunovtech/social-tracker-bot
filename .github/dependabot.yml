@@ -13,8 +13,8 @@ updates:
     schedule:
       interval: weekly
       day: saturday
-      # After the Saturday report (08:00 UTC by default): the redeploy after
-      # the merge restarts the bot.
+      # After the Saturday report (08:00 in the bot's time zone by default):
+      # the redeploy after the merge restarts the bot.
       time: "13:00"
       timezone: Europe/Moscow
     cooldown:
