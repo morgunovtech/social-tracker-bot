@@ -2,10 +2,12 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
-## Unreleased
+## 1.5.0 — 2026-11-24
+
+The bot now speaks the same language as the owner's other bot, TofsDevOps: one set of icons, three buttons under the input field, one shape for every alert, a recovery that says how long it lasted, and a watchdog connected from the chat — the open items of the shared bot principles for this bot, closed.
 
 **One icon language** — the same as TofsDevOps's (the owner's `BOT_PRINCIPLES.md`, §1)
-- One dictionary, `LEVEL_ICONS` in `bot/monitors/__init__.py`: 🔴 act now (rings), 🟠 act, but not today (silent), and the states that never ring — ✅ ⚠️ ⏳ ℹ️ ⬜ ➖ ❓. ❓ Помощь draws its legend from it and says in words what is 🔴 for this bot; the READMEs have the table.
+- One dictionary, `LEVEL_ICONS` in `bot/monitors/__init__.py`: 🔴 act now (rings), 🟠 act, but not today (silent), and the states that never ring — ✅ ⚠️ ⏳ ℹ️ ⬜ ➖ ❓. «❓ Значки» draws its legend from it and says in words what is 🔴 for this bot; the READMEs have the table.
 - 🚨 is gone: a hijack sign is 🔴 with «похоже на взлом» in its headline — «🔴 Telegram: похоже на взлом — новый админ …», «🔴 Google: похоже на взлом — новый вход в аккаунт». What rang still rings, and a dangerous comment card is 🔴 as well.
 - The mail worker silent for ~30 minutes is 🔴 and rings: while it is down, a new sign-in or a changed password reaches nobody. It used to be a quiet 🟠.
 - ⚠️ means «could not check» and nothing else. A missing Instagram token, a first LinkedIn number to confirm, a cookie about to expire, a number typed in too long ago, data that has not been fresh for days, a checklist answer short of the best are 🟠: an action is needed, just not tonight. The report's ⏰ cookie line is 🟠 too, and an unrecognised mail is ℹ️.
@@ -27,10 +29,10 @@ The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists 
 - A recovery says how long it lasted, from the first failed check of the series: «✅ Почтовый воркер снова отвечает. Молчал 40 мин (14:03–14:43). Ничего делать не нужно.» — the mail worker, the profile («Не читался …»), a collection streak and the daily run («Не собирались …», «Не выполнялся …», told once, only after one that was alerted; they used to end in silence), the comment check. When the bot itself was not checking in between, it says the duration is a lower bound.
 - The ✅ after a 🔴 outage — the profile readable again, the mail worker back — rings like the fall did (§1).
 
-**Someone else's text**
+**Someone else's text** (§3)
 - Direction overrides, zero-width marks and control characters are stripped from everything quoted — `clean()` runs inside `defang()` and inside every screen value: a display name or a mail subject with U+202E can no longer show `evil.com` as `google.com`. An unknown sender's domain in an alert is defanged too.
 
-**Time zone**
+**Time zone** (§5)
 - With no zone chosen, the schedule follows the chat language: `Europe/Moscow` for `BOT_LANG=ru`, UTC for `en`. `TIMEZONE` sets it in `.env`; `REPORT_TZ` keeps working as its older name. A zone chosen in the chat wins as before, and a schedule already stored keeps its zone; a Russian install that never picked one and has no `REPORT_TZ` now reports at 08:00 Moscow time instead of 08:00 UTC (`TIMEZONE=UTC` keeps the old time). The home screen's «осталось настроить» line names the zone in use.
 
 **Docs**
