@@ -369,12 +369,12 @@ STRINGS: dict[str, str] = {
     "📨 Отчёт сейчас": "📨 Report now",
     (
         "🏷 Пришли через запятую, как тебя и твои продукты ищут: имя и фамилию (обоими алфавитами, если так ищут), "
-        "названия продуктов и сайтов — например: Семён Моргунов, Semyon Morgunov, FoundYou, Good Pass. "
+        "названия продуктов и сайтов — например: Семён Моргунов, Semyon Morgunov, FoundYou, Fingerprint. "
         "Регистр не важен; пробел внутри слова находит и слитное написание."
     ): (
         "🏷 Send, comma-separated, how people search for you and your products: your name (in both alphabets if "
         "people search that way), the names of the products and sites — for example: Semyon Morgunov, FoundYou, "
-        "Good Pass. Case does not matter; a space inside a word also finds it written as one."
+        "Fingerprint. Case does not matter; a space inside a word also finds it written as one."
     ),
     "{icon} {label} — не подключено: 🔌 Подключения → 🔎 Репутация":
         "{icon} {label} — not connected: 🔌 Connections → 🔎 Reputation",
