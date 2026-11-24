@@ -15,8 +15,8 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from telegram import Bot
 
-from bot import monitors, notifier, platforms, tofs_status
-from bot.callbacks import CHANNEL, CONNECTIONS, DYNAMICS, SECURITY
+from bot import monitors, notifier, platforms, tofs_status, watchdog
+from bot.callbacks import CHANNEL, CONNECTIONS, DYNAMICS, SECURITY, WATCHDOG
 from bot.chart import render_chart
 from bot.config import DOW_ORDER, Config, normalize_tz
 from bot.db import Database, parse_utc, utcnow
@@ -242,6 +242,31 @@ async def send_alerts(bot: Bot, config: Config, db: Database, outcome: CollectOu
             logger.info("Sent %d proactive alert(s)", len(alerts))
     except Exception:
         logger.exception("Alert send failed")
+    try:
+        await offer_watchdog(bot, config, db, outcome)
+    except Exception:
+        logger.exception("Watchdog offer failed")
+
+
+# Offered once, as soon as there is something to watch (BOT_PRINCIPLES §6).
+WATCHDOG_OFFER = (
+    "⏱ Ещё один шаг — сторож. Пока я работаю, о проблемах пишу сам; если остановлюсь — упадёт сервер, "
+    "кончится место, отзовут токен — сказать об этом будет некому. Сторож — бесплатный healthchecks.io: "
+    "я отмечаюсь у него после каждого ежедневного сбора, а не отметился — он пишет тебе. Две минуты, кнопка ниже."
+)
+
+
+async def offer_watchdog(bot: Bot, config: Config, db: Database, outcome: CollectOutcome) -> bool:
+    """After the first collection that read a network: the watchdog, once,
+    unless one is already set (in the chat or in HEALTHCHECK_URL)."""
+    if not outcome.collected or await db.get_setting(watchdog.OFFERED_KEY) == "1":
+        return False
+    if await watchdog.url(db, config):
+        return False
+    if await notifier.send(bot, config, db, t(WATCHDOG_OFFER), Priority.DIGEST, actions=(WATCHDOG,)):
+        await db.set_setting(watchdog.OFFERED_KEY, "1")
+        return True
+    return False
 
 
 async def _build_chart_png(db: Database, days: int = 30) -> bytes | None:
@@ -296,26 +321,26 @@ def _bot_username(bot) -> str | None:
 async def _ping_healthcheck(config: Config, db: Database | None = None, bot=None,
                             errors: dict | None = None) -> None:
     """Dead man's switch: no ping today → the watchdog (healthchecks.io, a
-    TofsDevOps heartbeat) notifies the admin. To TofsDevOps the ping carries
-    a line per network for its main screen (bot.tofs_status)."""
-    if not config.healthcheck_url:
+    TofsDevOps heartbeat) notifies the admin. The address set in the chat
+    wins over HEALTHCHECK_URL (bot/watchdog.py); the answer's body is read —
+    healthchecks.io says «OK (not found)» with HTTP 200 for a deleted check —
+    and the outcome is kept for the ⏱ Сторож screen. To TofsDevOps the ping
+    carries a line per network for its main screen (bot.tofs_status)."""
+    address = await watchdog.url(db, config)
+    if not address:
         return
-    if db is not None and tofs_status.is_tofs_url(config.healthcheck_url):
+    if db is not None and tofs_status.is_tofs_url(address):
         payload = await tofs_status.build(db, config, errors, _bot_username(bot))
-        await tofs_status.send(config.healthcheck_url, payload, mark=True)
-        return
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                config.healthcheck_url, timeout=aiohttp.ClientTimeout(total=10)
-            ) as resp:
-                if resp.status < 300:
-                    logger.info("Healthcheck ping: HTTP %s", resp.status)
-                else:
-                    # e.g. 403 from a wrong secret: the watchdog will think the bot is dead.
-                    logger.warning("Healthcheck ping rejected: HTTP %s — check HEALTHCHECK_URL", resp.status)
-    except Exception:
-        logger.warning("Healthcheck ping failed", exc_info=True)
+        error = None if await tofs_status.send(address, payload, mark=True) else "tofs"
+    else:
+        error = await watchdog.probe(address)
+    if error is None:
+        logger.info("Watchdog ping: %s took the mark", watchdog.name(address))
+    else:
+        # e.g. a deleted check or a wrong secret: the watchdog will think the bot is dead.
+        logger.warning("Watchdog ping to %s did not land: %s — check the address", watchdog.name(address), error)
+    if db is not None:
+        await watchdog.record(db, error)
 
 
 def _schedule_retry(
@@ -467,9 +492,10 @@ async def _profile_job(bot: Bot, config: Config, db: Database) -> None:
         return
     # A channel that stopped being readable shows on the TofsDevOps screen
     # within half an hour, not at tomorrow's collection; not a mark.
-    if tofs_status.is_tofs_url(config.healthcheck_url):
+    address = await watchdog.url(db, config)
+    if tofs_status.is_tofs_url(address):
         payload = await tofs_status.build(db, config, None, _bot_username(bot))
-        await tofs_status.send(config.healthcheck_url, payload, mark=False)
+        await tofs_status.send(address, payload, mark=False)
 
 
 async def _mail_job(bot: Bot, config: Config, db: Database) -> None:

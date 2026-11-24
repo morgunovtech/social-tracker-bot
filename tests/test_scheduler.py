@@ -476,7 +476,7 @@ async def test_site_push_counts_only_enabled_platforms(config, db, receiver):
 async def test_rejected_healthcheck_ping_is_a_warning(config, receiver, caplog):
     server, _ = receiver
     await scheduler._ping_healthcheck(dataclasses.replace(config, healthcheck_url=str(server.make_url("/wrong-secret"))))
-    assert "rejected: HTTP 403" in caplog.text
+    assert "did not land: rejected:403" in caplog.text
 
 
 # --- profile watch -----------------------------------------------------------

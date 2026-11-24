@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
-from bot import monitors, notifier, platforms
+from bot import monitors, notifier, platforms, watchdog
 from bot.callbacks import (
     BACKUP,
     CHANNEL,
@@ -44,6 +44,8 @@ from bot.callbacks import (
     SETTINGS,
     TABLE,
     TZ_OTHER,
+    WATCHDOG,
+    WD_URL,
 )
 from bot.config import DOW_ORDER, Config
 from bot.db import Database, parse_utc, utcnow
@@ -445,9 +447,78 @@ async def connections(db: Database, config: Config) -> Screen:
             rows.append([_button("📸 Instagram", INSTAGRAM)])
         elif platform.id == "linkedin":
             rows.append([_button("💼 LinkedIn", LINKEDIN)])
-    lines += ["", t("Сети включаются в .env и перезапуском бота; токен Instagram и cookie LinkedIn — кнопками здесь.")]
+    lines += ["", await watchdog_line(db, config)]
+    rows.append([_button(t("⏱ Сторож"), WATCHDOG)])
+    lines += ["", t("Сети включаются в .env и перезапуском бота; токен Instagram, cookie LinkedIn и сторож — кнопками здесь.")]
     rows.append(_home())
     return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
+
+
+def _local(iso: str | None, tz: ZoneInfo) -> str:
+    """«сегодня 08:00» / «21.11 08:00» in the owner's zone; '' when unknown."""
+    try:
+        at = parse_utc(iso).astimezone(tz) if iso else None
+    except ValueError:
+        return ""
+    if at is None:
+        return ""
+    if at.date() == utcnow().astimezone(tz).date():
+        return t("сегодня {time}").format(time=at.strftime("%H:%M"))
+    return at.strftime("%d.%m %H:%M")
+
+
+async def watchdog_line(db: Database, config: Config) -> str:
+    """One line for 🔌 Подключения: whether a watchdog hears from the bot."""
+    address = await watchdog.url(db, config)
+    if not address:
+        return t("{icon} ⏱ Сторож — не подключён: если я остановлюсь, никто не скажет").format(icon=UNAVAILABLE)
+    who = esc(watchdog.name(address))
+    rec = await watchdog.last(db)
+    error = rec.get("error")
+    when = _local(rec.get("at"), await get_report_tz(db, config))
+    if error:
+        icon = monitors.UNCHECKED if error.partition(":")[0] in watchdog.UNCHECKED_REASONS else monitors.WARNING
+        return t("{icon} ⏱ Сторож — {who}: {reason}").format(icon=icon, who=who, reason=esc(watchdog.reason(error)))
+    if when:
+        return t("{icon} ⏱ Сторож — {who}, отметка {when}").format(icon=ON, who=who, when=esc(when))
+    return t("{icon} ⏱ Сторож — {who}, первая отметка после ежедневного сбора").format(icon=monitors.PENDING, who=who)
+
+
+async def watchdog_screen(db: Database, config: Config) -> Screen:
+    """⏱ Сторож: who watches the bot itself, and how to connect one from the chat."""
+    where = await watchdog.source(db, config)
+    lines = [t("<b>⏱ Сторож</b>"), "", await watchdog_line(db, config)]
+    if where == "chat":
+        lines.append(t("Ссылка задана здесь, в чате; адрес я не показываю — по нему можно отмечаться за меня."))
+    elif where == "env":
+        lines.append(t("Ссылка — из HEALTHCHECK_URL в .env. Пришли другую — она заменит переменную."))
+    lines += [
+        "",
+        t("Если я остановлюсь — упадёт сервер, кончится место, отзовут токен бота — написать об этом я уже не смогу. "
+          "Сторож — сервис, у которого я отмечаюсь после каждого ежедневного сбора; не отметился вовремя — он пишет тебе сам."),
+        "",
+        t("<b>Как подключить</b> (бесплатно, 2 минуты):"),
+        t("1. На healthchecks.io создай check: период — 1 день, grace — 3 часа."),
+        t("2. Скопируй его ссылку вида https://hc-ping.com/… и нажми «🔗 Прислать ссылку»."),
+        t("3. Я сразу отмечусь пробным пингом и прочитаю ответ: если check не найден, скажу."),
+        t("Адрес heartbeat из TofsDevOps тоже подходит — тогда на его главном экране появятся строки по сетям."),
+    ]
+    rows = [[_button(t("🔗 Прислать ссылку"), WD_URL)]]
+    if where:
+        rows.append([_button(t("🔄 Проверить снова"), f"{WATCHDOG}:test")])
+    if where == "chat":
+        rows.append([_button(t("⏏ Отключить"), f"{WATCHDOG}:off")])
+    rows.append(_back(CONNECTIONS, t("Подключения")))
+    return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
+
+
+def watchdog_off_confirm() -> Screen:
+    """Removing is asked first (BOT_PRINCIPLES §5)."""
+    return Screen(
+        t("<b>⏏ Отключить сторожа?</b>\n\nЯ перестану отмечаться по ссылке из чата; если задан HEALTHCHECK_URL — "
+          "буду отмечаться по нему. Сам check на healthchecks.io поставь на паузу, иначе он напишет, что я пропал."),
+        InlineKeyboardMarkup([[_button(t("✅ Да, отключить"), f"{WATCHDOG}:off:yes"), _cancel(WATCHDOG)]]),
+    )
 
 
 # What .env needs for a network that is not connected (shown on 🔌 Подключения).
@@ -986,12 +1057,21 @@ INPUT_PROMPTS = {
         "Я проверю его и сразу удалю сообщение."
     ),
     "tz": "🌍 Пришли название часового пояса из базы IANA одним сообщением, например Asia/Kolkata или America/Chicago.",
+    "watchdog": (
+        "🔗 Пришли ссылку сторожа одним сообщением: https://hc-ping.com/… из healthchecks.io или адрес heartbeat "
+        "из TofsDevOps. Я отмечусь по ней пробным пингом и сразу удалю сообщение."
+    ),
 }
 
 
 def input_prompt(kind: str) -> Screen:
     """«Send it in one message» with a cancel button; the answer is the next message."""
     return Screen(esc(t(INPUT_PROMPTS[kind])), InlineKeyboardMarkup([[_cancel(INPUT_CANCEL)]]))
+
+
+def input_retry(note: str) -> Screen:
+    """A step's value was not taken: why, and the way out; the step stays open."""
+    return Screen(esc(note), InlineKeyboardMarkup([[_cancel(INPUT_CANCEL)]]))
 
 
 def input_retry_tz() -> Screen:

@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from conftest import COOKIE, FakeBot
 
-from bot import handlers, i18n, monitors, notifier, reporter, tofs_status, ui
+from bot import handlers, i18n, monitors, notifier, reporter, scheduler, tofs_status, ui, watchdog
 from bot.config import Config
 from bot.db import utcnow
 from bot.i18n import plural, t
@@ -113,6 +113,10 @@ async def test_every_screen(config, db, insert):
         ui.about_screen(),
         ui.icons_screen(),
         ui.mute_picker(),
+        await ui.watchdog_screen(db, config),
+        ui.watchdog_off_confirm(),
+        ui.input_prompt("watchdog"),
+        ui.input_retry(t("✅ Сторож на связи")),
         await ui.when_to_write(db, config),
         await ui.comments_screen(db, config),
         await ui.comments_screen(db, dataclasses.replace(config, anthropic_api_key="k")),
@@ -165,6 +169,14 @@ async def test_every_screen(config, db, insert):
     english_only(notifier.what_rings_through())
     await notifier.set_mute(db, None)
     english_only(await notifier.silence_status(db, config))
+    # ⏱ Сторож: set in the chat, then a ping that did not land; the offer and every reason.
+    await watchdog.save(db, "https://hc-ping.com/1b2c3d4e-5f60-7182")
+    screen_english(await ui.watchdog_screen(db, config))
+    for code in ("not_found", "rejected:403", "timeout", "connect", "error", "tofs"):
+        english_only(watchdog.reason(code))
+        await watchdog.record(db, code)
+        screen_english(await ui.connections(db, config))
+    english_only(t(scheduler.WATCHDOG_OFFER))
 
 
 async def test_reports_and_tables(config, db, insert):

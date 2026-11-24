@@ -32,6 +32,7 @@ HELP = "help"            # the «❓ Помощь» of 1.0–1.4: opens «📖 �
 CONNECTIONS = "conn"
 COMMENTS = "cm"
 CHANNEL = "ch"
+WATCHDOG = "wd"          # ⏱ Сторож: wd | wd:test | wd:off[:yes]
 
 # Actions.
 OPEN = "open"            # open:<screen> — the screen as a new message; the alert it sits on stays
@@ -48,8 +49,9 @@ LI_CANCEL = "li:cancel"
 LI_COOKIE = "li:cookie"
 IG_TOKEN = "ig:token"
 TZ_OTHER = "set:tz:other"
+WD_URL = "wd:url"
 INPUT_CANCEL = "input:cancel"
-CONVERSATION_ENTRIES = frozenset({LI_ENTER, LI_COOKIE, IG_TOKEN, TZ_OTHER})
+CONVERSATION_ENTRIES = frozenset({LI_ENTER, LI_COOKIE, IG_TOKEN, TZ_OTHER, WD_URL})
 
 # The screens an alert or a report may open, with their labels (translated when built).
 SCREEN_LABELS = {
@@ -59,6 +61,7 @@ SCREEN_LABELS = {
     CHANNEL: "📣 Канал",
     COMMENTS: "💬 Комментарии",
     CONNECTIONS: "🔌 Подключения",
+    WATCHDOG: "⏱ Сторож",
 }
 
 

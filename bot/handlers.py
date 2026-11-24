@@ -26,7 +26,7 @@ from telegram.ext import (
 )
 
 from bot import callbacks as cb
-from bot import monitors, notifier, ui
+from bot import monitors, notifier, ui, watchdog
 from bot.config import DOW_ORDER, Config, normalize_dow, normalize_tz
 from bot.db import Database, utcnow
 from bot.i18n import t
@@ -57,7 +57,7 @@ AWAITING_INPUT = 2       # a cookie, a token or a time zone, by button (ui.input
 # End a dangling input conversation after this many seconds of silence.
 LI_CONV_TIMEOUT = 120
 # What each entry button asks for.
-INPUT_KINDS = {cb.LI_COOKIE: "cookie", cb.IG_TOKEN: "token", cb.TZ_OTHER: "tz"}
+INPUT_KINDS = {cb.LI_COOKIE: "cookie", cb.IG_TOKEN: "token", cb.TZ_OTHER: "tz", cb.WD_URL: "watchdog"}
 
 # Longest /history period: keeps the table under Telegram's 4096-char message limit.
 HISTORY_MAX_DAYS = 90
@@ -848,6 +848,46 @@ async def _store_token(update: Update, context: ContextTypes.DEFAULT_TYPE, token
     await chat.send_message(screen.text, **_markup(screen))
 
 
+async def _store_watchdog(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str) -> bool:
+    """The message after «🔗 Прислать ссылку»: a live test ping, and the
+    address is kept only when the watchdog took it. False keeps the step
+    open — the next paste is answered, not left in the chat."""
+    config, db = _deps(context)
+    # The address is a secret: out of the chat history before any check.
+    chat = update.effective_chat
+    deleted = True
+    try:
+        await update.message.delete()
+    except Exception:
+        deleted = False
+    note = "" if deleted else "\n" + t("🟠 Удалить сообщение со ссылкой не получилось — удали его из чата вручную.")
+    address = watchdog.parse(text)
+    if address is None:
+        screen = ui.input_retry(
+            t("❌ Нужна ссылка https://…, например https://hc-ping.com/… из healthchecks.io. "
+              "Пришли её ещё раз или нажми «✖️ Отмена».") + note
+        )
+        await chat.send_message(screen.text, **_markup(screen))
+        return False
+    await chat.send_message(t("⏳ Отмечаюсь пробным пингом…"))
+    error = await watchdog.probe(address)
+    if error is not None:
+        screen = ui.input_retry(
+            t("❌ Сторож не на связи: {reason}. Проверь, что ссылка скопирована целиком и check не удалён, "
+              "и пришли её ещё раз — или нажми «✖️ Отмена».").format(reason=watchdog.reason(error)) + note
+        )
+        await chat.send_message(screen.text, **_markup(screen))
+        return False
+    await watchdog.save(db, address)
+    screen = (await ui.watchdog_screen(db, config)).noted(
+        t("✅ Сторож подключён и на связи ({who}). Дальше отмечаюсь после каждого ежедневного сбора.").format(
+            who=watchdog.name(address)
+        ) + note
+    )
+    await chat.send_message(screen.text, **_markup(screen))
+    return True
+
+
 @_admin_only
 async def cmd_cookieage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config, db = _deps(context)
@@ -1191,6 +1231,30 @@ async def _cb_linkedin(press: _Press, context, args: list[str]) -> None:
     await _show(press.query, screen)
 
 
+async def _cb_watchdog(press: _Press, context, args: list[str]) -> None:
+    """wd — the screen; wd:test — a live ping now; wd:off — asked first; wd:off:yes — off."""
+    config, db = _deps(context)
+    if args == ["test"]:
+        address = await watchdog.url(db, config)
+        if not address:
+            return
+        error = await watchdog.probe(address)
+        await watchdog.record(db, error)
+        await press.answer(t("✅ Сторож на связи") if error is None else watchdog.reason(error))
+        screen = await ui.watchdog_screen(db, config)
+    elif args == ["off"]:
+        screen = ui.watchdog_off_confirm()
+    elif args == ["off", "yes"]:
+        await watchdog.forget(db)
+        await press.answer(t("Сторож отключён"))
+        screen = await ui.watchdog_screen(db, config)
+    elif not args:
+        screen = await ui.watchdog_screen(db, config)
+    else:
+        return
+    await _show(press.query, screen)
+
+
 async def _cb_instagram(press: _Press, context, args: list[str]) -> None:
     config, db = _deps(context)
     await _show(press.query, await ui.instagram(db, config))
@@ -1215,6 +1279,7 @@ async def _screen(context, screen_id: str) -> ui.Screen | None:
         cb.CHANNEL: lambda: ui.channel_screen(db, config),
         cb.COMMENTS: lambda: ui.comments_screen(db, config),
         cb.CONNECTIONS: lambda: ui.connections(db, config),
+        cb.WATCHDOG: lambda: ui.watchdog_screen(db, config),
     }
     builder = builders.get(screen_id)
     return await builder() if builder else None
@@ -1296,6 +1361,7 @@ _ROUTES: dict[str, Route] = {
     ui.COMMENTS: _cb_comments,
     ui.CHANNEL: _cb_channel,
     cb.CONNECTIONS: _cb_connections,
+    cb.WATCHDOG: _cb_watchdog,
     cb.OPEN: _cb_open,
     cb.MUTE: _cb_mute,
     cb.BACKUP: _cb_backup,
@@ -1427,6 +1493,9 @@ async def input_conv_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             return AWAITING_INPUT
         note = await _set_report_tz(context, ZoneInfo(name))
         await _reply(update, (await ui.settings(db, config)).noted(note))
+    elif kind == "watchdog" and not await _store_watchdog(update, context, value):
+        context.user_data["awaiting"] = "watchdog"
+        return AWAITING_INPUT
     return ConversationHandler.END
 
 

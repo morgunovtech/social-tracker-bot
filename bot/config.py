@@ -91,11 +91,15 @@ def _int(name: str, default: int, lo: int, hi: int, *, legacy: str | None = None
     return value
 
 
-def _url(name: str) -> str | None:
-    """The first http(s) URL in the variable. Tolerates a whole pasted line
-    such as `&& curl -fsS https://…`, the way TofsDevOps shows a heartbeat."""
-    match = re.search(r"https?://[^\s'\"]+", os.getenv(name) or "")
+def first_url(text: str) -> str | None:
+    """The first http(s) URL in a text. Tolerates a whole pasted line such as
+    `&& curl -fsS https://…`, the way TofsDevOps shows a heartbeat."""
+    match = re.search(r"https?://[^\s'\"]+", text or "")
     return match.group(0) if match else None
+
+
+def _url(name: str) -> str | None:
+    return first_url(os.getenv(name) or "")
 
 
 def _report_dow() -> str:
@@ -200,7 +204,8 @@ class Config:
     site_ingest_token: str | None
 
     # Dead man's switch: pinged after each successful daily collect
-    # (e.g. https://hc-ping.com/<uuid> from healthchecks.io).
+    # (e.g. https://hc-ping.com/<uuid> from healthchecks.io). The fallback:
+    # an address set in the chat wins (bot/watchdog.py).
     healthcheck_url: str | None
 
     # Update awareness (bot/updates.py). Railway provides the commit and the
