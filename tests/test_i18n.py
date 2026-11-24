@@ -478,7 +478,6 @@ def test_infrastructure_mail_alerts():
         ("noreply@github.com", "[GitHub] A personal access token (classic) has been added to your account"),
         ("noreply@id.yandex.ru", "The phone number linked to your Yandex account has been changed"),
         ("sc-noreply@google.com", "New owner for https://s.morgunov.tech/"),
-        ("noreply@notify.cloudflare.com", "Your Cloudflare account has been accessed from a new IP address"),
     ):
         text, kind, *_ = mail.describe(mail.Mail(id="1", sender=sender, subject=subject, text=""))
         assert kind is not None

@@ -36,7 +36,7 @@ Plus, in your mailbox: a forwarding address and a filter. Remove both when teari
      `no-reply@accounts.google.com OR security-noreply@linkedin.com OR security@mail.instagram.com OR security@facebookmail.com`
      → *Forward it to* the routed address. Open a recent security mail to check its exact sender.
    - **The accounts that hold your products and domain** — a second filter, so a stranger's token on GitHub or a new owner of your site in Search Console reaches you too. *From*:
-     `noreply@github.com OR noreply@notify.cloudflare.com OR account-security-noreply@accountprotection.microsoft.com OR noreply@id.yandex.ru`
+     `noreply@github.com OR account-security-noreply@accountprotection.microsoft.com OR noreply@id.yandex.ru`
      → *Forward it to* the routed address. And for Search Console only the new-owner mail, not its monthly statistics — *From* `sc-noreply@google.com`, *Has the words* `"new owner" OR "новый владелец" OR WNC-627102`.
    - **Proton** (paid plans): Settings → Filters → a filter on the same senders with *Forward to*.
 
@@ -45,13 +45,12 @@ Plus, in your mailbox: a forwarding address and a filter. Remove both when teari
    | Sender | Recognised |
    |---|---|
    | GitHub `noreply@github.com` | «Please review this sign in» 🔴, «Please verify your device» (a code), «… has been added to your account» — a token, an SSH key, an OAuth or GitHub app 🔴, «An email address was added» 🔴, «Your password has changed / was reset» 🔴, a passkey or two-factor change 🔴 |
-   | Cloudflare `noreply@notify.cloudflare.com` | «Your Cloudflare account has been accessed from a new IP address» 🔴 |
    | Microsoft `account-security-noreply@accountprotection.microsoft.com` | unusual sign-in activity 🔴, a password change 🔴, a security code, a security alert |
    | Yandex ID `noreply@id.yandex.ru` | a changed phone number 🔴, an app password created 🔴, an account linked 🔴 |
    | Search Console `sc-noreply@google.com` | «New owner for …» / «У сайта … появился новый владелец» (message ID WNC-627102) 🔴 |
    | Yandex.Webmaster `devnull@webmaster.yandex.ru` | the «Делегирование прав на управление сайтом» notice 🔴 — by the help pages; no sample mail yet |
 
-   Not covered, for want of a real mail or a documented subject: Bing Webmaster (new users of a site), Railway (it has no passwords; email sign-in codes come from a third party, Magic), Proton (new sign-ins are push notifications only). A mail from those senders still reaches you as «ℹ️ Письмо без признаков тревоги»; forward one by hand and its subject can become a rule.
+   Cloudflare's own mail is left out on purpose: new logins and new API tokens there come from [TofsDevOps](https://github.com/morgunovtech/Tofs_DevOps_bot), which reads the account's audit log; forwarding them here too would bring each alert twice. Not covered, for want of a real mail or a documented subject: Bing Webmaster (new users of a site), Railway (it has no passwords; email sign-in codes come from a third party, Magic), Proton (new sign-ins are push notifications only). A mail from those senders still reaches you as «ℹ️ Письмо без признаков тревоги»; forward one by hand and its subject can become a rule.
 6. **Test it:** forward any security email by hand. The bot answers within 5 minutes; a mail it doesn't recognise is reported as «📨 Письмо без признаков тревоги» so you know the path works.
 
 ## Limits
