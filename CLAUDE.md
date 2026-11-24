@@ -24,4 +24,4 @@ Railway redeploys from `main` on every push (project «Social Tacker Bot», serv
 
 ## Outside the repo
 
-Keep the «What it creates outside the repo» table in README.md current whenever the project gains a bot, key, server, DNS record or hosted project.
+Keep the «What it creates outside the repo» section in README.md current whenever the project gains a bot, key, server, DNS record or hosted project.

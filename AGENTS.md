@@ -6,4 +6,4 @@ Rules for coding agents working in this repository (Codex reads this file; Claud
 - No twins: when rewriting or porting code, delete the old version in the same PR.
 - Never commit secrets (`.env`, credential files, `.wrangler/`). A secret that reached git history is revoked first; rewriting history comes second.
 - User-facing text is Russian in the code with an English entry in `bot/locales/en/`; `pytest -q` and `ruff check .` must pass offline.
-- When the project gains a bot, API key, server, DNS record or hosted project, add it to the «What it creates outside the repo» table in README.md.
+- When the project gains a bot, API key, server, DNS record or hosted project, add it to the «What it creates outside the repo» section in README.md.
