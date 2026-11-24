@@ -35,7 +35,9 @@ USER_ID_KEY = "instagram_user_id"
 USERNAME_KEY = "instagram_username"
 TOKEN_KEYS = (TOKEN_KEY, TOKEN_SET_AT_KEY, USER_ID_KEY, USERNAME_KEY)
 
-_PROFILE_FIELDS = "username,name,biography,followers_count,media_count"
+# `website` — the link under the bio, the first thing a hijacker replaces; a
+# documented public field of the IG User node, same permission as biography.
+_PROFILE_FIELDS = "username,name,biography,website,followers_count,media_count"
 
 
 class InstagramAuthError(Exception):
@@ -89,7 +91,7 @@ async def resolve_account(session: aiohttp.ClientSession, token: str, username: 
 
 
 async def fetch_user(session: aiohttp.ClientSession, token: str, user_id: str) -> dict | None:
-    """The account: username, name, biography, followers_count, media_count.
+    """The account: username, name, biography, website, followers_count, media_count.
     Raises InstagramAuthError for a dead token."""
     return await _get(session, user_id, {"fields": _PROFILE_FIELDS, "access_token": token})
 
@@ -142,6 +144,7 @@ async def fetch_instagram_profile(
         "username": user.get("username"),
         "name": user.get("name"),
         "biography": user.get("biography"),
+        "website": user.get("website"),
         "media": user.get("media_count"),
     }
     # A field the API left out this time is unknown, not emptied: no alert.
@@ -200,6 +203,7 @@ class Instagram(Platform):
         "username": ("@username", TEXT),
         "name": ("имя профиля", TEXT),
         "biography": ("описание профиля", TEXT),
+        "website": ("ссылка в профиле", TEXT),
         "media": ("публикаций", COUNT),
     }
 

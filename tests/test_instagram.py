@@ -21,7 +21,7 @@ from bot.scheduler import CollectOutcome
 TOKEN = "EAAB" + "x" * 150
 USER_ID = "17841400000000000"
 USER = {"id": USER_ID, "username": "semyon", "name": "Семён", "biography": "о себе",
-        "followers_count": 1234, "media_count": 56}
+        "website": "https://s.morgunov.tech/", "followers_count": 1234, "media_count": 56}
 
 
 @pytest.fixture
@@ -102,7 +102,8 @@ async def test_resolve_account_matches_the_username(graph):
 async def test_profile_fields(graph):
     async with aiohttp.ClientSession() as session:
         assert await ig.fetch_instagram_profile(session, TOKEN, USER_ID) == {
-            "username": "semyon", "name": "Семён", "biography": "о себе", "media": "56",
+            "username": "semyon", "name": "Семён", "biography": "о себе", "website": "https://s.morgunov.tech/",
+            "media": "56",
         }
         # No token / a dead token: nothing to compare, but not «unreachable».
         assert await ig.fetch_instagram_profile(session, None, USER_ID) == {}
