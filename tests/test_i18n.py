@@ -82,7 +82,52 @@ def test_keyboard_and_its_notes():
             english_only(button.text)
 
 
-async def test_every_screen(config, db, insert):
+class _Channel(type(BY_ID["telegram"])):
+    """The Telegram connector with the profile it returns queued (None — a failed fetch)."""
+
+    def __init__(self, values):
+        self.values = values
+
+    def enabled(self, config):
+        return True
+
+    async def fetch_profile(self, ctx):
+        return self.values.pop(0)
+
+
+async def _log_while_russian(db, config, monkeypatch) -> None:
+    """Fill the security log the way a chat that was Russian until today has it:
+    rows today's monitors write, and a row 1.5.0 stored as finished Russian
+    text — the one 🛡 Security showed in Russian on an English chat."""
+    i18n.set_language("ru")
+    try:
+        before = {"title": "Channel", "description": "about", "admin_access": "нет"}
+        channel = _Channel([before, {**before, "description": "", "admin_access": "есть"}])
+        monkeypatch.setattr(profile.platforms, "enabled", lambda config: [channel])
+        bot = FakeBot()
+        for _ in range(2):
+            await profile.check(bot, config, db, None)
+
+        async def fetch(session, config):
+            return [
+                {"id": "1", "from": "no-reply@accounts.google.com", "subject": "", "text": "New sign-in on Windows"},
+                {"id": "2", "from": "security@mail.instagram.com", "subject": "123456 is your Instagram code"},
+            ], ""
+
+        async def ack(session, config, ids):
+            pass
+
+        monkeypatch.setattr(mail, "_fetch", fetch)
+        monkeypatch.setattr(mail, "_ack", ack)
+        assert await mail.check(bot, config, db, None) == 2
+        await db.add_event("profile:telegram:old", "Telegram", "profile",
+                           "🟠 Telegram: доступ бота к списку админов — «нет» → «есть»")
+    finally:
+        i18n.set_language("en")
+    assert len(await db.recent_events()) == 5        # all of them on the screen
+
+
+async def test_every_screen(config, db, insert, monkeypatch):
     insert("telegram", 1000, 1)
     insert("telegram", 1020)
     insert("youtube", 126)
@@ -91,7 +136,7 @@ async def test_every_screen(config, db, insert):
     await db.set_setting("linkedin_li_at_set_at", (utcnow() - timedelta(days=340)).isoformat())
     await db.set_setting("profile_fail_youtube", "3")
     await hygiene.set_answer(db, "telegram", "2fa", "off")
-    await db.add_event("mail:1", "Instagram", "login", "New login from a new device")
+    await _log_while_russian(db, config, monkeypatch)
 
     screens = [
         await ui.home(db, config),
@@ -231,11 +276,12 @@ async def test_alerts(config, db):
         "title": "Channel", "username": "chan", "description": "about", "avatar": "a", "videos": "40", "media": "56",
         "name": "Sam", "biography": "bio", "handle": "@chan",
         "admins": '[{"id": "1", "name": "Owner", "status": "creator"}, {"id": "2", "name": "Mod", "status": "administrator"}]',
+        "admin_access": "нет",
     }
     new = {
         **old, "title": "Giveaway", "username": "scam", "description": "win https://evil.example", "avatar": "b",
         "videos": "10", "media": "10", "name": "X", "biography": "https://evil.example", "handle": "@scam",
-        "admins": '[{"id": "3", "name": "Thief", "status": "creator"}]',
+        "admins": '[{"id": "3", "name": "Thief", "status": "creator"}]', "admin_access": "есть",
     }
     for platform in PLATFORMS:
         for line in profile.diff(platform, old, new):
@@ -243,7 +289,7 @@ async def test_alerts(config, db):
     for fails, reachable in ((2, False), (3, True)):
         for line in profile._reachability(BY_ID["telegram"], fails, reachable)[0]:
             english_only(line)
-    english_only(profile._snippet(""))
+    english_only(humanize.render(profile._quote("")))
     for platform in PLATFORMS:
         changes = profile.diff(platform, old, new)
         if changes:

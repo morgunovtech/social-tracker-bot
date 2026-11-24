@@ -2,6 +2,13 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## Unreleased
+
+**Fixed**
+- 🛡 Security's «Recent events» showed each row in the language it was recorded in: with `BOT_LANG=en`, a change recorded while the bot was Russian read «🟠 Telegram: доступ бота к списку админов — «нет» → «есть»». The security log now keeps a line before translation — the Russian template and its values as JSON; the bot's own words (a field's name, «есть», «нет», «(пусто)», a mail's kind) are translated when the screen is drawn, someone else's text (a title, a name, a subject) is shown as it was. Rows stored as finished Russian text by 1.5.0 and earlier are recognised by the lines those versions wrote and read the same way, an old 🚨 line as today's 🔴 with «похоже на взлом»; a row that matches none of them is shown as it is.
+- The alert about the bot's access to the channel's admin list said «нет» → «есть» in an English chat too: the two words are the bot's own and are translated now.
+- `tests/test_i18n.py` draws 🛡 Security with a log filled while the chat was Russian — by today's profile and mail monitors, plus the 1.5.0 row above — and the access alert in English; both failed before the fix.
+
 ## 1.5.0 — 2026-11-24
 
 The bot now speaks the same language as the owner's other bot, TofsDevOps: one set of icons, three buttons under the input field, one shape for every alert, a recovery that says how long it lasted, and a watchdog connected from the chat — the open items of the shared bot principles for this bot, closed.

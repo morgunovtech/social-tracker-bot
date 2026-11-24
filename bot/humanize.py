@@ -21,6 +21,7 @@ and is rendered in the chat language when an alert is built.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -165,6 +166,59 @@ def alert(headline: str | Iterable[str], key: str | Explanation, *details: objec
 def headline(text: str) -> str:
     """The first line of an alert — what a digest or a list shows."""
     return text.split("\n", 1)[0]
+
+
+# ── Phrases kept for later ─────────────────────────────────────────────────
+#
+# A line the bot stores and shows again days later (the security log,
+# bot/security_log.py) is stored before translation, so it reads in the chat
+# language of the day it is shown, not of the day it was written: the Russian
+# template — the lookup key of bot/i18n.py — and its values, as JSON:
+#
+#     {"key": "{icon} {platform}: {field} — «{before}» → «{after}»",
+#      "params": {"icon": "🟠", "platform": "Telegram",
+#                 "field": {"key": "доступ бота к списку админов"},
+#                 "before": {"key": "нет"}, "after": {"key": "есть"}}}
+#
+# A value that is a phrase itself ({"key": …}) is the bot's own word and is
+# translated too; a plain value (a channel title, an admin's name, a number)
+# is shown as it was.
+
+Phrase = dict
+
+
+def phrase(key: str, **params: object) -> Phrase:
+    """A Russian template and its values, before translation."""
+    return {"key": key, "params": params} if params else {"key": key}
+
+
+def render(value: Phrase | object) -> str:
+    """A phrase in the chat language; a plain value as it is."""
+    if not isinstance(value, dict):
+        return str(value)
+    text = t(str(value.get("key", "")))
+    params = value.get("params")
+    if not isinstance(params, dict) or not params:
+        return text
+    try:
+        return text.format(**{name: render(v) for name, v in params.items()})
+    except (KeyError, IndexError, ValueError):
+        return text     # a template from another version that names other values
+
+
+def dump(value: Phrase) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def load(raw: str | None) -> Phrase | None:
+    """The phrase a stored row holds; None for a row of finished text."""
+    if not raw or not raw.startswith("{"):
+        return None
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) and isinstance(data.get("key"), str) else None
 
 
 # ── Durations and recoveries ───────────────────────────────────────────────

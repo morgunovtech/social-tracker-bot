@@ -57,6 +57,7 @@ RECOVERY = {
 }
 
 GMAIL_FORWARDING = "forwarding-noreply@google.com"
+FORWARDING_HEAD = "📬 Gmail просит подтвердить пересылку писем на адрес бота."
 
 
 @dataclass(frozen=True)
@@ -187,11 +188,18 @@ def kind_of(mail: Mail) -> Kind | None:
     return kind
 
 
-def _snippet(text: str) -> str:
+def _subject(text: str) -> humanize.Phrase | str:
     """The subject as quoted in an alert. Anyone who learns the worker's
-    address can write it, so its links are defanged."""
-    text = " ".join(_FWD_PREFIX.sub("", text).split()) or t("(без темы)")
+    address can write it, so its links are defanged; no subject is the bot's
+    own «(без темы)», translated where it is shown."""
+    text = " ".join(_FWD_PREFIX.sub("", text).split())
+    if not text:
+        return humanize.phrase("(без темы)")
     return defang(text if len(text) <= SUBJECT_LEN else text[: SUBJECT_LEN - 1] + "…")
+
+
+def _snippet(text: str) -> str:
+    return humanize.render(_subject(text))
 
 
 def _forwarding_notice(mail: Mail) -> str:
@@ -201,7 +209,7 @@ def _forwarding_notice(mail: Mail) -> str:
     settings, so a forged "confirmation" can't turn the bot into a phishing relay.
     """
     code = _CODE.search(mail.subject)
-    lines = [t("📬 Gmail просит подтвердить пересылку писем на адрес бота.")]
+    lines = [t(FORWARDING_HEAD)]
     if code:
         lines.append(
             t("Код подтверждения: {code} — введи его в Gmail: Настройки → Пересылка.").format(code=code.group(1))
@@ -216,6 +224,24 @@ def _sender_domain(mail: Mail) -> str:
     return defang(mail.sender.rsplit("@", 1)[-1].strip(" <>").lower()) or "?"
 
 
+def headline(mail: Mail) -> humanize.Phrase:
+    """The first line of the mail's alert before translation — what the
+    security log keeps (bot/security_log.py)."""
+    if mail.sender.lower() == GMAIL_FORWARDING:
+        return humanize.phrase(FORWARDING_HEAD)
+    network, _ = sender_of(mail)
+    kind = kind_of(mail)
+    if kind is None:
+        return humanize.phrase("ℹ️ Письмо без признаков тревоги: {network} — «{subject}»", network=network,
+                               subject=_subject(mail.subject))
+    # A hijack sign says so in its headline; the icon alone is only «act now».
+    if kind.level == "critical":
+        return humanize.phrase("{icon} {network}: {hijack} — {title}", icon=level_icon(kind.level), network=network,
+                               hijack=humanize.phrase(HIJACK), title=humanize.phrase(kind.title))
+    return humanize.phrase("{icon} {network}: {title}", icon=level_icon(kind.level), network=network,
+                           title=humanize.phrase(kind.title))
+
+
 def describe(mail: Mail) -> tuple[str, Kind | None, str, str | None]:
     """(alert text, kind, network, connector id) for one mail: the headline
     and the quoted subject, what it means, what it usually is, what to do
@@ -224,14 +250,10 @@ def describe(mail: Mail) -> tuple[str, Kind | None, str, str | None]:
         return _forwarding_notice(mail), None, "Gmail", None
     network, platform_id = sender_of(mail)
     kind = kind_of(mail)
-    subject = _snippet(mail.subject)
+    head = humanize.render(headline(mail))
     if kind is None:
-        text = t("ℹ️ Письмо без признаков тревоги: {network} — «{subject}»").format(network=network, subject=subject)
-        return text, None, network, platform_id
-    # A hijack sign says so in its headline; the icon alone is only «act now».
-    head = (
-        t("{icon} {network}: {hijack} — {title}") if kind.level == "critical" else t("{icon} {network}: {title}")
-    ).format(icon=level_icon(kind.level), network=network, hijack=t(HIJACK), title=t(kind.title))
+        return head, None, network, platform_id
+    subject = _snippet(mail.subject)
     steps = [kind.advice]
     if kind.level == "critical" and network in RECOVERY:
         steps.append(t("Восстановление доступа: {url}").format(url=RECOVERY[network]))
@@ -360,7 +382,8 @@ async def check(bot: Bot, config: Config, db: Database, session: aiohttp.ClientS
         handled.append(mail.id)
         # Every handled mail is logged, so none is alerted twice; "info" ones
         # (unrecognized, Gmail's confirmation) stay out of /security's events.
-        await db.add_event(uid, network, kind.id if kind else "info", text)
+        # The log keeps the headline before translation (bot/security_log.py).
+        await db.add_event(uid, network, kind.id if kind else "info", humanize.dump(headline(mail)))
         if kind is not None and kind.id == "password_changed" and platform_id:
             await hygiene.mark_password_changed(db, platform_id, utcnow().date())
 

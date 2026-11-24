@@ -15,6 +15,7 @@ TEXT = "text"        # title, username, description: old → new
 IMAGE = "image"      # avatar: an opaque id, only "changed" is reported
 ADMINS = "admins"    # JSON list of {"id", "name", "status"}
 COUNT = "count"      # number of posts/videos: only a sharp drop is reported
+STATE = "state"      # a state the bot names in its own words («есть» / «нет»): old → new, translated
 
 
 @dataclass
