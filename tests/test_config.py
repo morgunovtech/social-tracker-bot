@@ -167,3 +167,44 @@ def test_admin_chat_id_is_optional(monkeypatch):
     monkeypatch.setenv("ADMIN_CHAT_ID", "me")
     with pytest.raises(RuntimeError, match="ADMIN_CHAT_ID"):
         Config.from_env()
+
+
+@pytest.mark.parametrize("raw", ["your_telegram_bot_token", "123456", "123456: abc", "abc:def"])
+def test_a_placeholder_token_stops_with_what_to_do(monkeypatch, raw):
+    monkeypatch.setenv("BOT_TOKEN", raw)
+    with pytest.raises(RuntimeError, match="not a bot token yet") as error:
+        Config.from_env()
+    assert raw not in str(error.value) or raw == "123456"     # the value itself is never repeated
+
+
+def test_a_real_looking_token_passes(monkeypatch):
+    monkeypatch.setenv("BOT_TOKEN", " 123456:ABC-def_ghi ")
+    assert Config.from_env().bot_token == "123456:ABC-def_ghi"
+
+
+def test_main_stops_with_one_readable_line(monkeypatch, caplog):
+    """A wrong setting ends the start with one log line, no traceback; a token
+    Telegram refuses is not printed (python-telegram-bot puts it in its error)."""
+    from telegram.error import InvalidToken
+
+    from bot import main
+
+    monkeypatch.setenv("BOT_TOKEN", "your_telegram_bot_token")
+    with pytest.raises(SystemExit) as stop:
+        main.main()
+    assert stop.value.code == 1 and "not a bot token yet" in caplog.text
+
+    secret = "123456:REAL-TOKEN-WITH-A-TYPO"
+    monkeypatch.setenv("BOT_TOKEN", secret)
+
+    class App:
+        def run_polling(self, **kwargs):
+            raise InvalidToken(f"The token `{secret}` was rejected by the server.")
+
+    monkeypatch.setattr(main, "build_application", lambda config, db: App())
+    monkeypatch.setattr(main, "Database", lambda path: object())
+    caplog.clear()
+    with pytest.raises(SystemExit) as stop:
+        main.main()
+    assert stop.value.code == 1
+    assert "Telegram refused BOT_TOKEN" in caplog.text and secret not in caplog.text

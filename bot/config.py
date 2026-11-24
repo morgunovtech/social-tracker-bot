@@ -25,11 +25,23 @@ DEFAULT_COMMENTS_DAILY_LIMIT = 300
 DEFAULT_TZ = {"ru": "Europe/Moscow", "en": "UTC"}
 
 
-def _require(name: str) -> str:
-    value = os.getenv(name)
-    if not value:
-        raise RuntimeError(f"Missing required env variable: {name}")
-    return value
+# What @BotFather gives: the bot's id, a colon and the secret. The value is
+# never repeated in an error — it may be a real token with a typo in it.
+_TOKEN_SHAPE = re.compile(r"^\d+:\S+$")
+
+
+def _bot_token() -> str:
+    """BOT_TOKEN, or a stop with what to do: the placeholder copied from
+    .env.example used to end in a python-telegram-bot traceback."""
+    raw = (os.getenv("BOT_TOKEN") or "").strip()
+    if not raw:
+        raise RuntimeError("Missing required env variable: BOT_TOKEN — the token @BotFather gave you, «123456:ABC…»")
+    if not _TOKEN_SHAPE.match(raw):
+        raise RuntimeError(
+            "BOT_TOKEN is not a bot token yet (still the placeholder from .env.example?): "
+            "paste the one @BotFather gave you, «123456:ABC…», into .env or the Railway variables"
+        )
+    return raw
 
 
 def normalize_dow(value: str) -> str:
@@ -231,7 +243,7 @@ class Config:
     def from_env(cls) -> Config:
         lang = _lang()
         return cls(
-            bot_token=_require("BOT_TOKEN"),
+            bot_token=_bot_token(),
             admin_chat_id=_admin_chat_id(),
             telegram_channel_id=os.getenv("TELEGRAM_CHANNEL_ID") or None,
             youtube_api_key=os.getenv("YOUTUBE_API_KEY") or None,

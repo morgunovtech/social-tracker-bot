@@ -2,6 +2,12 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## Unreleased
+
+**Fixed**
+- A first start with `.env.example` copied as is — `BOT_TOKEN=your_telegram_bot_token` — ended in a python-telegram-bot `InvalidToken` traceback. The bot now checks the token's shape at start and stops with one line that says what to do: paste the token @BotFather gave you (`123456:ABC…`) into `.env` or the Railway variables. Every other wrong setting in `.env` stops with its one line too, no traceback.
+- A token Telegram refuses (revoked, mistyped) was printed whole in the start-up traceback: python-telegram-bot puts it into its error text, and an uncaught exception bypasses the log formatter that masks it. The bot now logs «Telegram refused BOT_TOKEN: revoked or mistyped?» with where to copy it again, and exits — without the token.
+
 ## 1.8.2 — 2026-11-24
 
 Gmail's forwarding confirmation, which now comes as a link without a code, can be completed through the bot again.
