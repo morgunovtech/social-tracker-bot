@@ -1,7 +1,8 @@
 """What this bot sees, one line per network, for the TofsDevOps main screen.
 
 The owner wants one screen that says «всё в порядке» for the sites and the
-social channels alike. When HEALTHCHECK_URL is a TofsDevOps heartbeat address
+social channels alike. When the watchdog address (bot/watchdog.py: set in the
+chat, or HEALTHCHECK_URL) is a TofsDevOps heartbeat address
 (…/api/heartbeat/…), the daily mark is a POST that carries these lines, and
 the profile check refreshes them every 30 minutes without counting as a mark.
 TofsDevOps only shows them: the alerts and the detailed screens stay here.

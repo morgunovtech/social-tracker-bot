@@ -4,6 +4,7 @@ import logging
 
 from telegram.ext import Application
 
+from bot import watchdog
 from bot.config import Config
 from bot.db import Database
 from bot.handlers import ALLOWED_UPDATES, collect_lock, register_handlers, restore_owner, show_keyboard_once
@@ -26,7 +27,7 @@ def secret_values() -> list[str]:
     return [c.bot_token, c.youtube_api_key or "", c.instagram_access_token or "", c.linkedin_li_at or "",
             c.site_ingest_url or "", c.site_ingest_token or "", c.healthcheck_url or "",
             c.github_token or "", c.security_mail_url or "", c.security_mail_token or "",
-            c.anthropic_api_key or ""]
+            c.anthropic_api_key or "", watchdog.known_url() or ""]
 
 
 def setup_logging() -> None:
@@ -56,6 +57,7 @@ async def _post_init(app: Application) -> None:
 
     await db.init()
     await restore_owner(config, db)
+    await watchdog.url(db, config)   # an address set in the chat joins the log redactor
 
     scheduler = await setup_scheduler(app.bot, config, db, lock=collect_lock(app.bot_data))
     scheduler.start()

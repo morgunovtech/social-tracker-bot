@@ -16,6 +16,11 @@ The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists 
 - `/setcookie` and `/igtoken` without a value ask for it as the next message, with «✖️ Отмена», like their buttons; with the value they are shortcuts as before.
 - One label per thing on every screen: «🏠 Главная» back home, «✖️ Отмена» out of a step. Text the bot does not understand gets «Не понял. Всё — кнопками под полем ввода…» and the keyboard again; a stale button says so and shows the home screen.
 
+**Watchdog from the chat** (§6)
+- 🔌 Подключения → ⏱ Сторож: who tells you when the bot itself stops — its state and the last ping, «🔗 Прислать ссылку», «🔄 Проверить снова», «⏏ Отключить» (asked first). A link is taken only after a live test ping lands, and the answer's body is read: healthchecks.io says «OK (not found)» with HTTP 200 for a deleted check, and the bot says so instead of keeping a dead address. The message with the link is deleted; the address lives in the DB, never on a screen, in a log line or in the Sunday backup.
+- The daily ping uses the address from the chat first and `HEALTHCHECK_URL` as the fallback; it reads the body too, and its outcome shows on 🔌 Подключения (✅ last ping, 🟠 the watchdog refuses it, ⚠️ could not reach it).
+- After the first collection that read a network, the bot offers the watchdog once, unless one is already set.
+
 **Someone else's text**
 - Direction overrides, zero-width marks and control characters are stripped from everything quoted — `clean()` runs inside `defang()` and inside every screen value: a display name or a mail subject with U+202E can no longer show `evil.com` as `google.com`. An unknown sender's domain in an alert is defanged too.
 

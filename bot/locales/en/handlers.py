@@ -157,5 +157,30 @@ STRINGS: dict[str, str] = {
     "команды работают как раньше, а «🔄 Обновить данные» и «🔕 Помолчать…» — на главной.":
         "The main buttons are now under the input field: 🏠 Home, 📖 What I do and ❓ Icons. The ☰ menu is gone — "
         "commands work as before, and \"🔄 Refresh data\" and \"🔕 Mute…\" are on the home screen.",
+    # ⏱ Сторож from the chat
+    "🟠 Удалить сообщение со ссылкой не получилось — удали его из чата вручную.":
+        "🟠 Could not delete the message with the link — delete it from the chat yourself.",
+    "❌ Нужна ссылка https://…, например https://hc-ping.com/… из healthchecks.io. "
+    "Пришли её ещё раз или нажми «✖️ Отмена».":
+        "❌ It needs an https://… link, e.g. https://hc-ping.com/… from healthchecks.io. "
+        "Send it again or press \"✖️ Cancel\".",
+    "⏳ Отмечаюсь пробным пингом…": "⏳ Checking in with a test ping…",
+    "❌ Сторож не на связи: {reason}. Проверь, что ссылка скопирована целиком и check не удалён, "
+    "и пришли её ещё раз — или нажми «✖️ Отмена».":
+        "❌ The watchdog is not reachable: {reason}. Check that the whole link was copied and the check was not "
+        "deleted, and send it again — or press \"✖️ Cancel\".",
+    "✅ Сторож подключён и на связи ({who}). Дальше отмечаюсь после каждого ежедневного сбора.":
+        "✅ The watchdog is connected and reachable ({who}). From now on I check in after every daily collection.",
+    "✅ Сторож на связи": "✅ The watchdog is reachable",
+    "Сторож отключён": "The watchdog is disconnected",
+    (
+        "⏱ Ещё один шаг — сторож. Пока я работаю, о проблемах пишу сам; если остановлюсь — упадёт сервер, "
+        "кончится место, отзовут токен — сказать об этом будет некому. Сторож — бесплатный healthchecks.io: "
+        "я отмечаюсь у него после каждого ежедневного сбора, а не отметился — он пишет тебе. Две минуты, кнопка ниже."
+    ): (
+        "⏱ One more step — a watchdog. While I work, I report problems myself; if I stop — the server goes down, "
+        "the disk fills up, the token is revoked — nobody will tell you. A watchdog is the free healthchecks.io: "
+        "I check in with it after every daily collection, and when I miss it, it writes to you. Two minutes, the button below."
+    ),
 }
 PLURALS: dict[str, tuple[str, str]] = {}

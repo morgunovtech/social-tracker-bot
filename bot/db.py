@@ -128,12 +128,15 @@ CREATE TABLE IF NOT EXISTS channel_posts (
 );
 """
 
-# Settings that must never leave the server (wiped from off-site backups).
-_SECRET_SETTINGS = ("linkedin_li_at", "instagram_token")
+# Settings that must never leave the server (wiped from off-site backups):
+# the cookie, the token and the watchdog address — whoever has it can ping
+# in the bot's name.
+_SECRET_SETTINGS = ("linkedin_li_at", "instagram_token", "watchdog_url")
 # Each secret with the settings that describe it (when it was set, when it dies).
 _SECRET_KEYS: dict[str, tuple[str, ...]] = {
     "linkedin_li_at": ("linkedin_li_at", "linkedin_li_at_set_at"),
     "instagram_token": ("instagram_token", "instagram_token_set_at", "instagram_user_id", "instagram_username"),
+    "watchdog_url": ("watchdog_url", "watchdog_last"),
 }
 
 # Retention, applied once a day by the scheduler (prune). A join and a flagged

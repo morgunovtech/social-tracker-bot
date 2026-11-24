@@ -349,9 +349,6 @@ STRINGS: dict[str, str] = {
     "🟠 подтверди первое число": "🟠 confirm the first number",
     "✅ собирается": "✅ collected",
     "⏳ первый сбор ещё не был": "⏳ no collection yet",
-    "Сети включаются в .env и перезапуском бота; токен Instagram и cookie LinkedIn — кнопками здесь.":
-        "Networks are switched on in .env and a restart of the bot; the Instagram token and the LinkedIn cookie — "
-        "with the buttons here.",
     # bot/callbacks.py — the rows under alerts and reports
     "🏠 Главная": "🏠 Home",
     "💬 Комментарии": "💬 Comments",
@@ -458,6 +455,56 @@ STRINGS: dict[str, str] = {
         "To mute — \"🔕 Mute…\" on the home screen or /mute 8h; quiet hours — ⚙️ Settings → 🔔 When to write. "
         "\"⚙️ Stop sending these\" under an alert switches such notifications off.",
     "/icons — значки: что значат и что звонит": "/icons — the icons: what they mean and what rings",
+    # ⏱ Сторож (bot/watchdog.py, bot/ui.py)
+    "Сети включаются в .env и перезапуском бота; токен Instagram, cookie LinkedIn и сторож — кнопками здесь.":
+        "Networks are switched on in .env and by restarting the bot; the Instagram token, the LinkedIn cookie "
+        "and the watchdog — with the buttons here.",
+    "⏱ Сторож": "⏱ Watchdog",
+    "{icon} ⏱ Сторож — не подключён: если я остановлюсь, никто не скажет":
+        "{icon} ⏱ Watchdog — not connected: if I stop, nobody will tell you",
+    "{icon} ⏱ Сторож — {who}: {reason}": "{icon} ⏱ Watchdog — {who}: {reason}",
+    "{icon} ⏱ Сторож — {who}, отметка {when}": "{icon} ⏱ Watchdog — {who}, last ping {when}",
+    "{icon} ⏱ Сторож — {who}, первая отметка после ежедневного сбора":
+        "{icon} ⏱ Watchdog — {who}, the first ping after the daily collection",
+    "<b>⏱ Сторож</b>": "<b>⏱ Watchdog</b>",
+    "Ссылка задана здесь, в чате; адрес я не показываю — по нему можно отмечаться за меня.":
+        "The link was set here, in the chat; I do not show the address — it lets anyone ping in my name.",
+    "Ссылка — из HEALTHCHECK_URL в .env. Пришли другую — она заменит переменную.":
+        "The link comes from HEALTHCHECK_URL in .env. Send another one — it takes the variable's place.",
+    "Если я остановлюсь — упадёт сервер, кончится место, отзовут токен бота — написать об этом я уже не смогу. "
+    "Сторож — сервис, у которого я отмечаюсь после каждого ежедневного сбора; не отметился вовремя — он пишет тебе сам.":
+        "If I stop — the server goes down, the disk fills up, the bot token is revoked — I can no longer tell you. "
+        "A watchdog is a service I check in with after every daily collection; when I miss it, it writes to you itself.",
+    "<b>Как подключить</b> (бесплатно, 2 минуты):": "<b>How to connect it</b> (free, 2 minutes):",
+    "1. На healthchecks.io создай check: период — 1 день, grace — 3 часа.":
+        "1. On healthchecks.io create a check: period — 1 day, grace — 3 hours.",
+    "2. Скопируй его ссылку вида https://hc-ping.com/… и нажми «🔗 Прислать ссылку».":
+        "2. Copy its link, https://hc-ping.com/…, and press \"🔗 Send the link\".",
+    "3. Я сразу отмечусь пробным пингом и прочитаю ответ: если check не найден, скажу.":
+        "3. I check in with a test ping at once and read the answer: if the check is not found, I say so.",
+    "Адрес heartbeat из TofsDevOps тоже подходит — тогда на его главном экране появятся строки по сетям.":
+        "A TofsDevOps heartbeat address works too — then its home screen gets a line per network.",
+    "🔗 Прислать ссылку": "🔗 Send the link",
+    "🔄 Проверить снова": "🔄 Check again",
+    "⏏ Отключить": "⏏ Disconnect",
+    "✅ Да, отключить": "✅ Yes, disconnect",
+    "<b>⏏ Отключить сторожа?</b>\n\nЯ перестану отмечаться по ссылке из чата; если задан HEALTHCHECK_URL — "
+    "буду отмечаться по нему. Сам check на healthchecks.io поставь на паузу, иначе он напишет, что я пропал.":
+        "<b>⏏ Disconnect the watchdog?</b>\n\nI will stop checking in with the link from the chat; if HEALTHCHECK_URL "
+        "is set, I will use it. Pause the check on healthchecks.io itself, or it will write that I am gone.",
+    (
+        "🔗 Пришли ссылку сторожа одним сообщением: https://hc-ping.com/… из healthchecks.io или адрес heartbeat "
+        "из TofsDevOps. Я отмечусь по ней пробным пингом и сразу удалю сообщение."
+    ): (
+        "🔗 Send the watchdog link in one message: https://hc-ping.com/… from healthchecks.io or a TofsDevOps "
+        "heartbeat address. I check in with a test ping and delete the message at once."
+    ),
+    "check не найден — удалён или ссылка скопирована не целиком": "check not found — deleted, or the link was copied in part",
+    "отвечает ошибкой {status}": "answers with error {status}",
+    "не ответил за 10 с": "did not answer within 10 s",
+    "не удаётся подключиться — сеть или DNS": "cannot connect — network or DNS",
+    "не отвечает": "does not answer",
+    "TofsDevOps не принял отметку": "TofsDevOps did not take the ping",
 }
 
 # Russian singular → (English singular, English plural).
