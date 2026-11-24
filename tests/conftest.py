@@ -72,6 +72,8 @@ class FakeBot:
         self.deleted: list[tuple[int, int]] = []
         self.banned: list[tuple[int, int]] = []
         self.unbanned: list[tuple[int, int]] = []
+        self.banned_chats: list[tuple[int, int]] = []     # ban_chat_sender_chat: a channel writing as itself
+        self.unbanned_chats: list[tuple[int, int]] = []
         self.files: dict[str, bytes] = {}
         self.chats: dict = {}
         self.admins: list = []
@@ -117,6 +119,14 @@ class FakeBot:
 
     async def unban_chat_member(self, chat_id, user_id, **kwargs):
         self.unbanned.append((chat_id, user_id))
+
+    async def ban_chat_sender_chat(self, chat_id, sender_chat_id):
+        if self.fail_with:
+            raise self.fail_with
+        self.banned_chats.append((chat_id, sender_chat_id))
+
+    async def unban_chat_sender_chat(self, chat_id, sender_chat_id):
+        self.unbanned_chats.append((chat_id, sender_chat_id))
 
     # The ☰ command list and the menu button at startup (bot/main.py).
     async def delete_my_commands(self, **kwargs):

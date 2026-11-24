@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestServer
+from telegram.error import NetworkError
 
 from bot import updates
 from bot.updates import (
@@ -50,6 +51,26 @@ async def test_startup_notice_only_on_change(bot, watch_config, db):
     text = bot.messages[-1]
     assert text.startswith("🔄 Бот обновился:")
     assert "сборка 0cccc5f → aaaaaaa" in text and "aiohttp 3.14.3 →" in text
+
+
+async def test_startup_notice_that_failed_to_send_is_told_at_the_next_start(bot, watch_config, db):
+    await report_startup_changes(bot, watch_config, db)                       # the snapshot
+    snapshot = json.loads(await db.get_setting(SNAPSHOT_KEY))
+    snapshot["commit"] = "0cccc5f00000"
+    await db.set_setting(SNAPSHOT_KEY, json.dumps(snapshot))
+
+    async def down(*args, **kwargs):
+        raise NetworkError("telegram is down")
+
+    sent = bot.send_message
+    bot.send_message = down                                                   # the first seconds after a deploy
+    with pytest.raises(NetworkError):
+        await report_startup_changes(bot, watch_config, db)
+    assert json.loads(await db.get_setting(SNAPSHOT_KEY))["commit"] == "0cccc5f00000"   # kept: nothing was told
+    bot.send_message = sent
+    await report_startup_changes(bot, watch_config, db)                       # the next start
+    assert "сборка 0cccc5f → aaaaaaa" in bot.messages[-1]
+    assert json.loads(await db.get_setting(SNAPSHOT_KEY))["commit"] == RUNNING[:12]
 
 
 async def test_startup_notice_survives_a_corrupt_snapshot(bot, watch_config, db):

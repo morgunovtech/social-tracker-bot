@@ -75,12 +75,14 @@ async def report_startup_changes(bot: Bot, config: Config, db: Database) -> list
         "packages": installed_versions(),
     }
     prev_raw = await db.get_setting(SNAPSHOT_KEY)
-    await db.set_setting(SNAPSHOT_KEY, json.dumps(current))
+    snapshot = json.dumps(current)
     if not prev_raw:
+        await db.set_setting(SNAPSHOT_KEY, snapshot)
         return []
     try:
         prev = json.loads(prev_raw)
     except ValueError:
+        await db.set_setting(SNAPSHOT_KEY, snapshot)
         return []
 
     lines: list[str] = []
@@ -94,7 +96,11 @@ async def report_startup_changes(bot: Bot, config: Config, db: Database) -> list
         if old_packages.get(name) and old_packages[name] != version:
             lines.append(f"  • {name} {old_packages[name]} → {version}")
     if lines:
+        # The snapshot is kept only once the notice went out: a send that
+        # failed (Telegram unreachable right after a deploy) is retried at the
+        # next start instead of the change being forgotten.
         await notifier.send(bot, config, db, t("🔄 Бот обновился:\n") + "\n".join(lines))
+    await db.set_setting(SNAPSHOT_KEY, snapshot)
     return lines
 
 
