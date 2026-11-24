@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import logging
 
-from telegram import BotCommand
 from telegram.ext import Application
 
 from bot.config import Config
 from bot.db import Database
-from bot.handlers import ALLOWED_UPDATES, collect_lock, register_handlers, restore_owner
-from bot.i18n import set_language, t
+from bot.handlers import ALLOWED_UPDATES, collect_lock, register_handlers, restore_owner, show_keyboard_once
+from bot.i18n import set_language
 from bot.redact import RedactingFormatter
 from bot.scheduler import setup_scheduler
 from bot.updates import report_startup_changes
@@ -43,20 +42,12 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 
-def _bot_commands() -> list[BotCommand]:
-    """The / menu: only the entry points, everything else is a button away and
-    /help lists all commands. Built on demand, after the language is set."""
-    return [
-        BotCommand("start", t("Главная: подписчики и статус")),
-        BotCommand("now", t("Обновить данные")),
-        BotCommand("week", t("Динамика за неделю")),
-        BotCommand("security", t("Безопасность аккаунтов")),
-        BotCommand("settings", t("Настройки")),
-        BotCommand("mute", t("Помолчать 8 часов")),
-        BotCommand("channel", t("Жизнь канала")),
-        BotCommand("connections", t("Подключения: токены и cookie")),
-        BotCommand("help", t("Помощь и все команды")),
-    ]
+async def _step(name: str, coro) -> None:
+    """A start step that must not stop the bot when Telegram refuses it."""
+    try:
+        await coro
+    except Exception:
+        logger.exception("Start step «%s» failed — going on without it", name)
 
 
 async def _post_init(app: Application) -> None:
@@ -70,7 +61,12 @@ async def _post_init(app: Application) -> None:
     scheduler.start()
     app.bot_data["scheduler"] = scheduler
 
-    await app.bot.set_my_commands(_bot_commands())
+    # No ☰ command list (BOT_PRINCIPLES §2): the three buttons under the input
+    # field are the way in; typed commands keep working and «📖 Что я умею»
+    # lists them. Removes the list earlier versions published.
+    await _step("delete_my_commands", app.bot.delete_my_commands())
+    await _step("set_chat_menu_button", app.bot.set_chat_menu_button())
+    await _step("bottom buttons", show_keyboard_once(app.bot, config, db))
 
     # «🔄 Бот обновился» after a deploy; never let it block the start.
     try:
@@ -78,7 +74,7 @@ async def _post_init(app: Application) -> None:
     except Exception:
         logger.exception("Startup update notice failed")
 
-    logger.info("Bot ready: scheduler + DB initialized + commands registered")
+    logger.info("Bot ready: scheduler + DB initialized")
 
 
 async def _post_shutdown(app: Application) -> None:

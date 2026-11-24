@@ -10,6 +10,12 @@ The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists 
 - The mail worker silent for ~30 minutes is 🔴 and rings: while it is down, a new sign-in or a changed password reaches nobody. It used to be a quiet 🟠.
 - ⚠️ means «could not check» and nothing else. A missing Instagram token, a first LinkedIn number to confirm, a cookie about to expire, a number typed in too long ago, data that has not been fresh for days, a checklist answer short of the best are 🟠: an action is needed, just not tonight. The report's ⏰ cookie line is 🟠 too, and an unrecognised mail is ℹ️.
 
+**Three buttons** (§2)
+- Under the input field: 🏠 Главная · 📖 Что я умею · ❓ Значки. «📖 Что я умею» (and `/help`) says what the bot does, where things are and lists every command; «❓ Значки» (and `/icons`) is the icon table and what rings. «🔄 Обновить данные» and the new «🔕 Помолчать…» (an hour, four, eight, a day) are on the home screen, one tap away as the 1.4.0 buttons were.
+- The ☰ command list is not published any more (`delete_my_commands` at start): every command still works when typed. The first start after the update brings the new keyboard with one silent note; the buttons of the old one (🏠 Меню, 🔄 Обновить, 🔕 Тихо 8 ч) keep doing what they did.
+- `/setcookie` and `/igtoken` without a value ask for it as the next message, with «✖️ Отмена», like their buttons; with the value they are shortcuts as before.
+- One label per thing on every screen: «🏠 Главная» back home, «✖️ Отмена» out of a step. Text the bot does not understand gets «Не понял. Всё — кнопками под полем ввода…» and the keyboard again; a stale button says so and shows the home screen.
+
 **Someone else's text**
 - Direction overrides, zero-width marks and control characters are stripped from everything quoted — `clean()` runs inside `defang()` and inside every screen value: a display name or a mail subject with U+202E can no longer show `evil.com` as `google.com`. An unknown sender's domain in an alert is defanged too.
 

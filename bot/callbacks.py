@@ -26,14 +26,16 @@ SETTINGS = "set"
 MONITORS = "mod"
 LINKEDIN = "li"
 INSTAGRAM = "ig"
-HELP = "help"
+ABOUT = "about"          # «📖 Что я умею»
+ICONS = "icons"          # «❓ Значки»
+HELP = "help"            # the «❓ Помощь» of 1.0–1.4: opens «📖 Что я умею»
 CONNECTIONS = "conn"
 COMMENTS = "cm"
 CHANNEL = "ch"
 
 # Actions.
 OPEN = "open"            # open:<screen> — the screen as a new message; the alert it sits on stays
-MUTE = "mute"            # mute:8h | mute:off, with :home when pressed on the home screen
+MUTE = "mute"            # mute — the picker; mute:<1h|4h|8h|1d|off>, with :home when pressed on the home screen
 MUTE_QUICK = f"{MUTE}:8h"
 MUTE_OFF = f"{MUTE}:off"
 BACKUP = "backup"        # the database file now, not on Sunday

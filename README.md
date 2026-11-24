@@ -25,7 +25,7 @@ The bot is modular: connect only the platforms you have, and switch monitors on 
 - **Self-recovering**: failed platforms are retried hourly (up to 3 times), a run missed while the bot was down is caught up on start, a dead man's switch (`HEALTHCHECK_URL`) tells you when the bot itself dies. Point it at a [TofsDevOps](https://github.com/morgunovtech/Tofs_DevOps_bot) heartbeat address and the ping also carries a line per network («✅ Telegram · 12 340, +18 today», «🔴 LinkedIn · profile unreadable») to TofsDevOps's main screen, next to your sites; refreshed after every profile check.
 - **Your data stays yours**: SQLite on your volume, a weekly backup sent to your chat (without the LinkedIn cookie and the Instagram token), and `/restore` to merge a backup back without overwriting anything collected since.
 - **Short when unchanged**: a one-liner instead of the full report when nothing changed.
-- **Three buttons at the bottom of the chat** — 🏠 Menu, 🔄 Refresh, 🔕 Quiet for 8 h — one tap from anywhere, however far up the menu has scrolled. Every alert and report carries buttons to where to look into it (🛡 Security, 📈 Trends, 📣 Channel), a 🟠 one also «⚙️ Stop sending these».
+- **Three buttons under the input field** — 🏠 Home, 📖 What I do, ❓ Icons — one tap from anywhere, however far up the menu has scrolled; «🔄 Refresh data» and «🔕 Mute…» are on the home screen. No ☰ command list: commands still work when typed, and «📖 What I do» lists them all. Every alert and report carries buttons to where to look into it (🛡 Security, 📈 Trends, 📣 Channel), a 🟠 one also «⚙️ Stop sending these».
 - **Rings only when it matters**: 🔴 — a likely hijack, a new sign-in, a changed password, a vanished profile, a silent mail worker — rings at once, even at night; everything else arrives silently, and during quiet hours or a `/mute` it waits and comes as one digest. One set of icons everywhere, the same as TofsDevOps's: see [Icons](#icons) and [When it writes](#when-it-writes).
 
 **Security**
@@ -86,7 +86,7 @@ The database lives in `./data` (on Railway, in the volume at `/app/data`). The c
 
 ## Menu
 
-Everything is a button away; the «🏠 Menu» button under the input field always brings you home.
+Everything is a button away. Three buttons live under the input field: «🏠 Home» brings you home, «📖 What I do» says what the bot does and lists every command, «❓ Icons» explains the icons and what rings. A button of an older keyboard (🏠 Menu, 🔄 Refresh, 🔕 Quiet for 8 h) keeps doing what it did, and the first start after the update brings the new keyboard.
 
 ```
 🏠 Home — the follower report, the security score, when the next report goes out
@@ -102,18 +102,18 @@ Everything is a button away; the «🏠 Menu» button under the input field alwa
 │   ├── 📸 Instagram — how the number is collected, the token's age, «🔑 Send the token»
 │   └── 💼 LinkedIn — how the number is collected, the cookie's age, «🔑 Send the cookie», «✏️ Enter count by hand»
 ├── ✏️ Enter LinkedIn — only while the number is typed in by hand
-├── 🔔 Unmute — only while a mute lasts
+├── 🔕 Mute… — for an hour, four, eight or a day, and what still rings; 🔔 Unmute while a mute lasts
 ├── ⚙️ Settings — report days (checkboxes), report hour (a grid) and minutes, time zone (presets or «✏️ Another zone…»), short when unchanged, 📦 Backup now; the last line names the running build (commit) and Python
 │   ├── 🔔 When to write — quiet hours (presets), «🔕 Mute» for an hour, four, eight or a day
 │   └── 🧩 Monitors — switch each one on and off (📣 Channel and 💬 Comments have the switch on their own screens too)
-└── ❓ Help — how the bot works, what the icons mean, every command
+└── 📖 What I do · ❓ Icons — the two other buttons under the input field, as screens
 ```
 
 The home screen also says when the data was last collected and, on a fresh install, what is left to set up (the time zone, a token, a cookie) with a button for each. A tap answers right away with a short confirmation («Saved», «Short when unchanged: on»), a menu message is edited in place instead of piling up, and a button of an older version's menu opens the current one. A cookie, a token or a time zone that is not in the presets is asked for as the next message («🔑 Send the cookie» → paste it → the bot checks it and deletes the message), the same way the LinkedIn number is.
 
 ## Commands
 
-The `/` menu lists the entry points — `/start`, `/now`, `/week`, `/security`, `/settings`, `/mute`, `/channel`, `/connections`, `/help`; the rest are for typing, and everything they do is also a button away.
+No ☰ command list is published: the three buttons under the input field are the way in. Every command keeps working as a shortcut when typed, and «📖 What I do» (`/help`) lists them all; everything they do is also a button away.
 
 | Command | What it does |
 |---|---|
@@ -123,7 +123,8 @@ The `/` menu lists the entry points — `/start`, `/now`, `/week`, `/security`, 
 | `/security` | Security score, the checklist per account, recent security events |
 | `/settings` | Report schedule, short when unchanged, when to write, monitors, connections, backup now, the running build |
 | `/connections` | Every network: in .env or not, collected by itself or waiting for a token, a cookie, the first number; the Instagram and LinkedIn screens |
-| `/help` | How the bot works, the icons, every command |
+| `/help` | What the bot does, where things are, every command — the «📖 What I do» screen |
+| `/icons` | What each icon means and what rings — the «❓ Icons» screen |
 | `/stats` | The home screen without the greeting |
 | `/modules` | Connected platforms; switch monitors on and off |
 | `/comments` | The channel's comments: mode, how many were checked, the accuracy table of your marks |
@@ -133,9 +134,9 @@ The `/` menu lists the entry points — `/start`, `/now`, `/week`, `/security`, 
 | `/settime HH:MM`, `/setday <days>` | Report time and day(s) in your time zone: `sat`, `mon,thu`, `mon-fri`, `daily`; without an argument, the picker |
 | `/settz <zone>` | Your time zone, an IANA name such as `Europe/Moscow`; without an argument, a list of common ones |
 | `/setquiet on\|off` | Short when unchanged: one line instead of the report when a week brought no change |
-| `/mute <time>`, `/unmute` | Pause everything but the critical for `1h`, `8h` (the default), `30m`, `1d`, up to 7 days; what was held arrives as one digest when it ends. Also the 🔕 button at the bottom of the chat and under any alert |
-| `/setcookie <li_at>`, `/cookieage` | Set the LinkedIn cookie, check its age |
-| `/igtoken <token>` | Set the Instagram token (checked against the API, the message is deleted) |
+| `/mute <time>`, `/unmute` | Pause everything but the critical for `1h`, `8h` (the default), `30m`, `1d`, up to 7 days; what was held arrives as one digest when it ends. Also «🔕 Mute…» on the home screen and «🔕 Quiet for 8 h» under any alert |
+| `/setcookie [li_at]`, `/cookieage` | Set the LinkedIn cookie, check its age; without the value the bot asks for it as the next message, with «✖️ Cancel» |
+| `/igtoken [token]` | Set the Instagram token (checked against the API, the message is deleted); without the value the bot asks for it as the next message |
 | `/restore` | Merge the history back: send the `.db` file and confirm with the button, reply `/restore` to a backup message, or caption the file `/restore` |
 | `/cancel` | Leave a text-input step — the LinkedIn number, a cookie, a token, a time zone — without saving |
 
@@ -185,14 +186,14 @@ Every message to you goes through one door (`bot/notifier.py`) with three priori
 | **Digest** — 📊 | no; waits only during a mute | the weekly report and its chart, the monthly digest, the hygiene reminder, the backup, the Sunday vulnerabilities notice |
 
 - **Quiet hours** are off by default: ⚙️ Settings → 🔔 When to write, presets 23:00–08:00 and 00:00–09:00 in your time zone. The weekly report is a digest itself, so it still comes at its time.
-- **`/mute 8h`** (or the 🔕 button at the bottom of the chat, or «🔕 Quiet for 8 h» under any alert) pauses everything but the critical; `/unmute` or the «🔔 Unmute» button on the home screen lifts it. The home screen says «🔕 Muted until 08:00» while it lasts.
+- **`/mute 8h`** (or «🔕 Mute…» on the home screen, or «🔕 Quiet for 8 h» under any alert) pauses everything but the critical; `/unmute` or the «🔔 Unmute» button on the home screen lifts it. The home screen says «🔕 Muted until 08:00» while it lasts.
 - Under every alert and report: buttons to the screen where to look into it; under a 🟠 one, «⚙️ Stop sending these» switches that monitor off. In a digest the items share one row.
 - When the silence ends, what was held arrives as **one numbered digest** with the time of each item; a message with buttons or one too long for the digest comes on its own. Replies to your own taps and commands are not notifications and never wait.
 - «Silent when healthy» stays: nothing repeats until it changes, and a recovery is told once.
 
 ### Icons
 
-One dictionary for alerts, screens, reports and ❓ Help (`LEVEL_ICONS` in `bot/monitors/__init__.py`), the same as TofsDevOps's. The icon says how urgent; the words say what happened.
+One dictionary for alerts, screens, reports and the «❓ Icons» screen (`LEVEL_ICONS` in `bot/monitors/__init__.py`), the same as TofsDevOps's. The icon says how urgent; the words say what happened.
 
 | Icon | Means | What the bot does |
 |---|---|---|

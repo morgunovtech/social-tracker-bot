@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from conftest import COOKIE, FakeBot
 
-from bot import i18n, main, monitors, notifier, reporter, tofs_status, ui
+from bot import handlers, i18n, monitors, notifier, reporter, tofs_status, ui
 from bot.config import Config
 from bot.db import utcnow
 from bot.i18n import plural, t
@@ -73,9 +73,10 @@ def test_config_lang(monkeypatch):
         Config.from_env()
 
 
-def test_command_menu_and_keyboard():
-    for command in main._bot_commands():
-        english_only(command.description)
+def test_keyboard_and_its_notes():
+    english_only(ui.welcome(claimed=True))
+    english_only(t(handlers.NOT_UNDERSTOOD))
+    english_only(t(handlers.STALE_BUTTON))
     for row in ui.persistent_keyboard().keyboard:
         for button in row:
             english_only(button.text)
@@ -109,7 +110,9 @@ async def test_every_screen(config, db, insert):
         await ui.linkedin_prompt(db),
         ui.linkedin_retry(),
         ui.linkedin_confirm(4500, 9000),
-        ui.help_screen(),
+        ui.about_screen(),
+        ui.icons_screen(),
+        ui.mute_picker(),
         await ui.when_to_write(db, config),
         await ui.comments_screen(db, config),
         await ui.comments_screen(db, dataclasses.replace(config, anthropic_api_key="k")),

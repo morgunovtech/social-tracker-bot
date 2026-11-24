@@ -27,7 +27,6 @@ from bot.callbacks import (
     COMMENTS,
     CONNECTIONS,
     DYNAMICS,
-    HELP,
     HOME,
     IG_TOKEN,
     INPUT_CANCEL,
@@ -37,6 +36,7 @@ from bot.callbacks import (
     LI_ENTER,
     LINKEDIN,
     MONITORS,
+    MUTE,
     MUTE_OFF,
     NOW,
     RESTORE,
@@ -60,15 +60,23 @@ from bot.scheduler import build_stats, get_report_schedule, get_report_tz, is_qu
 # for the handlers (ui.HOME …); the two monitors name theirs the same way.
 assert COMMENTS == comments.CALLBACK and CHANNEL == channel.CALLBACK
 
-# The persistent reply keyboard: tapping a button sends its text back. Three
-# buttons, one tap from anywhere in a chat full of alerts: the menu, a fresh
-# collection and eight hours of silence. Russian is the key; the keyboard
-# shows t(…).
-MENU_BUTTON_TEXT = "🏠 Меню"
-REFRESH_BUTTON_TEXT = "🔄 Обновить"
-MUTE_BUTTON_TEXT = "🔕 Тихо 8 ч"
-# Reply keyboards of earlier versions stay on the user's screen until replaced.
-LEGACY_MENU_BUTTON_TEXTS = ("📊 Меню",)
+# The persistent reply keyboard (BOT_PRINCIPLES §2): tapping a button sends
+# its text back. Three doors under the input field, one tap from anywhere in
+# a chat full of alerts — the dashboard, what the bot does with every command,
+# what the icons mean. No ☰ command list: these are the way in, and a refresh
+# and a mute are one tap away on the home screen. Russian is the key; the
+# keyboard shows t(…).
+HOME_BUTTON_TEXT = "🏠 Главная"
+ABOUT_BUTTON_TEXT = "📖 Что я умею"
+ICONS_BUTTON_TEXT = "❓ Значки"
+# Reply keyboards of earlier versions stay on the owner's screen until a
+# message brings the new one, and their buttons keep doing what they did:
+# the menu of 1.0–1.4, and the refresh and the mute of 1.4.0.
+LEGACY_HOME_BUTTON_TEXTS = ("📊 Меню", "🏠 Меню")
+LEGACY_REFRESH_BUTTON_TEXT = "🔄 Обновить"
+LEGACY_MUTE_BUTTON_TEXT = "🔕 Тихо 8 ч"
+# The labels every screen shares (§2): the way home, the way out of a step.
+HOME_LABEL, CANCEL_LABEL = "🏠 Главная", "✖️ Отмена"
 
 TABLE_PERIODS = (7, 14, 30, 90)
 # The minutes a report may start at by button; any minute by /settime.
@@ -114,8 +122,9 @@ def welcome(claimed: bool = False) -> str:
         "👋 Привет! Я слежу за подписчиками и безопасностью твоих аккаунтов.\n\n"
         "Пока всё в порядке, я молчу. О падении подписчиков, накрутке, смене названия, ссылок "
         "или админов и о письмах про новые входы пишу сразу, а сводку присылаю по расписанию.\n\n"
-        "Кнопка «{menu}» внизу экрана всегда возвращает на главную."
-    ).format(menu=t(MENU_BUTTON_TEXT))
+        "Под полем ввода — три кнопки: «{home}» — главный экран, «{about}» — что я делаю и все команды, "
+        "«{icons}» — что значат значки и что звонит."
+    ).format(home=t(HOME_BUTTON_TEXT), about=t(ABOUT_BUTTON_TEXT), icons=t(ICONS_BUTTON_TEXT))
 
 
 @dataclass(frozen=True)
@@ -138,6 +147,15 @@ def _button(text: str, data: str) -> InlineKeyboardButton:
 
 def _back(data: str, label: str) -> list[InlineKeyboardButton]:
     return [_button(f"← {label}", data)]
+
+
+def _home() -> list[InlineKeyboardButton]:
+    """The way back to the dashboard, named the same everywhere (§2)."""
+    return [_button(t(HOME_LABEL), HOME)]
+
+
+def _cancel(data: str) -> InlineKeyboardButton:
+    return _button(t(CANCEL_LABEL), data)
 
 
 def _rows(buttons: list[InlineKeyboardButton], per_row: int = 2) -> list[list[InlineKeyboardButton]]:
@@ -169,10 +187,10 @@ def _titled(report: str) -> str:
 
 def persistent_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        [[KeyboardButton(t(MENU_BUTTON_TEXT)), KeyboardButton(t(REFRESH_BUTTON_TEXT)), KeyboardButton(t(MUTE_BUTTON_TEXT))]],
+        [[KeyboardButton(t(HOME_BUTTON_TEXT)), KeyboardButton(t(ABOUT_BUTTON_TEXT)), KeyboardButton(t(ICONS_BUTTON_TEXT))]],
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder=t("Меню — кнопкой ниже, команды — через /"),
+        input_field_placeholder=t("Всё — кнопками ниже"),
     )
 
 
@@ -370,10 +388,27 @@ async def home(db: Database, config: Config, report: str | None = None) -> Scree
         rows.append([_button(t("🌍 Выбрать часовой пояс"), f"{SETTINGS}:tz")])
     if await linkedin_is_manual(db, config):
         rows.append([_button(t("✏️ Ввести число LinkedIn"), LI_ENTER)])
+    # A refresh is the first row; silence and the settings the last — one tap
+    # from the dashboard, as the bottom buttons of 1.4.0 were.
     if await notifier.mute_until(db) is not None:
-        rows.append([_button(t("🔔 Снять тишину"), f"{MUTE_OFF}:{HOME}")])
-    rows.append([_button(t("⚙️ Настройки"), SETTINGS), _button(t("❓ Помощь"), HELP)])
+        silence_button = _button(t("🔔 Снять тишину"), f"{MUTE_OFF}:{HOME}")
+    else:
+        silence_button = _button(t("🔕 Помолчать…"), MUTE)
+    rows.append([silence_button, _button(t("⚙️ Настройки"), SETTINGS)])
     return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
+
+
+def mute_picker() -> Screen:
+    """«🔕 Помолчать…» on the home screen: how long, and what still rings."""
+    text = "\n".join([
+        t("<b>🔕 Помолчать</b>"),
+        "",
+        esc(notifier.what_rings_through()),
+        "",
+        t("Тихие часы на каждую ночь — ⚙️ Настройки → 🔔 Когда писать. Команда: /mute 8h, снять — /unmute."),
+    ])
+    presets = [_button(f"🔕 {_duration_label(choice)}", f"{MUTE}:{choice}:{HOME}") for choice in MUTE_CHOICES]
+    return Screen(text, InlineKeyboardMarkup([*_rows(presets), _home()]))
 
 
 async def connections(db: Database, config: Config) -> Screen:
@@ -411,7 +446,7 @@ async def connections(db: Database, config: Config) -> Screen:
         elif platform.id == "linkedin":
             rows.append([_button("💼 LinkedIn", LINKEDIN)])
     lines += ["", t("Сети включаются в .env и перезапуском бота; токен Instagram и cookie LinkedIn — кнопками здесь.")]
-    rows.append(_back(HOME, t("Главная")))
+    rows.append(_home())
     return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
 
 
@@ -431,7 +466,7 @@ def loading() -> Screen:
 async def dynamics(db: Database) -> Screen:
     rows = [
         [_button(t("🖼 График за 30 дней"), CHART), _button(t("📋 По дням"), TABLE)],
-        _back(HOME, t("Главная")),
+        _home(),
     ]
     return Screen(_titled(await build_week_report(db)), InlineKeyboardMarkup(rows))
 
@@ -444,7 +479,7 @@ async def channel_screen(db: Database, config: Config) -> Screen:
     monitor = monitors.BY_ID[channel.MONITOR_ID]
     if not monitor.requires(config):
         lines.append(t("Не подключено — нужно: {needs}.").format(needs=esc(t(monitor.needs))))
-        return Screen("\n".join(lines), InlineKeyboardMarkup([_back(HOME, t("Главная"))]))
+        return Screen("\n".join(lines), InlineKeyboardMarkup([_home()]))
     on = await monitors.is_switched_on(db, channel.MONITOR_ID)
     if not on:
         lines.append(t("⬜ Выключено — события не записываются. Включить — кнопкой ниже."))
@@ -457,7 +492,7 @@ async def channel_screen(db: Database, config: Config) -> Screen:
     ]
     rows = [
         [_button(f"{_check(on)} {t(monitor.label)}", f"{MONITORS}:{channel.MONITOR_ID}:{CHANNEL}")],
-        _back(HOME, t("Главная")),
+        _home(),
     ]
     return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
 
@@ -495,7 +530,7 @@ async def security(db: Database, config: Config, top: int = 5) -> Screen:
     if result is None:
         return Screen(
             t("<b>🛡 Безопасность</b>\n\nНет подключённых платформ — подключи хотя бы одну в .env."),
-            InlineKeyboardMarkup([_back(HOME, t("Главная"))]),
+            InlineKeyboardMarkup([_home()]),
         )
     total, recs = result
     today = utcnow().date()
@@ -518,7 +553,7 @@ async def security(db: Database, config: Config, top: int = 5) -> Screen:
             lines.append(f"• {day} {esc((e['detail'].splitlines() or [''])[0])}")
     lines += ["", t("Нажми на аккаунт, чтобы отметить пункты. Пароли я не спрашиваю и не храню.")]
     rows.append([_button(t("💬 Комментарии канала"), COMMENTS)])
-    rows.append(_back(HOME, t("Главная")))
+    rows.append(_home())
     return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
 
 
@@ -684,7 +719,7 @@ async def settings(db: Database, config: Config) -> Screen:
         [_button(f"{_check(quiet)} {t('Коротко без изменений')}", f"{SETTINGS}:quiet"), _button(t("🔔 Когда писать"), f"{SETTINGS}:when")],
         [_button(t("🧩 Мониторинги"), MONITORS), _button(t("🔌 Подключения"), CONNECTIONS)],
         [_button(t("📦 Бэкап сейчас"), BACKUP)],
-        _back(HOME, t("Главная")),
+        _home(),
     ]
     return Screen(text, InlineKeyboardMarkup(rows))
 
@@ -934,7 +969,7 @@ async def linkedin_prompt(db: Database) -> Screen:
         t("<b>✏️ LinkedIn вручную</b>\n\nПришли число подписчиков одним сообщением, например 4520.{current}").format(
             current=current
         ),
-        InlineKeyboardMarkup([[_button(t("Отмена"), LI_CANCEL)]]),
+        InlineKeyboardMarkup([[_cancel(LI_CANCEL)]]),
     )
 
 
@@ -956,27 +991,27 @@ INPUT_PROMPTS = {
 
 def input_prompt(kind: str) -> Screen:
     """«Send it in one message» with a cancel button; the answer is the next message."""
-    return Screen(esc(t(INPUT_PROMPTS[kind])), InlineKeyboardMarkup([[_button(t("Отмена"), INPUT_CANCEL)]]))
+    return Screen(esc(t(INPUT_PROMPTS[kind])), InlineKeyboardMarkup([[_cancel(INPUT_CANCEL)]]))
 
 
 def input_retry_tz() -> Screen:
     return Screen(
-        t("Не знаю такой часовой пояс. Нужно название из базы IANA, например Europe/Moscow, или нажми «Отмена»."),
-        InlineKeyboardMarkup([[_button(t("Отмена"), INPUT_CANCEL)]]),
+        t("Не знаю такой часовой пояс. Нужно название из базы IANA, например Europe/Moscow, или нажми «✖️ Отмена»."),
+        InlineKeyboardMarkup([[_cancel(INPUT_CANCEL)]]),
     )
 
 
 def restore_prompt() -> InlineKeyboardMarkup:
     """Under a .db file sent without a caption: restore, or not."""
     return InlineKeyboardMarkup([[
-        _button(t("✅ Восстановить"), f"{RESTORE}:yes"), _button(t("Отмена"), f"{RESTORE}:no"),
+        _button(t("✅ Восстановить"), f"{RESTORE}:yes"), _cancel(f"{RESTORE}:no"),
     ]])
 
 
 def linkedin_retry() -> Screen:
     return Screen(
-        t("Это не похоже на число. Пришли только цифры, например 4520, или нажми «Отмена»."),
-        InlineKeyboardMarkup([[_button(t("Отмена"), LI_CANCEL)]]),
+        t("Это не похоже на число. Пришли только цифры, например 4520, или нажми «✖️ Отмена»."),
+        InlineKeyboardMarkup([[_cancel(LI_CANCEL)]]),
     )
 
 
@@ -990,13 +1025,13 @@ def linkedin_confirm(prev: int, count: int) -> Screen:
         InlineKeyboardMarkup([
             [_button(t("Сохранить {count}").format(count=_fmt(count)), f"{LINKEDIN}:save:{count}")],
             [_button(t("✏️ Ввести заново"), LI_ENTER)],
-            [_button(t("Отмена"), HOME)],
+            [_cancel(HOME)],
         ]),
     )
 
 
 # ---------------------------------------------------------------------------
-# Help
+# «📖 Что я умею» and «❓ Значки»
 # ---------------------------------------------------------------------------
 
 # What is 🔴 for this bot (BOT_PRINCIPLES §1 leaves it to each bot): the
@@ -1017,51 +1052,95 @@ def icon_legend() -> list[str]:
         if does:
             line += f" — {t(does)}"
         lines.append(esc(line))
-    lines.append(esc(t(CRITICAL_HERE)))
-    return lines
+    return [*lines, "", esc(t(CRITICAL_HERE))]
 
 
-def help_screen() -> Screen:
+# Every command, as «📖 Что я умею» lists them: shortcuts to what the buttons do.
+COMMAND_LINES = (
+    "/start, /stats — главная",
+    "/now — обновить данные",
+    "/week — динамика за неделю и график",
+    "/history [платформа] [дни] — таблица по дням, до 90 дней",
+    "/channel — жизнь канала: подписки и отписки, откуда пришли, посты и реакции",
+    "/security — безопасность аккаунтов",
+    "/comments — комментарии канала: что проверено и насколько точно",
+    "/connections — подключения: что собирается само, чему нужен токен или cookie",
+    "/settings — настройки",
+    "/modules — мониторинги",
+    "/settime ЧЧ:ММ — время отчёта",
+    "/setday <дни> — дни отчёта: sat, mon-fri, mon,thu, daily",
+    "/settz <пояс> — часовой пояс, например Europe/Moscow",
+    "/setquiet on|off — одна строка вместо отчёта, если за неделю без изменений",
+    "/mute <время> — помолчать: 1h, 8h, 1d (по умолчанию 8h); /unmute — снять",
+    "/linkedin <число> — ввести LinkedIn вручную",
+    "/setcookie [li_at] — cookie LinkedIn для автосбора; без значения — спрошу его следующим сообщением",
+    "/cookieage — сколько живёт cookie LinkedIn",
+    "/igtoken [токен] — токен Instagram для автосбора; без значения — спрошу его следующим сообщением",
+    "/restore — вернуть историю из бэкапа: ответом на файл или подписью к нему",
+    "/cancel — выйти из шага ввода",
+    "/icons — значки: что значат и что звонит",
+    "/help — этот экран",
+)
+
+
+def about_screen() -> Screen:
+    """«📖 Что я умею» (a button under the input field, and /help): what the
+    bot does by itself, where everything is, and every command."""
     text = "\n".join([
-        t("<b>❓ Помощь</b>"),
+        t("<b>📖 Что я умею</b>"),
         "",
         t(
-            "Каждый день я собираю подписчиков и слежу за безопасностью аккаунтов. "
-            "Пока всё в порядке — молчу; о проблеме пишу сразу, а сводку присылаю по расписанию."
+            "Пока всё в порядке — молчу; о проблеме пишу сразу, а сводку присылаю по расписанию. "
+            "Сети подключаются в .env, остальное — кнопками."
         ),
         "",
-        t("<b>Кнопки внизу</b>"),
-        t("🏠 Меню — главная · 🔄 Обновить — собрать данные сейчас · 🔕 Тихо 8 ч — помолчать"),
-        t("Под тревогами и отчётами — кнопки туда, где разбираться; ⚙️ — выключить такие уведомления."),
+        t("<b>Подписчики</b>"),
+        t("• Каждый день собираю подписчиков Telegram, YouTube, Instagram и LinkedIn — тех сетей, что подключены."),
+        t("• Отчёт по расписанию: за день, неделю и месяц, график за 30 дней, лидер недели, прогноз до круглого "
+          "числа; 1-го числа — итоги месяца."),
+        t("• Сразу пишу о падении подписчиков, наплыве ботов, круглом числе и о том, что сбор не работает."),
+        t("• 📣 Канал — подписки и отписки, откуда пришли, посты и реакции."),
         "",
-        t("<b>Значки</b>"),
+        t("<b>Безопасность</b>"),
+        t("• Каждые 30 минут сверяю профиль: название, описание и ссылки, аватарку, админов и владельца, "
+          "число видео и публикаций."),
+        t("• Письма безопасности, если подключён почтовый воркер: новый вход, смена пароля, почты или 2FA, код входа."),
+        t("• Комментарии канала, если есть ключ Claude: карточка с кнопками на то, за что блокируют группу. "
+          "Сам ничего не удаляю."),
+        t("• Чек-лист 2FA и паролей — балл в отчёте. Пароли не спрашиваю и не храню."),
+        "",
+        t("<b>Сам за собой</b>"),
+        t("• По воскресеньям присылаю бэкап базы (и по кнопке «📦 Бэкап сейчас» в настройках). Пришли файл "
+          "обратно — верну историю, уже собранное не перезапишется."),
+        t("• После обновления пишу «🔄 Бот обновился», по воскресеньям — об уязвимостях в своих пакетах."),
+        "",
+        t("<b>Где что</b>"),
+        t("🏠 Главная — отчёт, «🔄 Обновить данные», 📈 Динамика, 🛡 Безопасность, 📣 Канал, 🔌 Подключения, "
+          "«🔕 Помолчать…», ⚙️ Настройки."),
+        t("❓ Значки — что значат значки и что звонит. Под тревогами — кнопки туда, где разбираться."),
+        "",
+        t("<b>Команды</b> — короткие пути к тому же, что на кнопках:"),
+        *(esc(t(line)) for line in COMMAND_LINES),
+    ])
+    return Screen(text, InlineKeyboardMarkup([_home()]))
+
+
+def icons_screen() -> Screen:
+    """«❓ Значки» (a button under the input field): the icon dictionary
+    (BOT_PRINCIPLES §1) and what rings."""
+    text = "\n".join([
+        t("<b>❓ Значки</b>"),
+        "",
+        t("Значок говорит, насколько срочно; слова — что случилось. Значки одни на тревогах, экранах и в отчётах."),
+        "",
         *icon_legend(),
         "",
-        t("<b>Команды</b>"),
-        t("/start — главная"),
-        t("/now — обновить данные"),
-        t("/week — динамика за неделю и график"),
-        t("/security — безопасность аккаунтов"),
-        t("/settings — настройки"),
-        t("/history [платформа] [дни] — таблица по дням, до 90 дней"),
-        t("/linkedin &lt;число&gt; — ввести LinkedIn вручную"),
-        t("/setcookie &lt;li_at&gt; — cookie LinkedIn для автосбора"),
-        t("/igtoken &lt;токен&gt; — токен Instagram для автосбора"),
-        t("/settime ЧЧ:ММ — время отчёта"),
-        t("/setday &lt;дни&gt; — дни отчёта: sat, mon-fri, mon,thu, daily"),
-        t("/settz &lt;пояс&gt; — часовой пояс, например Europe/Moscow"),
-        t("/setquiet on|off — одна строка вместо отчёта, если за неделю без изменений"),
-        t("/mute &lt;время&gt; — помолчать: 1h, 8h, 1d (по умолчанию 8h); /unmute — снять"),
-        t("/modules — мониторинги"),
-        t("/connections — подключения: что собирается само, чему нужен токен или cookie"),
-        t("/comments — комментарии канала: что проверено и насколько точно"),
-        t("/channel — жизнь канала: подписки и отписки, откуда пришли, посты и реакции"),
-        "",
-        t("<b>Бэкап</b>"),
+        t("<b>Что звонит</b>"),
         t(
-            "По воскресеньям я присылаю файл с базой (и по кнопке «📦 Бэкап сейчас» в настройках). "
-            "Чтобы вернуть историю, пришли этот файл или ответь на него командой /restore — "
-            "уже собранное не перезапишется."
+            "Звонит только 🔴 — даже ночью, в тихие часы и в «🔕 Помолчать». Остальное приходит без звука, "
+            "а в тихие часы и в тишине ждёт и приходит одной сводкой. Отчёт по расписанию — тоже без звука."
         ),
+        t("Помолчать — «🔕 Помолчать…» на главной или /mute 8h; тихие часы — ⚙️ Настройки → 🔔 Когда писать. "
+          "«⚙️ Не присылать такие» под тревогой выключает такие уведомления."),
     ])
-    return Screen(text, InlineKeyboardMarkup([_back(HOME, t("Главная"))]))
+    return Screen(text, InlineKeyboardMarkup([_home()]))
