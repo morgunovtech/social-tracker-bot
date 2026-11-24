@@ -54,7 +54,7 @@ def test_text_change_and_a_new_link_is_critical():
     renamed = {**CHANNEL, "title": "Tesla Live", "description": "Розыгрыш BTC: https://scam.example/x"}
     lines = profile.diff(TELEGRAM, CHANNEL, renamed)
     assert lines[0] == "🟠 Telegram: название канала — «Мой канал» → «Tesla Live»"
-    assert lines[1].startswith("🚨 Telegram: описание канала") and "hxxps://scam[.]example/x" in lines[1]
+    assert lines[1].startswith("🔴 Telegram: похоже на взлом — описание канала") and "hxxps://scam[.]example/x" in lines[1]
     assert "https://" not in "".join(lines)                # quoted links are not clickable
 
 
@@ -71,6 +71,22 @@ def test_defang():
     )
 
 
+def test_untrusted_text_loses_direction_and_invisible_characters():
+    # U+202E shows «moc.elgoog» as «google.com»; isolates, zero-width marks,
+    # the BOM and control characters hide what is really there.
+    assert monitors.clean("evil\u202e\u2066moc\u2069\u200b\u200f\ufeff\x07.x") == "evilmoc.x"
+    assert monitors.clean("line one\nline\ttwo") == "line one\nline\ttwo"     # newline and tab stay
+    assert monitors.defang("support\u202e moc.live") == "support moc[.]live"
+
+
+def test_admin_names_lose_direction_overrides():
+    hijacked = {**CHANNEL, "admins": _admins(
+        (1, "Owner (@owner)", "creator"), (99, "Bot", "administrator"), (7, "Supp\u202eort\u200d", "administrator"),
+    )}
+    (line,) = profile.diff(TELEGRAM, CHANNEL, hijacked)
+    assert line == "🔴 Telegram: похоже на взлом — новый админ Support"
+
+
 def test_long_text_is_cut():
     long_text = {**CHANNEL, "description": "слово " * 100}
     (line,) = profile.diff(TELEGRAM, CHANNEL, long_text)
@@ -85,9 +101,9 @@ def test_avatar_and_admin_changes():
     }
     lines = profile.diff(TELEGRAM, CHANNEL, changed)
     assert "🟠 Telegram: новая аватарка канала" in lines
-    assert "🚨 Telegram: новый админ — Stranger (@x)" in lines
+    assert "🔴 Telegram: похоже на взлом — новый админ Stranger (@x)" in lines
     assert "🟠 Telegram: админ удалён — Owner (@owner)" in lines
-    assert "🚨 Telegram: сменился владелец — Owner (@owner) → Stranger (@x)" in lines
+    assert "🔴 Telegram: похоже на взлом — сменился владелец: Owner (@owner) → Stranger (@x)" in lines
 
 
 def test_admin_names_are_defanged():
@@ -95,7 +111,7 @@ def test_admin_names_are_defanged():
         (1, "Owner (@owner)", "creator"), (99, "Bot", "administrator"), (7, "support evil.com", "administrator"),
     )}
     (line,) = profile.diff(TELEGRAM, CHANNEL, hijacked)
-    assert line == "🚨 Telegram: новый админ — support evil[.]com"
+    assert line == "🔴 Telegram: похоже на взлом — новый админ support evil[.]com"
 
 
 def test_admin_rename_is_not_a_change():
@@ -159,8 +175,8 @@ async def test_hijack_signs_ring_through_a_mute_while_changes_wait(bot, config, 
     await notifier.set_mute(db, timedelta(hours=1))
     assert await profile.check(bot, config, db, None) == 1          # 🟠 avatar: queued, the baseline moves on
     assert len(bot.messages) == 1 and len(await db.peek_notifications()) == 1
-    assert await profile.check(bot, config, db, None) == 1          # 🚨 a link: rings through the mute
-    assert bot.silent == [True, False] and "🚨 Telegram: описание канала" in bot.messages[1]
+    assert await profile.check(bot, config, db, None) == 1          # 🔴 a link: rings through the mute
+    assert bot.silent == [True, False] and "🔴 Telegram: похоже на взлом — описание канала" in bot.messages[1]
 
 
 async def test_failed_send_keeps_the_old_baseline_and_retries(bot, config, db, watch):
@@ -193,6 +209,8 @@ async def test_unreachable_profile_alerted_once_and_recovery(bot, config, db, wa
     sent = [await profile.check(bot, config, db, None) for _ in range(profile.UNREACHABLE_AFTER + 1)]
     assert sent == [0] * (profile.UNREACHABLE_AFTER - 1) + [1, 0]
     assert "🔴 Telegram: профиль не читается" in bot.messages[0]
+    # Not a change of the profile: no «if it wasn't you, change the password».
+    assert profile.ADVICE not in bot.messages[0]
     assert await profile.check(bot, config, db, None) == 1
     assert "✅ Telegram: профиль снова доступен" in bot.messages[1]
 

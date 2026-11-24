@@ -20,6 +20,9 @@ DOW_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 # a spam wave must not turn into an unbounded API bill. The model itself is
 # classifier.DEFAULT_MODEL, re-exported here as DEFAULT_COMMENTS_MODEL.
 DEFAULT_COMMENTS_DAILY_LIMIT = 300
+# The zone of the schedule when neither the chat nor TIMEZONE set one: it
+# follows the chat language (BOT_PRINCIPLES §5).
+DEFAULT_TZ = {"ru": "Europe/Moscow", "en": "UTC"}
 
 
 def _require(name: str) -> str:
@@ -104,12 +107,17 @@ def _report_dow() -> str:
         raise RuntimeError(f"Invalid REPORT_DOW={raw!r}: {e}") from None
 
 
-def _report_tz() -> str:
-    raw = os.getenv("REPORT_TZ") or "UTC"
+def _report_tz(lang: str) -> str:
+    """TIMEZONE, or REPORT_TZ — its name before 1.5.0, read when TIMEZONE is
+    empty; with neither, the zone of the chat language (DEFAULT_TZ)."""
+    name = "TIMEZONE" if (os.getenv("TIMEZONE") or "").strip() else "REPORT_TZ"
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return DEFAULT_TZ[lang]
     try:
         return normalize_tz(raw)
     except ValueError as e:
-        raise RuntimeError(f"Invalid REPORT_TZ={raw!r}: {e}") from None
+        raise RuntimeError(f"Invalid {name}={raw!r}: {e}") from None
 
 
 def _lang() -> str:
@@ -178,7 +186,7 @@ class Config:
     report_hour: int
     report_minute: int
     report_dow: str  # APScheduler day_of_week expression: 'sat', 'mon,thu', '*', etc.
-    report_tz: str  # IANA name: 'UTC', 'Europe/Moscow'
+    report_tz: str  # IANA name: 'UTC', 'Europe/Moscow'; TIMEZONE (REPORT_TZ), else by the language
     quiet_if_no_change: bool
 
     # Chat language: ru (default) or en. Reports, screens, alerts and the / menu.
@@ -216,6 +224,7 @@ class Config:
 
     @classmethod
     def from_env(cls) -> Config:
+        lang = _lang()
         return cls(
             bot_token=_require("BOT_TOKEN"),
             admin_chat_id=_admin_chat_id(),
@@ -231,9 +240,9 @@ class Config:
             report_hour=_int("REPORT_HOUR", 8, 0, 23, legacy="REPORT_HOUR_UTC"),
             report_minute=_int("REPORT_MINUTE", 0, 0, 59),
             report_dow=_report_dow(),
-            report_tz=_report_tz(),
+            report_tz=_report_tz(lang),
             quiet_if_no_change=os.getenv("QUIET_IF_NO_CHANGE", "0") == "1",
-            lang=_lang(),
+            lang=lang,
             db_path=os.getenv("DB_PATH", "data/followers.db"),
             site_ingest_url=os.getenv("SITE_INGEST_URL") or None,
             site_ingest_token=os.getenv("SOCIALBOT_INGEST_TOKEN"),

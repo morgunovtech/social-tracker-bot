@@ -47,11 +47,15 @@ def test_missing_required_variable(monkeypatch):
 
 def test_defaults(monkeypatch):
     for name in (
-        "LINKEDIN_STALE_DAYS", "REPORT_HOUR", "REPORT_HOUR_UTC", "REPORT_MINUTE", "REPORT_DOW", "REPORT_TZ", "DB_PATH",
+        "LINKEDIN_STALE_DAYS", "REPORT_HOUR", "REPORT_HOUR_UTC", "REPORT_MINUTE", "REPORT_DOW", "REPORT_TZ", "TIMEZONE",
+        "DB_PATH",
     ):
         monkeypatch.delenv(name, raising=False)
     config = Config.from_env()
-    assert (config.report_hour, config.report_minute, config.report_dow, config.report_tz) == (8, 0, "sat", "UTC")
+    # The zone follows the chat language: Russian (the default) — Moscow.
+    assert (config.report_hour, config.report_minute, config.report_dow, config.report_tz) == (
+        8, 0, "sat", "Europe/Moscow",
+    )
     assert config.linkedin_stale_days == 7 and config.db_path == "data/followers.db"
     assert config.quiet_if_no_change is False
 
@@ -82,6 +86,24 @@ def test_report_hour_under_its_old_name(monkeypatch):
     monkeypatch.delenv("REPORT_HOUR")
     monkeypatch.setenv("REPORT_HOUR_UTC", "6")
     assert Config.from_env().report_hour == 6
+
+
+@pytest.mark.parametrize(("lang", "zone"), [("", "Europe/Moscow"), ("ru", "Europe/Moscow"), ("en", "UTC")])
+def test_default_zone_follows_the_language(monkeypatch, lang, zone):
+    monkeypatch.setenv("REPORT_TZ", "")
+    monkeypatch.setenv("BOT_LANG", lang)
+    assert Config.from_env().report_tz == zone
+
+
+def test_timezone_wins_and_report_tz_is_its_alias(monkeypatch):
+    monkeypatch.setenv("BOT_LANG", "en")
+    monkeypatch.setenv("REPORT_TZ", "Asia/Almaty")             # the name before 1.5.0 still works
+    assert Config.from_env().report_tz == "Asia/Almaty"
+    monkeypatch.setenv("TIMEZONE", "europe/berlin")
+    assert Config.from_env().report_tz == "Europe/Berlin"
+    monkeypatch.setenv("TIMEZONE", "Mars/Olympus")
+    with pytest.raises(RuntimeError, match="TIMEZONE"):
+        Config.from_env()
 
 
 @pytest.mark.parametrize(("raw", "expected"), [("europe/moscow", "Europe/Moscow"), (" UTC ", "UTC")])

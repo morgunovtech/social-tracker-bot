@@ -48,8 +48,8 @@ async def test_action_rows_follow_the_priority(bot, config, db):
     assert buttons(bot.markups[0]) == {
         "open:sec": "🛡 Безопасность", "mute:8h": "🔕 Тихо 8 ч", "mod:profile:off": "⚙️ Не присылать такие",
     }
-    await send(bot, config, db, "🚨 x", Priority.CRITICAL, actions=(cb.SECURITY,), monitor="profile")
-    assert buttons(bot.markups[1]) == {"open:sec": "🛡 Безопасность", "mute:8h": "🔕 Тихо 8 ч"}   # no switch-off for a 🚨
+    await send(bot, config, db, "🔴 x", Priority.CRITICAL, actions=(cb.SECURITY,), monitor="profile")
+    assert buttons(bot.markups[1]) == {"open:sec": "🛡 Безопасность", "mute:8h": "🔕 Тихо 8 ч"}   # no switch-off for a 🔴
     await send(bot, config, db, "📊 report", Priority.DIGEST, actions=(cb.DYNAMICS, cb.CHANNEL))
     assert buttons(bot.markups[2]) == {"open:dyn": "📈 Динамика", "open:ch": "📣 Канал"}            # nothing to mute
     await send(bot, config, db, "plain")
@@ -179,7 +179,7 @@ async def test_home_shows_the_last_collection_and_what_is_left_to_set_up(make_up
     update = make_update()
     await handlers.cmd_home(update, make_context())
     text, markup = update.message.replies[0], update.message.markups[0]
-    assert "🧭 Осталось настроить:" in text and "часовой пояс" in text and "LinkedIn — cookie" in text
+    assert "🧭 Осталось настроить:" in text and "часовой пояс — пока UTC" in text and "LinkedIn — cookie" in text
     assert "🕒" not in text and {"set:tz", "conn"} <= set(buttons(markup))
 
     insert("telegram", 1000, 0)
@@ -200,7 +200,7 @@ async def test_connections_screen_states(config, db):
     assert "LinkedIn — https://www.linkedin.com/in/test/ · ✏️ число вручную" in screen.text
     assert buttons(screen.keyboard) == {"li": "💼 LinkedIn", "home": "← Главная"}
     await db.set_setting("linkedin_li_at", COOKIE)
-    assert "⚠️ подтверди первое число" in (await ui.connections(db, config)).text
+    assert "🟠 подтверди первое число" in (await ui.connections(db, config)).text
     await db.upsert("linkedin", 4500, source="cookie")
     assert "LinkedIn — https://www.linkedin.com/in/test/ · ✅ собирается" in (await ui.connections(db, config)).text
     await db.set_setting("cookie_expired_alerted", "1")

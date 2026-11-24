@@ -366,7 +366,7 @@ async def test_checklist_is_asked_one_question_at_a_time(make_update, make_conte
     assert query.edits[0].startswith("<b>🛡 YouTube: 8 из 10</b>")      # all marked: back to the list
     labels = buttons(query.markups[0])
     assert labels["sec:ask:youtube:2fa"] == "✅ 2FA: приложение/ключ"
-    assert labels["sec:ask:youtube:recovery"] == "⚠️ Почта и телефон актуальны: нет"
+    assert labels["sec:ask:youtube:recovery"] == "🟠 Почта и телефон актуальны: нет"
     assert labels["sec:ask:youtube:pwd"] == "✅ Смена пароля: 30 дн. назад"
     assert await db.get_setting("hygiene_reviewed_at") == utcnow().date().isoformat()
 
@@ -374,7 +374,7 @@ async def test_checklist_is_asked_one_question_at_a_time(make_update, make_conte
     assert query.edits[0].startswith("<b>🛡 YouTube: 6 из 10</b>")
 
     query = await press(make_update, make_context, "sec")
-    assert "⚠️ YouTube (Google-аккаунт канала) — 6 из 10" in query.edits[0]
+    assert "🟠 YouTube (Google-аккаунт канала) — 6 из 10" in query.edits[0]
 
 
 @pytest.mark.parametrize(

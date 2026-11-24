@@ -1,6 +1,6 @@
 # Social Tracker Bot
 
-> A self-hosted Telegram bot that watches your social accounts: followers on Telegram, YouTube, Instagram and LinkedIn with weekly trends; the life of your channel — joins, leaves, posts and reactions; and the accounts' security — profile changes a hijacker makes, new sign-ins and password changes from your security emails, comments the whole group can be blocked for (a card with delete / ban buttons, nothing done without your tap), and a 2FA/password checklist. It stays quiet while things are fine and speaks up the moment something breaks.
+> A self-hosted Telegram bot for your social accounts: followers on Telegram, YouTube, Instagram and LinkedIn, the life of your channel, and the accounts' security — hijack signs, security emails, comments that get a group blocked. It stays quiet while things are fine and speaks up the moment something breaks.
 
 🇷🇺 [По-русски](README.ru.md) · [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/cL4hpn?referralCode=7hTMqE)
 
@@ -26,13 +26,13 @@ The bot is modular: connect only the platforms you have, and switch monitors on 
 - **Your data stays yours**: SQLite on your volume, a weekly backup sent to your chat (without the LinkedIn cookie and the Instagram token), and `/restore` to merge a backup back without overwriting anything collected since.
 - **Short when unchanged**: a one-liner instead of the full report when nothing changed.
 - **Three buttons at the bottom of the chat** — 🏠 Menu, 🔄 Refresh, 🔕 Quiet for 8 h — one tap from anywhere, however far up the menu has scrolled. Every alert and report carries buttons to where to look into it (🛡 Security, 📈 Trends, 📣 Channel), a 🟠 one also «⚙️ Stop sending these».
-- **Rings only when it matters**: 🚨 and 🔴 — a likely hijack, a new sign-in, a changed password, a vanished profile — ring at once, even at night; everything else arrives silently, and during quiet hours or a `/mute` it waits and comes as one digest. See [When it writes](#when-it-writes).
+- **Rings only when it matters**: 🔴 — a likely hijack, a new sign-in, a changed password, a vanished profile, a silent mail worker — rings at once, even at night; everything else arrives silently, and during quiet hours or a `/mute` it waits and comes as one digest. One set of icons everywhere, the same as TofsDevOps's: see [Icons](#icons) and [When it writes](#when-it-writes).
 
 **Security**
 
-- **Profile integrity**, every 30 minutes: a hijacked channel is renamed, gets a scam link in its description, a new admin or loses its videos long before the follower count moves. The bot alerts on a changed title or name, @username, description or bio, avatar, a new or removed Telegram admin, a changed owner, a mass drop in YouTube videos or Instagram posts, and a profile that stops being readable. A link that appears in a description is marked 🚨: that is the classic hijack payload. The first look at a profile only records the baseline.
-- **Security emails** (optional, needs the [mail-worker](mail-worker/README.md)): forward your accounts' security notifications to a Cloudflare Email Worker, and the bot alerts within 5 minutes on a new sign-in, a password, email or 2FA change, a password reset request or a login code you didn't ask for, with recovery links. Links quoted from a mail or a changed description are defanged (`hxxps://evil[.]example`), so nothing in an alert is a clickable scam link. Gmail's forwarding confirmation code is relayed to you.
-- **Comments of the channel** (optional, needs `ANTHROPIC_API_KEY`): make the bot an admin of the channel's discussion group, and it looks at every comment with a Claude model and sends you a card for anything the whole group can be blocked for — drug sales, pornography, sexualization of minors, extremism, fraud — with the text, the author, why it was flagged and three buttons: 🗑 delete, 🔨 delete and ban, ✅ all fine. Spam is reported quietly (that is Defensy's job). **The bot only reports; nothing is deleted or banned without your tap.** Your taps are the marks the accuracy table in `/comments` is built from — the measurement any automatic action would have to be calibrated on first. A dangerous category at ≥ 70 % rings (🚨); the rest waits for the digest. The group's admins and your own comments are never reviewed. When the API is down you hear once, and once when it is back; a failure is «could not check», never «fine».
+- **Profile integrity**, every 30 minutes: a hijacked channel is renamed, gets a scam link in its description, a new admin or loses its videos long before the follower count moves. The bot alerts on a changed title or name, @username, description or bio, avatar, a new or removed Telegram admin, a changed owner, a mass drop in YouTube videos or Instagram posts, and a profile that stops being readable. A link that appears in a description is 🔴 with «looks like a hijack» in the headline: that is the classic hijack payload. The first look at a profile only records the baseline.
+- **Security emails** (optional, needs the [mail-worker](mail-worker/README.md)): forward your accounts' security notifications to a Cloudflare Email Worker, and the bot alerts within 5 minutes on a new sign-in, a password, email or 2FA change, a password reset request or a login code you didn't ask for, with recovery links. Links quoted from a mail or a changed description are defanged (`hxxps://evil[.]example`), so nothing in an alert is a clickable scam link, and invisible direction marks are stripped from quoted text and names, so `evil.com` written backwards cannot pass for `google.com`. Gmail's forwarding confirmation code is relayed to you.
+- **Comments of the channel** (optional, needs `ANTHROPIC_API_KEY`): make the bot an admin of the channel's discussion group, and it looks at every comment with a Claude model and sends you a card for anything the whole group can be blocked for — drug sales, pornography, sexualization of minors, extremism, fraud — with the text, the author, why it was flagged and three buttons: 🗑 delete, 🔨 delete and ban, ✅ all fine. Spam is reported quietly (that is Defensy's job). **The bot only reports; nothing is deleted or banned without your tap.** Your taps are the marks the accuracy table in `/comments` is built from — the measurement any automatic action would have to be calibrated on first. A dangerous category at ≥ 70 % rings (🔴); the rest waits for the digest. The group's admins and your own comments are never reviewed. When the API is down you hear once, and once when it is back; a failure is «could not check», never «fine».
 - **Hygiene checklist** (`/security`): per account — 2FA and its kind, backup codes, recovery contacts, a unique password, the last password change; for Telegram, its own list — cloud password, its recovery email, only your own sessions, a unique password. A score out of 10 in every report, and a reminder at most once a month with what to fix. No network exposes this to third-party apps, so these are your own marks: **the bot never asks for a password.**
 
 ## Privacy
@@ -55,11 +55,11 @@ Everything else stays with you: follower history, the channel's joins, leaves, p
 
 ## Setup
 
-0. **Language.** `BOT_LANG=en` or `ru` (the default): every screen, report, alert and the `/` menu. The examples below show the Russian bot.
+0. **Language.** `BOT_LANG=en` or `ru` (the default): every screen, report, alert and the `/` menu, and the default time zone — UTC for `en`, Moscow for `ru` (see [Schedule](#schedule)). The examples below show the Russian bot.
 1. **Telegram (required).** Create a bot with [@BotFather](https://t.me/BotFather) → `BOT_TOKEN`, start it and send it `/start` right away: **the first person to do so becomes its owner**, and the bot answers nobody else. `ADMIN_CHAT_ID` (your user id, from [@userinfobot](https://t.me/userinfobot)) is optional: set it to pin the owner or to take the bot over; it wins over the stored one. To track a channel, make the bot an **admin** of it → `TELEGRAM_CHANNEL_ID`; as an admin it also sees who joins and leaves, every post and its reactions (the 📣 Channel screen).
 2. **YouTube (optional).** In [Google Cloud Console](https://console.cloud.google.com/) enable YouTube Data API v3 and create an API key → `YOUTUBE_API_KEY`; your channel id (`UC…`) → `YOUTUBE_CHANNEL_ID`.
 3. **Instagram (optional).** The account must be professional (Creator or Business: Settings → Account type in the app, free). On [developers.facebook.com](https://developers.facebook.com/) create an app with the **Instagram API** use case (Meta also asks for a business portfolio: free, no verification needed for your own account), open «API setup with Unified login», create the configuration from the template, add your account as an **Instagram Tester**, accept the invitation in Instagram (Settings → Website permissions → Tester invitations) and press **Generate token**. Your @username → `INSTAGRAM_USERNAME`, then send the bot `/igtoken <token>` — it checks that the token was granted for that account, deletes your message and keeps the token (or set `INSTAGRAM_ACCESS_TOKEN` in `.env`). The token does not expire; if Meta revokes it, the bot says so once and in every report until a new one arrives. This is the official Instagram API: the bot reads only its own account's public data (followers, name, bio, post count) and watches those for a hijack.
-4. **LinkedIn (optional).** Your profile URL → `LINKEDIN_PROFILE_URL`. Then either send the bot `/setcookie <li_at>` with the `li_at` cookie of a logged-in browser (DevTools → Application → Cookies → linkedin.com) — the bot checks it, deletes your message and watches the cookie's age: it lives about a year, after 330 days the bot reminds you to renew it, and a rejected cookie gets a message of its own — or set `LINKEDIN_LI_AT` in `.env`, or enter the number by hand with the «✏️ Enter LinkedIn count» button on the home screen (a number entered by hand is flagged ⚠️ in the report as due for an update after `LINKEDIN_STALE_DAYS` days, 7 by default). The first number read by cookie is not stored by itself: the profile page carries other profiles' counters too, so the bot shows what it read and asks you to check it against your profile page and confirm with `/linkedin N`.
+4. **LinkedIn (optional).** Your profile URL → `LINKEDIN_PROFILE_URL`. Then either send the bot `/setcookie <li_at>` with the `li_at` cookie of a logged-in browser (DevTools → Application → Cookies → linkedin.com) — the bot checks it, deletes your message and watches the cookie's age: it lives about a year, after 330 days the bot reminds you to renew it, and a rejected cookie gets a message of its own — or set `LINKEDIN_LI_AT` in `.env`, or enter the number by hand with the «✏️ Enter LinkedIn count» button on the home screen (a number entered by hand is flagged 🟠 in the report as due for an update after `LINKEDIN_STALE_DAYS` days, 7 by default). The first number read by cookie is not stored by itself: the profile page carries other profiles' counters too, so the bot shows what it read and asks you to check it against your profile page and confirm with `/linkedin N`.
 5. **Security emails (optional).** Deploy the [mail-worker](mail-worker/README.md) → `SECURITY_MAIL_URL`, `SECURITY_MAIL_TOKEN`, and set up forwarding in your mailbox.
 6. **Comments of the channel (optional).** An API key from [console.anthropic.com](https://console.anthropic.com/) → `ANTHROPIC_API_KEY`; add the bot to the channel's discussion group as an **admin with the rights to delete messages and ban members** (the group is found through the channel; `COMMENTS_CHAT_ID` names one explicitly). The model is `claude-opus-5-5` unless `COMMENTS_MODEL` says otherwise; `COMMENTS_DAILY_LIMIT` (300 by default, 0 = none) caps the checks per day, so a spam wave cannot run up the bill — the bot says once when the day's limit is reached. Switch it off any time in `/modules`.
 
@@ -166,13 +166,13 @@ entered by hand on 20.11
 🛡 Security: 7 of 10 — /security
 ```
 
-Problems come first («⚠️ Instagram rejected the token — send a new one via /igtoken»), a milestone crossed that day gets its own line («🎯 Telegram passed 1 000!»), and with «Short when unchanged» on, a week without changes is one line.
+Problems come first («🟠 Instagram rejected the token — send a new one via /igtoken»), a milestone crossed that day gets its own line («🎯 Telegram passed 1 000!»), and with «Short when unchanged» on, a week without changes is one line.
 
 ## Schedule
 
 Data is collected every day at the report time, and the report goes out on the report day(s). Time and days are in your time zone: pick it with the «🌍 Time zone» button in ⚙️ Settings or with `/settz`, and `/settime 09:00` means 09:00 on your clock, summer time included. Switching the zone keeps the report at the same moment and shows it on the new clock (08:00 UTC becomes 11:00 in Moscow).
 
-`REPORT_TZ`, `REPORT_HOUR`, `REPORT_MINUTE` and `REPORT_DOW` are the defaults until you change them in the bot: Saturday, 08:00 UTC (`REPORT_HOUR_UTC`, the hour's name before the zone setting, still works). A schedule saved by a version without the zone setting stays in UTC until you pick a zone. The date in the report's title, the 1st of the month for the digest and the Sunday of the backup follow your zone; the day-by-day follower history is kept on UTC days.
+`TIMEZONE`, `REPORT_HOUR`, `REPORT_MINUTE` and `REPORT_DOW` are the defaults until you change them in the bot: Saturday, 08:00. With `TIMEZONE` empty the zone follows the chat language — UTC for `BOT_LANG=en`, `Europe/Moscow` for `ru`. Older names still work: `REPORT_TZ` for `TIMEZONE` (read when `TIMEZONE` is empty), `REPORT_HOUR_UTC` for `REPORT_HOUR`. A schedule saved by a version without the zone setting stays in UTC until you pick a zone. The date in the report's title, the 1st of the month for the digest and the Sunday of the backup follow your zone; the day-by-day follower history is kept on UTC days.
 
 ## When it writes
 
@@ -180,8 +180,8 @@ Every message to you goes through one door (`bot/notifier.py`) with three priori
 
 | | Rings | Examples |
 |---|---|---|
-| **Critical** — 🚨 🔴 | yes, through quiet hours and `/mute` | a new admin or owner, a link in the description, a drop in videos or posts, a profile that stopped being readable; a new sign-in, a changed or reset password, a changed email or 2FA; a comment the group gets blocked for, at ≥ 70 % confidence |
-| **Normal** — 🟠 ⚠️ 🎯 📨 | no; waits during quiet hours and a mute | a changed title, description or avatar; a login code, an unrecognised mail; a drop in followers, a bot influx, a milestone; an expired cookie or rejected token, a failure streak, the mail worker down; a spam comment or a low-confidence card, the comment check down or back; a failed deploy; «🔄 The bot has been updated» |
+| **Critical** — 🔴 | yes, through quiet hours and `/mute` | looks like a hijack: a new admin or owner, a link in the description, a drop in videos or posts, a new sign-in, a changed or reset password, a changed email or 2FA; a profile that stopped being readable; the mail worker silent for ~30 min; a comment the group gets blocked for, at ≥ 70 % confidence |
+| **Normal** — 🟠 ✅ ℹ️ 🎯 | no; waits during quiet hours and a mute | a changed title, description or avatar, an admin removed; a login code, an unrecognised mail (ℹ️); a drop in followers, a bot influx, a milestone; an expired cookie, a rejected or missing token, a failure streak; a spam comment or a low-confidence card, the comment check down or back; a recovery (✅); a failed deploy; «🔄 The bot has been updated» |
 | **Digest** — 📊 | no; waits only during a mute | the weekly report and its chart, the monthly digest, the hygiene reminder, the backup, the Sunday vulnerabilities notice |
 
 - **Quiet hours** are off by default: ⚙️ Settings → 🔔 When to write, presets 23:00–08:00 and 00:00–09:00 in your time zone. The weekly report is a digest itself, so it still comes at its time.
@@ -189,6 +189,24 @@ Every message to you goes through one door (`bot/notifier.py`) with three priori
 - Under every alert and report: buttons to the screen where to look into it; under a 🟠 one, «⚙️ Stop sending these» switches that monitor off. In a digest the items share one row.
 - When the silence ends, what was held arrives as **one numbered digest** with the time of each item; a message with buttons or one too long for the digest comes on its own. Replies to your own taps and commands are not notifications and never wait.
 - «Silent when healthy» stays: nothing repeats until it changes, and a recovery is told once.
+
+### Icons
+
+One dictionary for alerts, screens, reports and ❓ Help (`LEVEL_ICONS` in `bot/monitors/__init__.py`), the same as TofsDevOps's. The icon says how urgent; the words say what happened.
+
+| Icon | Means | What the bot does |
+|---|---|---|
+| 🔴 | act now | rings, through quiet hours and `/mute` |
+| 🟠 | act, but not today | silent; at night and while muted it waits for the digest |
+| ✅ | fine · works again · on | |
+| ⚠️ | could not check | tries again by itself, raises no alarm |
+| ⏳ | waiting for the first check | |
+| ℹ️ | a fact, not a problem | |
+| ⬜ | off | a setting, a monitor |
+| ➖ | not connected | a network or an integration without its key |
+| ❓ | not marked | a checklist item without an answer |
+
+A likely hijack has no icon of its own: it is 🔴 with «looks like a hijack» in the headline. 🔴 here is a hijack sign (a new admin or owner, a link in the description, vanished videos or posts, a new sign-in, a changed password, email or 2FA), an unreadable profile, a silent mail worker and a comment the group gets blocked for; an expired cookie, a rejected or missing token, collection failures and a drop in followers are 🟠.
 
 ## Updates
 

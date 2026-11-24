@@ -15,6 +15,7 @@ from bot import platforms
 from bot.config import Config
 from bot.db import Database, utcnow
 from bot.i18n import t
+from bot.monitors import OK, UNMARKED, WARNING
 from bot.platforms.base import Platform
 
 # Past this age the password line turns into a recommendation. Not a forced
@@ -173,19 +174,19 @@ def chosen(item: Item, ans: dict[str, str]) -> Choice | None:
 
 
 def item_status(item: Item, ans: dict[str, str]) -> tuple[str, str]:
-    """(icon, answer) of one item: ✅ best answer, ⚠️ could be better, ❓ not marked."""
+    """(icon, answer) of one item: ✅ best answer, 🟠 could be better, ❓ not marked."""
     choice = chosen(item, ans)
     if choice is None:
-        return "❓", t("не отмечено")
-    return ("✅" if choice.points == item.best else "⚠️"), t(choice.button)
+        return UNMARKED, t("не отмечено")
+    return (OK if choice.points == item.best else WARNING), t(choice.button)
 
 
 def password_status(ans: dict[str, str], today: date) -> tuple[str, str]:
     age = password_age(ans, today)
     if age is None:
-        return "❓", t("не отмечено")
+        return UNMARKED, t("не отмечено")
     when = t("сегодня") if age == 0 else t("{age} дн. назад").format(age=age)
-    return ("⚠️" if age > PASSWORD_MAX_AGE_DAYS else "✅"), when
+    return (WARNING if age > PASSWORD_MAX_AGE_DAYS else OK), when
 
 
 def score(platform: Platform, ans: dict[str, str], today: date) -> int:

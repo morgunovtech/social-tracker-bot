@@ -516,7 +516,7 @@ async def save_schedule(
     db: Database, config: Config, *, dow: str | None = None, time: tuple[int, int] | None = None
 ) -> None:
     """Store the report day(s) and/or time together with the zone they are in,
-    so a REPORT_TZ changed later can't move a schedule already set."""
+    so a TIMEZONE changed later can't move a schedule already set."""
     tz = await get_report_tz(db, config)  # before the write: a stored schedule changes the answer
     if dow is not None:
         await db.set_setting("report_dow", dow)

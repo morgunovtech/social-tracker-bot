@@ -94,15 +94,26 @@ def test_a_new_zone_keeps_the_moment_as_it_is_today_across_dst():
     assert ui.shift_schedule("sat", 9, 0, berlin, utc, datetime(2026, 7, 15, tzinfo=UTC)) == ("sat", 7, 0)
 
 
+def test_esc_strips_direction_and_invisible_characters():
+    assert ui.esc("Ivan\u202e <b>\u200b") == "Ivan &lt;b&gt;"
+
+
+def test_the_legend_is_the_one_icon_dictionary():
+    legend = "\n".join(ui.icon_legend())
+    for icon in ("🔴", "🟠", "✅", "⚠️", "⏳", "ℹ️", "⬜", "➖", "❓"):
+        assert f"\n{icon} " in f"\n{legend}"
+    assert "🚨" not in legend and "похоже на взлом" in legend and "почтовый воркер" in legend
+
+
 async def test_security_screen_shows_accounts_advice_and_events(config, db):
     await hygiene.set_answer(db, "telegram", "2fa", "off")
-    await db.add_event("e1", "Google", "new_login", "🚨 Google: новый вход <в> аккаунт\n«Security alert»")
+    await db.add_event("e1", "Google", "new_login", "🔴 Google: новый вход <в> аккаунт\n«Security alert»")
     screen = await ui.security(db, config)
     assert screen.text.startswith("<b>🛡 Безопасность: 0 из 10</b>")
-    assert "⚠️ Telegram (аккаунт владельца канала) — 0 из 10" in screen.text
+    assert "🟠 Telegram (аккаунт владельца канала) — 0 из 10" in screen.text
     assert "❓ YouTube (Google-аккаунт канала) — не заполнено" in screen.text
     assert "Что сделать в первую очередь" in screen.text and "…и ещё" in screen.text
-    assert "🚨 Google: новый вход &lt;в&gt; аккаунт" in screen.text            # quoted mail is escaped
+    assert "🔴 Google: новый вход &lt;в&gt; аккаунт" in screen.text            # quoted mail is escaped
     assert "«Security alert»" not in screen.text
     assert set(buttons(screen.keyboard)) == {"sec:edit:telegram", "sec:edit:youtube", "sec:edit:linkedin", "cm", "home"}
 

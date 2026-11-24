@@ -13,7 +13,7 @@ The bot only reports. Nothing is deleted or banned without a tap: the
 owner's taps are the labels (confirmed / false alarm) that the accuracy
 table in /comments is built from, and that table is what any automatic
 action would later be calibrated on. A category the group is blocked for
-at high confidence rings (🚨); the rest is quiet (🟠) and waits for the
+at high confidence rings (🔴); the rest is quiet (🟠) and waits for the
 digest at night. Spam is reported quietly too — Defensy handles it.
 
 Failures are «could not check», never «fine»: when the API is down the
@@ -36,7 +36,7 @@ from bot.classifier import REFUSED, Sample, Verdict
 from bot.config import Config
 from bot.db import Database, utcnow
 from bot.i18n import t
-from bot.monitors import defang
+from bot.monitors import CRITICAL, WARNING, clean, defang
 from bot.notifier import Priority
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 MONITOR_ID = "comments"
 # Callback data of the card buttons: cm:<action>:<review id>.
 CALLBACK = callbacks.COMMENTS
-# A 🚨 card (rings through quiet hours) needs a blocked-for category at least
+# A 🔴 card (rings through quiet hours) needs a blocked-for category at least
 # this sure; anything flagged below is a 🟠 card.
 CRITICAL_CONFIDENCE = 70
 # The discussion group is looked up through the channel; how long the answer is kept.
@@ -255,7 +255,7 @@ def card(review: dict, channel_title: str = "", first_message: bool = False) -> 
     where, the text, why, what it means, the link; then its buttons."""
     category, confidence = review["category"], review["confidence"]
     dangerous = category in classifier.DANGEROUS
-    icon = "🚨" if dangerous and confidence >= CRITICAL_CONFIDENCE else "🟠"
+    icon = CRITICAL if dangerous and confidence >= CRITICAL_CONFIDENCE else WARNING
     label = t(LABELS.get(category, category))
     if category == REFUSED:
         head = t("{icon} Комментарии: {label}").format(icon=icon, label=label)
@@ -263,7 +263,7 @@ def card(review: dict, channel_title: str = "", first_message: bool = False) -> 
         head = t("{icon} Комментарии: {label} — уверенность {confidence}%").format(
             icon=icon, label=label, confidence=confidence
         )
-    who = [channel_title, defang(review["user_name"])]   # a display name can be a link too
+    who = [clean(channel_title), defang(review["user_name"])]   # a display name can be a link too
     if first_message:
         who.append(t("первое сообщение в группе"))
     if review["media"]:

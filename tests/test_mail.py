@@ -66,7 +66,7 @@ def test_lookalike_domain_is_not_trusted():
 
 def test_alert_text_has_advice_and_recovery_link():
     text, kind, network, platform_id = describe(_mail("no-reply@accounts.google.com", "New sign-in on Windows"))
-    assert text.startswith("🚨 Google: новый вход в аккаунт\n«New sign-in on Windows»")
+    assert text.startswith("🔴 Google: похоже на взлом — новый вход в аккаунт\n«New sign-in on Windows»")
     assert "https://g.co/recover" in text and platform_id == "youtube"
 
 
@@ -78,7 +78,12 @@ def test_links_in_the_subject_are_defanged():
 
 def test_unrecognized_mail_is_reported_plainly():
     text, kind, *_ = describe(_mail("news@linkedin.com", "5 people viewed your profile"))
-    assert kind is None and text.startswith("📨 Письмо без признаков тревоги: LinkedIn")
+    assert kind is None and text.startswith("ℹ️ Письмо без признаков тревоги: LinkedIn")
+
+
+def test_an_unknown_sender_domain_is_not_a_link():
+    text, kind, network, _ = describe(_mail("promo@win-prize.example", "Hello"))
+    assert network == "win-prize[.]example" and "win-prize.example" not in text
 
 
 def test_gmail_forwarding_confirmation_is_relayed():
@@ -133,7 +138,7 @@ async def test_alert_ack_and_no_duplicate_on_redelivery(bot, mail_config, db, wo
                              "subject": "Your password was changed", "text": ""})
     assert await _check(bot, mail_config, db) == 1
     assert worker["auth"][0] == "Bearer s3cret" and worker["acked"] == ["evt:1"]
-    assert bot.messages[0].startswith("🚨 LinkedIn: пароль изменён") and "/security" in bot.messages[0]
+    assert bot.messages[0].startswith("🔴 LinkedIn: похоже на взлом — пароль изменён") and "/security" in bot.messages[0]
     assert await db.get_setting("hygiene_linkedin_pwd") == utcnow().date().isoformat()
     (event,) = await db.recent_events()
     assert event["kind"] == "password_changed"
@@ -151,7 +156,7 @@ async def test_a_sign_in_rings_a_login_code_waits(bot, mail_config, db, worker):
         {"id": "evt:2", "from": "security@mail.instagram.com", "subject": "123456 is your Instagram code", "text": ""},
     ]
     assert await _check(bot, mail_config, db) == 2
-    assert bot.silent == [False] and bot.messages[0].startswith("🚨 Google: новый вход")
+    assert bot.silent == [False] and bot.messages[0].startswith("🔴 Google: похоже на взлом — новый вход")
     (held,) = await db.peek_notifications()
     assert held["text"].startswith("🟠 Instagram: пришёл код входа")
     assert sorted(worker["acked"]) == ["evt:1", "evt:2"]              # queued counts as handled
@@ -180,7 +185,9 @@ async def test_unreachable_worker_alerted_once_then_recovery(bot, mail_config, d
     worker["status"] = 500
     for _ in range(mail.UNREACHABLE_AFTER + 2):
         await _check(bot, mail_config, db)
-    assert len(bot.messages) == 1 and bot.messages[0].startswith("🟠 Почтовый воркер не отвечает")
+    assert len(bot.messages) == 1 and bot.messages[0].startswith("🔴 Почтовый воркер не отвечает")
+    # 🔴: while the worker is silent a hijack sign reaches nobody — the alert rings.
+    assert bot.silent == [False]
     worker["status"] = 200
     await _check(bot, mail_config, db)
     assert bot.messages[-1] == "✅ Почтовый воркер снова отвечает"

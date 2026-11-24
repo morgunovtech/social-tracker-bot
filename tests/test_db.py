@@ -131,8 +131,8 @@ async def test_restore_rejects_foreign_files(db, tmp_path):
 
 
 async def test_security_events_dedup_by_uid(db):
-    assert await db.add_event("mail:1", "Google", "new_login", "🚨 Google: новый вход")
-    assert not await db.add_event("mail:1", "Google", "new_login", "🚨 Google: новый вход")
+    assert await db.add_event("mail:1", "Google", "new_login", "🔴 Google: новый вход")
+    assert not await db.add_event("mail:1", "Google", "new_login", "🔴 Google: новый вход")
     await db.add_event("mail:2", "LinkedIn", "login_code", "🟠 LinkedIn: код входа")
     assert [e["uid"] for e in await db.recent_events()] == ["mail:2", "mail:1"]
 

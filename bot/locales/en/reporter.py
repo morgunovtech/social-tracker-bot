@@ -9,13 +9,13 @@ STRINGS: dict[str, str] = {
     "{delta} за неделю": "{delta} this week",
     "{delta} за месяц": "{delta} this month",
     "📊 Подписчики · {date}": "📊 Followers · {date}",
-    "⚠️ LinkedIn cookie истёк — обнови через /setcookie": "⚠️ The LinkedIn cookie has expired — renew it via /setcookie",
-    "⏰ LinkedIn cookie живёт уже {age} дн. — пора обновить: /setcookie":
-        "⏰ The LinkedIn cookie is {age} days old — time to renew it: /setcookie",
-    "⚠️ Instagram подключён, но токена нет — пришли его через /igtoken":
-        "⚠️ Instagram is connected but there is no token — send it with /igtoken",
-    "⚠️ Instagram отклонил токен — пришли новый через /igtoken":
-        "⚠️ Instagram rejected the token — send a new one via /igtoken",
+    "🟠 LinkedIn cookie истёк — обнови через /setcookie": "🟠 The LinkedIn cookie has expired — renew it via /setcookie",
+    "🟠 LinkedIn cookie живёт уже {age} дн. — пора обновить: /setcookie":
+        "🟠 The LinkedIn cookie is {age} days old — time to renew it: /setcookie",
+    "🟠 Instagram подключён, но токена нет — пришли его через /igtoken":
+        "🟠 Instagram is connected but there is no token — send it with /igtoken",
+    "🟠 Instagram отклонил токен — пришли новый через /igtoken":
+        "🟠 Instagram rejected the token — send a new one via /igtoken",
     "{label} — пока нет данных: число вводится вручную": "{label} — no data yet: the number is entered by hand",
     "{label} — по cookie получено {count}: первое значение подтверди вручную — /linkedin {raw}": (
         "{label} — the cookie read {count}: confirm the first value by hand — /linkedin {raw}"
@@ -28,9 +28,9 @@ STRINGS: dict[str, str] = {
         "⚡ {label}: growing {ratio}× faster than its monthly average",
     "🐌 {label}: рост замедлился — {rate} в неделю против обычных ~{avg:.0f}":
         "🐌 {label}: growth has slowed — {rate} a week against the usual ~{avg:.0f}",
-    "⚠️ введено вручную {date} — пора обновить": "⚠️ entered by hand on {date} — time to update it",
+    "🟠 введено вручную {date} — пора обновить": "🟠 entered by hand on {date} — time to update it",
     "введено вручную {date}": "entered by hand on {date}",
-    "⚠️ данные от {date} — свежие собрать не удаётся": "⚠️ data from {date} — fresh data cannot be collected",
+    "🟠 данные от {date} — свежие собрать не удаётся": "🟠 data from {date} — fresh data cannot be collected",
     "⚠️ сегодня собрать не удалось": "⚠️ today's collection failed",
     "Данных пока нет — нажми «🔄 Обновить данные» или отправь /now.":
         'No data yet — tap "🔄 Refresh data" or send /now.',

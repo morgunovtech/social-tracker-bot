@@ -198,7 +198,7 @@ async def test_a_dangerous_comment_becomes_a_ringing_card(group_bot, config, db,
     review_id = await comments.review(group_bot, config, db, watch, message("Есть мефф, пиши в лс t.me/shop"))
     assert review_id == 1
     (text,) = group_bot.messages
-    assert text.startswith("🚨 Комментарии: наркотики — уверенность 92%")
+    assert text.startswith("🔴 Комментарии: наркотики — уверенность 92%")
     assert "Обсуждение · Иван (@ivan) · первое сообщение в группе" in text
     assert "«Есть мефф, пиши в лс t[.]me/shop»" in text                                   # defanged
     assert "Почему: предложение купить с контактом" in text
@@ -410,7 +410,7 @@ async def test_group_traffic_never_reaches_the_owner_handlers(group_bot, config,
     with pytest.raises(ApplicationHandlerStop):
         await handlers.on_group_update(group_update(message("x")), context)
     await asyncio.gather(*context.application.tasks)
-    assert len(group_bot.messages) == 1 and group_bot.messages[0].startswith("🚨 Комментарии")
+    assert len(group_bot.messages) == 1 and group_bot.messages[0].startswith("🔴 Комментарии")
 
     with pytest.raises(ApplicationHandlerStop):                                # a channel post: stopped, not reviewed
         await handlers.on_group_update(group_update(None, "channel"), context)
@@ -429,7 +429,7 @@ async def test_card_buttons_edit_the_card_in_place(group_bot, config, db, verdic
     assert group_bot.banned == [(GROUP, 5)]
     assert update.callback_query.answers[0]["text"] == "Удалено, автор забанен"
     (edited,) = update.callback_query.edits
-    assert edited.startswith("🚨 Комментарии: наркотики") and "🔨 Удалено, автор забанен" in edited
+    assert edited.startswith("🔴 Комментарии: наркотики") and "🔨 Удалено, автор забанен" in edited
     assert buttons(update.callback_query.markups[0]) == {f"cm:unban:{rid}": "↩️ Разбанить"}
 
     stale = make_update(callback="cm:del:777")
