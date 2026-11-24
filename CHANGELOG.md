@@ -2,7 +2,9 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
-## Unreleased
+## 1.8.1 — 2026-11-24
+
+The reputation report says, under its AI-assistant numbers, that they are a count by user agent and not the Cloudflare dashboard's «AI Answer retrievals»; Bing stays out of this bot.
 
 **Changed**
 - The report's AI-assistant line says what it counts, every week, under the numbers: «подсчёт запросов по user-agent ИИ-ассистентов в Cloudflare, не «AI Answer retrievals» из его панели». The dashboard's metric is not in the API; the screen and the README said so, the report itself did not.
