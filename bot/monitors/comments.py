@@ -34,7 +34,7 @@ from telegram.error import BadRequest, Forbidden, TelegramError
 from bot import callbacks, classifier, humanize, monitors, notifier
 from bot.classifier import REFUSED, Sample, Verdict
 from bot.config import Config
-from bot.db import Database, parse_utc, utcnow
+from bot.db import Database, parse_utc, utc_stamp, utcnow
 from bot.i18n import t
 from bot.monitors import CRITICAL, WARNING, clean, defang
 from bot.notifier import Priority
@@ -112,6 +112,7 @@ class Comment:
     media: str
     forwarded: bool
     image_file_id: str | None
+    edited_at: datetime | None = None   # Telegram's edit_date: when this version of the text was written
 
 
 # ── The group and its admins ────────────────────────────────────────────────
@@ -201,6 +202,7 @@ def extract(message: Message) -> Comment | None:
         media=media,
         forwarded=message.forward_origin is not None,
         image_file_id=file_id,
+        edited_at=getattr(message, "edit_date", None),
     )
 
 
@@ -379,12 +381,17 @@ async def review(
     if comment.user_id == config.admin_chat_id or comment.user_id in await admin_ids(bot, watch):
         return None
     before = await db.get_review_by_message(comment.chat_id, comment.message_id)
-    if before is not None and (not edited or before["action"] in ("deleted", "banned")):
-        return None   # Telegram re-delivered the update, or the comment is gone
+    if before is not None:
+        if not edited or before["action"] in ("deleted", "banned"):
+            return None   # Telegram re-delivered the update, or the comment is gone
+        if comment.edited_at is not None and before["edited_at"] == utc_stamp(comment.edited_at):
+            return None   # this very edit was looked at already: Telegram re-delivered it
     if await over_daily_limit(bot, config, db):
         return None
 
-    first_message = await db.count_author_reviews(comment.chat_id, comment.user_id) == 0
+    # The author's stored rows include this comment itself once it has one:
+    # an edit of their first comment is still their first message.
+    first_message = await db.count_author_reviews(comment.chat_id, comment.user_id) == (0 if before is None else 1)
     async with watch.semaphore:
         image = await fetch_image(bot, comment.image_file_id) if comment.image_file_id else None
         sample = Sample(
@@ -421,10 +428,10 @@ async def record_and_report(
     if before is not None:
         review_id = before["id"]
         if not verdict.flagged:
-            await db.touch_review(review_id)
+            await db.touch_review(review_id, comment.edited_at)
             return None
         await db.rereview(review_id, stored_name, stored_text, comment.media, verdict.category, verdict.confidence,
-                          verdict.reason)
+                          verdict.reason, comment.edited_at)
     else:
         link = message_link(comment.chat_id, comment.message_id, watch.group_username)
         review_id = await db.add_review(
@@ -432,7 +439,8 @@ async def record_and_report(
             link, verdict.category, verdict.confidence, verdict.reason,
         )
         if review_id is not None and edited:
-            await db.touch_review(review_id)    # posted before the bot looked: the card still says it was edited
+            # Posted before the bot looked: the card still says it was edited.
+            await db.touch_review(review_id, comment.edited_at)
         if review_id is None or not verdict.flagged:
             return None
     text, markup = card(await db.get_review(review_id), watch.group_title, first_message)

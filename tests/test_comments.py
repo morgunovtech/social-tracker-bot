@@ -7,6 +7,7 @@ import asyncio
 import dataclasses
 import json
 import re
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import anthropic
@@ -61,10 +62,11 @@ def verdicts(monkeypatch):
 def message(
     text: str = "", user_id: int = 5, chat_id: int = GROUP, message_id: int = 7, *, photo: list | None = None,
     video=None, is_bot: bool = False, sender_chat=None, automatic: bool = False, forwarded: bool = False,
-    username: str | None = "ivan", caption: str = "",
+    username: str | None = "ivan", caption: str = "", edit_date=None,
 ):
     return SimpleNamespace(
         message_id=message_id,
+        edit_date=edit_date,
         chat=SimpleNamespace(id=chat_id, type="supergroup"),
         from_user=SimpleNamespace(id=user_id, is_bot=is_bot, full_name="Иван", username=username),
         sender_chat=sender_chat,
@@ -482,6 +484,37 @@ async def test_an_edit_of_a_deleted_comment_is_not_reviewed_and_a_fine_edit_keep
     await db.update_review(1, action="deleted", label="confirmed")
     assert await comments.review(group_bot, config, db, watch, message("мефф снова"), edited=True) is None
     assert len(verdicts.samples) == 2                                    # the last edit was not sent to the model
+
+
+async def test_the_same_edit_delivered_again_is_not_a_second_card(group_bot, config, db, verdicts):
+    verdicts.queue += [Verdict("ok", 97, "обычный комментарий"), dangerous(), dangerous()]
+    watch = comments.Watch()
+    at = datetime(2026, 11, 24, 10, 0, tzinfo=UTC)
+    await comments.review(group_bot, config, db, watch, message("Спасибо за пост"))
+    edit = message("Есть мефф, пиши в лс", edit_date=at)
+    assert await comments.review(group_bot, config, db, watch, edit, edited=True) == 1
+    # The bot restarted before it confirmed the update: Telegram sends the same edit again.
+    assert await comments.review(group_bot, config, db, watch, edit, edited=True) is None
+    assert len(group_bot.messages) == 1 and len(verdicts.samples) == 2       # one card, one call to the model
+    assert (await db.get_review(1))["edited_at"] == "2026-11-24 10:00:00"
+    # A later edit is a new look.
+    later = message("Есть мефф, пиши в лс, недорого", edit_date=at + timedelta(minutes=5))
+    assert await comments.review(group_bot, config, db, watch, later, edited=True) == 1
+    assert len(group_bot.messages) == 2 and (await db.get_review(1))["edited_at"] == "2026-11-24 10:05:00"
+
+
+async def test_an_edited_first_comment_is_still_the_authors_first(group_bot, config, db, verdicts):
+    verdicts.queue += [Verdict("ok", 97, "обычный комментарий"), dangerous(), dangerous()]
+    watch = comments.Watch()
+    await comments.review(group_bot, config, db, watch, message("Спасибо за пост"))
+    at = datetime(2026, 11, 24, 10, 0, tzinfo=UTC)
+    await comments.review(group_bot, config, db, watch, message("мефф", edit_date=at), edited=True)
+    assert verdicts.samples[1].first_message is True                        # the model is told so…
+    assert "первое сообщение в группе" in group_bot.messages[0]            # …and so is the owner
+    # The author's second comment is not a first, edited or not.
+    await comments.review(group_bot, config, db, watch, message("мефф", message_id=8, edit_date=at), edited=True)
+    assert verdicts.samples[2].first_message is False
+    assert "первое сообщение в группе" not in group_bot.messages[1]
 
 
 async def test_a_card_telegram_did_not_take_waits_in_the_queue(group_bot, config, db, verdicts):

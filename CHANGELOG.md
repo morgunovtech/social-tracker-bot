@@ -16,6 +16,7 @@ The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists 
 - A comment card that Telegram did not take — a flood limit in a spam wave, a network error — was lost: the review was stored first, and Telegram does not send the comment again. Now it waits in the queue and comes with the next minute's flush, whole, with the time above it (`notifier.send(hold_on_error=True)`).
 - A restored Sunday backup brought back the date the LinkedIn cookie (and the Instagram token) was set without the cookie itself, which the backup leaves out: the LinkedIn screen then aged a cookie from `.env` by the old one's date. A secret's dates now come back only together with the secret.
 - `/history 7` showed eight days: «the last N days» counted today plus N days back. It is N days now, today included, in the tables, the chart and the bot-inflow check.
+- An edit Telegram delivered twice (the bot restarted before it confirmed the update) was classified and carded twice. The time of the edit is kept with the review now, and an edit the bot has already looked at is skipped; a later edit is a new look. And an edit of an author's first comment still tells the model and the card «first message in the group»: the stored row of the comment itself no longer counts as an earlier message.
 
 ## 1.6.0 — 2026-11-24
 

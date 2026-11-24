@@ -16,6 +16,12 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def utc_stamp(dt: datetime) -> str:
+    """A moment as the tables keep it: 'YYYY-MM-DD HH:MM:SS' in UTC, the
+    format of CURRENT_TIMESTAMP, so stored and computed stamps compare."""
+    return dt.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def parse_utc(ts: str) -> datetime:
     """Parse an ISO/SQLite timestamp; naive values are assumed to be UTC."""
     dt = datetime.fromisoformat(ts)
@@ -508,29 +514,32 @@ class Database:
 
     async def rereview(
         self, review_id: int, user_name: str, text: str, media: str, category: str, confidence: int, reason: str,
+        edited_at: datetime | None = None,
     ) -> None:
         """An edited comment classified again: the new verdict replaces the
         old one, and the owner's action and label on the old text go with it —
         the card is about what the comment says now. reviewed_at moves, so the
-        edit counts toward the daily limit."""
+        edit counts toward the daily limit. edited_at is Telegram's time of the
+        edit (now when unknown): the same edit delivered again is told by it."""
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(
                 """
                 UPDATE comment_reviews SET user_name = ?, text = ?, media = ?, category = ?, confidence = ?,
                     reason = ?, action = '', label = '', acted_at = NULL,
-                    reviewed_at = CURRENT_TIMESTAMP, edited_at = CURRENT_TIMESTAMP
+                    reviewed_at = CURRENT_TIMESTAMP, edited_at = ?
                 WHERE id = ?
                 """,
-                (user_name, text, media, category, confidence, reason, review_id),
+                (user_name, text, media, category, confidence, reason, utc_stamp(edited_at or utcnow()), review_id),
             )
             await db.commit()
 
-    async def touch_review(self, review_id: int) -> None:
-        """An edit the model called fine still counts toward the daily limit."""
+    async def touch_review(self, review_id: int, edited_at: datetime | None = None) -> None:
+        """An edit the model called fine still counts toward the daily limit,
+        and is remembered by its time like a flagged one (see rereview)."""
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(
-                "UPDATE comment_reviews SET reviewed_at = CURRENT_TIMESTAMP, edited_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (review_id,),
+                "UPDATE comment_reviews SET reviewed_at = CURRENT_TIMESTAMP, edited_at = ? WHERE id = ?",
+                (utc_stamp(edited_at or utcnow()), review_id),
             )
             await db.commit()
 
