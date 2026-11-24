@@ -94,6 +94,7 @@ class Watch:
     group_id: int | None = None
     group_title: str = ""
     group_username: str = ""
+    channel_id: int | None = None   # the channel the group belongs to: its own voice is not reviewed
     group_checked_at: datetime | None = None
     admins: set[int] = field(default_factory=set)
     admins_at: datetime | None = None
@@ -106,13 +107,14 @@ class Comment:
 
     chat_id: int
     message_id: int
-    user_id: int
+    user_id: int | None               # None for a comment written under a channel's name
     user_name: str
     text: str
     media: str
     forwarded: bool
     image_file_id: str | None
     edited_at: datetime | None = None   # Telegram's edit_date: when this version of the text was written
+    sender_chat_id: int | None = None   # the channel that wrote it, when a channel did
 
 
 # ── The group and its admins ────────────────────────────────────────────────
@@ -136,6 +138,7 @@ async def group_id(bot: Bot, config: Config, watch: Watch) -> int | None:
             group = await bot.get_chat(chat_id=found)
             watch.group_title = group.title or ""
             watch.group_username = group.username or ""
+            watch.channel_id = getattr(group, "linked_chat_id", None)
     except TelegramError:
         logger.warning("Discussion group lookup failed", exc_info=True)
         return watch.group_id
@@ -169,13 +172,30 @@ def _author(message: Message) -> str:
     return f"{name} (@{user.username})" if user.username else name
 
 
-def extract(message: Message) -> Comment | None:
+def _chat_name(chat) -> str:
+    name = chat.title or str(chat.id)
+    return f"📣 {name} (@{chat.username})" if chat.username else f"📣 {name}"
+
+
+def extract(message: Message, channel_id: int | None = None) -> Comment | None:
     """The parts of a group message the review needs; None for a message that
-    is not a comment by a person: the channel's own posts, anonymous admins,
-    other bots, service messages, voice notes and the like."""
-    user = message.from_user
-    if user is None or user.is_bot or message.sender_chat is not None or message.is_automatic_forward:
+    is not a comment to review: the channel's own posts and its owner speaking
+    as the channel (channel_id — the group's linked channel), anonymous admins,
+    other bots, service messages, voice notes and the like. A comment written
+    under another channel's name — the usual face of a spam network — is a
+    comment with that channel as its author (banned with ban_chat_sender_chat)."""
+    if message.is_automatic_forward:
         return None
+    sender = message.sender_chat
+    if sender is not None:
+        if sender.id == message.chat.id or (channel_id is not None and sender.id == channel_id):
+            return None
+        user_id, sender_chat_id, name = None, sender.id, _chat_name(sender)
+    else:
+        user = message.from_user
+        if user is None or user.is_bot:
+            return None
+        user_id, sender_chat_id, name = user.id, None, _author(message)
     text = message.text or message.caption or ""
     media, file_id = "", None
     if message.photo:
@@ -196,13 +216,14 @@ def extract(message: Message) -> Comment | None:
     return Comment(
         chat_id=message.chat.id,
         message_id=message.message_id,
-        user_id=user.id,
-        user_name=_author(message),
+        user_id=user_id,
+        user_name=name,
         text=text,
         media=media,
         forwarded=message.forward_origin is not None,
         image_file_id=file_id,
         edited_at=getattr(message, "edit_date", None),
+        sender_chat_id=sender_chat_id,
     )
 
 
@@ -365,20 +386,22 @@ async def review(
 ) -> int | None:
     """Look at one group message; returns the review id when a card was sent.
 
-    Skips what is not a comment by a person, a group other than the channel's
+    Skips what is not a comment (see extract), a group other than the channel's
     own, and the group's admins. Every classified comment is recorded; only a
     flagged one becomes a card. edited — Telegram's edited_message: a comment
     that was fine when posted and is a drug shop after an edit is looked at
     again; one the owner already deleted or banned is not."""
     if not await monitors.is_on(db, config, MONITOR_ID):
         return None
-    comment = extract(message)
+    group = await group_id(bot, config, watch)
+    if group is None or message.chat.id != group:
+        return None
+    comment = extract(message, watch.channel_id)
     if comment is None:
         return None
-    group = await group_id(bot, config, watch)
-    if group is None or comment.chat_id != group:
-        return None
-    if comment.user_id == config.admin_chat_id or comment.user_id in await admin_ids(bot, watch):
+    if comment.user_id is not None and (
+        comment.user_id == config.admin_chat_id or comment.user_id in await admin_ids(bot, watch)
+    ):
         return None
     before = await db.get_review_by_message(comment.chat_id, comment.message_id)
     if before is not None:
@@ -391,7 +414,9 @@ async def review(
 
     # The author's stored rows include this comment itself once it has one:
     # an edit of their first comment is still their first message.
-    first_message = await db.count_author_reviews(comment.chat_id, comment.user_id) == (0 if before is None else 1)
+    first_message = await db.count_author_reviews(
+        comment.chat_id, comment.user_id, comment.sender_chat_id
+    ) == (0 if before is None else 1)
     async with watch.semaphore:
         image = await fetch_image(bot, comment.image_file_id) if comment.image_file_id else None
         sample = Sample(
@@ -436,7 +461,7 @@ async def record_and_report(
         link = message_link(comment.chat_id, comment.message_id, watch.group_username)
         review_id = await db.add_review(
             comment.chat_id, comment.message_id, comment.user_id, stored_name, stored_text, comment.media,
-            link, verdict.category, verdict.confidence, verdict.reason,
+            link, verdict.category, verdict.confidence, verdict.reason, sender_chat_id=comment.sender_chat_id,
         )
         if review_id is not None and edited:
             # Posted before the bot looked: the card still says it was edited.
@@ -493,11 +518,15 @@ async def act(bot: Bot, db: Database, review_id: int, action: str) -> tuple[dict
         await db.update_review(review_id, action="deleted", label="confirmed")
         note = t("Удалено")
     elif action == "ban":
-        if review["user_id"] is None:
-            return review, t("Автор неизвестен")
         try:
-            # revoke_messages drops everything the author wrote in the group, this comment included.
-            await bot.ban_chat_member(chat_id=review["chat_id"], user_id=review["user_id"], revoke_messages=True)
+            if review.get("sender_chat_id"):
+                # Written under a channel's name: the channel is banned from the group; the comment goes below.
+                await bot.ban_chat_sender_chat(chat_id=review["chat_id"], sender_chat_id=review["sender_chat_id"])
+            elif review["user_id"] is None:
+                return review, t("Автор неизвестен")
+            else:
+                # revoke_messages drops everything the author wrote in the group, this comment included.
+                await bot.ban_chat_member(chat_id=review["chat_id"], user_id=review["user_id"], revoke_messages=True)
         except TelegramError as e:
             return review, _rights_note(e)
         await _delete(bot, review)
@@ -505,7 +534,10 @@ async def act(bot: Bot, db: Database, review_id: int, action: str) -> tuple[dict
         note = t("Удалено, автор забанен")
     elif action == "unban":
         try:
-            await bot.unban_chat_member(chat_id=review["chat_id"], user_id=review["user_id"], only_if_banned=True)
+            if review.get("sender_chat_id"):
+                await bot.unban_chat_sender_chat(chat_id=review["chat_id"], sender_chat_id=review["sender_chat_id"])
+            else:
+                await bot.unban_chat_member(chat_id=review["chat_id"], user_id=review["user_id"], only_if_banned=True)
         except TelegramError as e:
             return review, _rights_note(e)
         await db.update_review(review_id, action="unbanned")

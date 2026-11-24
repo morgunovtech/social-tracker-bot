@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS comment_reviews (
     chat_id INTEGER NOT NULL,
     message_id INTEGER NOT NULL,
     user_id INTEGER,
+    sender_chat_id INTEGER,
     user_name TEXT NOT NULL DEFAULT '',
     text TEXT NOT NULL DEFAULT '',
     media TEXT NOT NULL DEFAULT '',
@@ -213,6 +214,8 @@ class Database:
             reviews = {row[1] for row in await (await db.execute("PRAGMA table_info(comment_reviews)")).fetchall()}
             if "edited_at" not in reviews:
                 await db.execute("ALTER TABLE comment_reviews ADD COLUMN edited_at TIMESTAMP")
+            if "sender_chat_id" not in reviews:
+                await db.execute("ALTER TABLE comment_reviews ADD COLUMN sender_chat_id INTEGER")
             await db.execute(_CREATE_CHANNEL_EVENTS)
             await db.execute(_CREATE_CHANNEL_POSTS)
             await db.commit()
@@ -485,18 +488,21 @@ class Database:
 
     async def add_review(
         self, chat_id: int, message_id: int, user_id: int | None, user_name: str, text: str, media: str,
-        link: str, category: str, confidence: int, reason: str,
+        link: str, category: str, confidence: int, reason: str, sender_chat_id: int | None = None,
     ) -> int | None:
         """Record a classified comment; None when this message is already recorded
-        (Telegram re-delivered the update)."""
+        (Telegram re-delivered the update). sender_chat_id: the channel the
+        comment was written as, instead of a user_id."""
         async with aiosqlite.connect(self._db_path) as db:
             cursor = await db.execute(
                 """
                 INSERT OR IGNORE INTO comment_reviews
-                    (chat_id, message_id, user_id, user_name, text, media, link, category, confidence, reason)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (chat_id, message_id, user_id, sender_chat_id, user_name, text, media, link, category,
+                     confidence, reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (chat_id, message_id, user_id, user_name, text, media, link, category, confidence, reason),
+                (chat_id, message_id, user_id, sender_chat_id, user_name, text, media, link, category,
+                 confidence, reason),
             )
             await db.commit()
             return cursor.lastrowid if cursor.rowcount == 1 else None
@@ -597,11 +603,13 @@ class Database:
             "pending_notifications": held.rowcount,
         }
 
-    async def count_author_reviews(self, chat_id: int, user_id: int) -> int:
-        """How many messages of this author the bot has already seen in the group."""
+    async def count_author_reviews(self, chat_id: int, user_id: int | None, sender_chat_id: int | None = None) -> int:
+        """How many messages of this author the bot has already seen in the
+        group: a person by user_id, a channel writing as itself by sender_chat_id."""
+        column, author = ("sender_chat_id", sender_chat_id) if user_id is None else ("user_id", user_id)
         async with aiosqlite.connect(self._db_path) as db:
             return await _scalar(
-                db, "SELECT COUNT(*) FROM comment_reviews WHERE chat_id = ? AND user_id = ?", (chat_id, user_id)
+                db, f"SELECT COUNT(*) FROM comment_reviews WHERE chat_id = ? AND {column} = ?", (chat_id, author)
             )
 
     # --- life of the channel (bot/monitors/channel.py) ----------------------

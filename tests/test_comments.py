@@ -25,6 +25,8 @@ CHANNEL = "@test_channel"
 GROUP = -1001234567890
 OTHER_GROUP = -1009999999999
 ADMIN_OF_GROUP = 300
+CHANNEL_ID = -1001000000001                       # the channel the group is linked to
+SPAM_CHANNEL = SimpleNamespace(id=-1007777777777, title="Крипто-сигналы", username="cryptosignals", type="channel")
 
 
 @pytest.fixture
@@ -35,7 +37,7 @@ def config(tmp_path) -> Config:
 @pytest.fixture
 def group_bot(bot):
     bot.chats[CHANNEL] = SimpleNamespace(linked_chat_id=GROUP)
-    bot.chats[GROUP] = SimpleNamespace(title="Обсуждение", username=None)
+    bot.chats[GROUP] = SimpleNamespace(title="Обсуждение", username=None, linked_chat_id=CHANNEL_ID)
     bot.admins = [SimpleNamespace(user=SimpleNamespace(id=ADMIN_OF_GROUP))]
     return bot
 
@@ -152,7 +154,12 @@ def test_the_sdk_accepts_what_classify_sends():
 
 def test_extract_skips_what_is_not_a_person_commenting():
     assert comments.extract(message("hi", is_bot=True)) is None
-    assert comments.extract(message("hi", sender_chat=SimpleNamespace(id=1))) is None      # the channel or an anonymous admin
+    assert comments.extract(message("hi", sender_chat=SimpleNamespace(id=GROUP), is_bot=True)) is None   # an anonymous admin
+    owner = message("hi", sender_chat=SimpleNamespace(id=CHANNEL_ID), is_bot=True)
+    assert comments.extract(owner, CHANNEL_ID) is None                                     # the owner, as the channel
+    as_channel = comments.extract(message("buy", sender_chat=SPAM_CHANNEL, is_bot=True), CHANNEL_ID)
+    assert as_channel.user_id is None and as_channel.sender_chat_id == SPAM_CHANNEL.id   # another channel: reviewed
+    assert as_channel.user_name == "📣 Крипто-сигналы (@cryptosignals)"
     assert comments.extract(message("post", automatic=True)) is None
     assert comments.extract(message("")) is None                                           # a poll, a contact, a voice note
     comment = comments.extract(message("Привет", forwarded=True))
@@ -289,6 +296,33 @@ async def test_who_is_not_reviewed(group_bot, config, db, verdicts):
     await monitors.toggle(db, "comments")
     assert verdicts.samples == [] and group_bot.messages == []
     assert not await monitors.is_on(db, dataclasses.replace(config, anthropic_api_key=None), "comments")
+
+
+async def test_a_comment_written_as_a_channel_is_reviewed_and_the_channel_banned(group_bot, config, db, verdicts):
+    verdicts.queue += [dangerous(), dangerous()]
+    watch = comments.Watch()
+    # The owner's own channel speaking in its group and an anonymous admin are not reviewed.
+    own = message("x", sender_chat=SimpleNamespace(id=CHANNEL_ID), is_bot=True)
+    assert await comments.review(group_bot, config, db, watch, own) is None
+    anonymous = message("x", sender_chat=SimpleNamespace(id=GROUP), is_bot=True)
+    assert await comments.review(group_bot, config, db, watch, anonymous) is None
+    assert verdicts.samples == [] and watch.channel_id == CHANNEL_ID
+
+    rid = await comments.review(group_bot, config, db, watch, message("удвою крипту", sender_chat=SPAM_CHANNEL, is_bot=True))
+    assert rid == 1 and verdicts.samples[0].first_message is True
+    (text,) = group_bot.messages
+    assert "📣 Крипто-сигналы (@cryptosignals)" in text and "первое сообщение в группе" in text
+
+    review, note = await comments.act(group_bot, db, rid, "ban")
+    assert note == "Удалено, автор забанен" and group_bot.banned_chats == [(GROUP, SPAM_CHANNEL.id)]
+    assert group_bot.banned == [] and group_bot.deleted == [(GROUP, 7)] and review["action"] == "banned"
+    review, note = await comments.act(group_bot, db, rid, "unban")
+    assert note == "Бан снят" and group_bot.unbanned_chats == [(GROUP, SPAM_CHANNEL.id)] and group_bot.unbanned == []
+
+    # The channel's next comment is not a first one.
+    again = message("ещё раз", message_id=8, sender_chat=SPAM_CHANNEL, is_bot=True)
+    assert await comments.review(group_bot, config, db, watch, again) == 2
+    assert verdicts.samples[1].first_message is False
 
 
 async def test_a_redelivered_update_is_not_reviewed_twice(group_bot, config, db, verdicts):

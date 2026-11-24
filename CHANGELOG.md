@@ -15,6 +15,10 @@ The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists 
 **Changed**
 - Security mail from Cloudflare is not read any more (1.7.0 added it): new logins and new API tokens on the Cloudflare account are TofsDevOps's — it reads the account's audit log through the API (TofsDevOps 3.2.0), which is more reliable than mail, and a second alert from here would bring each one twice (the owner's `BOT_PRINCIPLES.md`, «Кто за что отвечает»). `noreply@notify.cloudflare.com` is gone from `SENDERS` and from the forwarding filter in `mail-worker/README.md`; a Cloudflare mail forwarded by hand is an «ℹ️ письмо без признаков тревоги».
 
+**Fixed** (the code review of 2026-11-24)
+- A comment written under a channel's name — how a spam network usually speaks in a discussion group — was never reviewed: Telegram shows it from the service account `Channel_Bot`, and the monitor skipped every message with a `sender_chat`. Now only the group's own anonymous admins and the owner's channel are skipped; another channel's comment is classified like any other, the card names the channel (📣), and 🔨 bans the channel from the group (`ban_chat_sender_chat`). New column `comment_reviews.sender_chat_id`, added at start to an older database.
+- The «🔄 Бот обновился» notice was lost when Telegram did not take it in the first seconds after a deploy: the snapshot of versions was saved before the send, so the next start saw no change. The snapshot is saved only once the notice went out.
+
 ## 1.7.0 — 2026-11-24
 
 The gaps found after the day's cleanup, closed: the bot now watches what it sends out by itself, tells once when an update moved how it behaves (and tells 1.5.0's silent move of the report to 04:00 Moscow), follows the links already in the profiles every week, and reads the security mail of the accounts that hold the products and the domain — GitHub, Cloudflare, Microsoft, Yandex, a new owner of the site in Search Console. Plus the fixes from the code review of 2026-11-24.
