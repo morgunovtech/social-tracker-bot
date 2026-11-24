@@ -19,7 +19,8 @@ which priority:
               posts; or the profile stopped being readable (deleted, hidden,
               the bot lost its rights); security emails of a critical kind
               («похоже на взлом»: a new sign-in, a changed or reset password,
-              a changed email or 2FA); the mail worker silent for ~30 min; a
+              a changed email, phone or 2FA, a new token, key or app, a new
+              owner of the site in Search Console); the mail worker silent for ~30 min; a
               comment the group is blocked for, at ≥ 70 % confidence; and the
               ✅ after a 🔴 outage — the profile readable again, the mail
               worker back (BOT_PRINCIPLES §1: a recovery after a real fall rings).

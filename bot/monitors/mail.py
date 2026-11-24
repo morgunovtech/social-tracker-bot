@@ -1,9 +1,16 @@
-"""Security emails: new sign-ins, password, email and 2FA changes, login codes.
+"""Security emails: new sign-ins, password, email, phone and 2FA changes, new
+keys and tokens, login codes.
 
 The user forwards the security notifications of their accounts (a mail
 filter on the sender) to the mail-worker address; the worker keeps them
 until the bot fetches and acknowledges them. Classification lives here:
 the worker only stores sender, subject and the start of the text.
+
+The accounts are the social networks and the infrastructure that holds the
+products and the domain — GitHub, Cloudflare, Railway, Proton, Microsoft
+(Bing), Yandex. Every sender and every phrase below was taken from a real
+mail or the service's own documentation, never guessed: a rule that matches
+nothing is silence that looks like safety.
 """
 
 from __future__ import annotations
@@ -35,9 +42,19 @@ SUBJECT_LEN = 150
 # reset your password" under every kind of notice.
 BODY_HEAD = 600
 
-# Sender domain (suffix match) -> display name and the connector whose
-# checklist a password change updates (None: a network without a connector).
+# Sender (a whole address, or a domain matched as a suffix) -> display name
+# and the connector whose checklist a password change updates (None: an
+# account without a connector). A whole address comes before its domain:
+# Search Console and Bing Webmaster write from google.com and microsoft.com.
+# Seen in real mail (2026-11-24): noreply@github.com, noreply@notify.cloudflare.com,
+# hello@notify.railway.app, no-reply@verify.proton.me, no-reply@mail.proton.me,
+# account-security-noreply@accountprotection.microsoft.com, bingwb@microsoft.com,
+# noreply@id.yandex.ru, sc-noreply@google.com. From the services' own pages:
+# noreply@notify.cloudflare.com («all email notifications from Cloudflare»),
+# devnull@webmaster.yandex.ru (Yandex.Webmaster's notifications).
 SENDERS: tuple[tuple[str, str, str | None], ...] = (
+    ("sc-noreply@google.com", "Search Console", None),
+    ("bingwb@microsoft.com", "Bing Webmaster", None),
     ("google.com", "Google", "youtube"),
     ("youtube.com", "YouTube", "youtube"),
     ("linkedin.com", "LinkedIn", "linkedin"),
@@ -47,6 +64,13 @@ SENDERS: tuple[tuple[str, str, str | None], ...] = (
     ("tiktok.com", "TikTok", None),
     ("x.com", "X", None),
     ("twitter.com", "X", None),
+    ("github.com", "GitHub", None),
+    ("cloudflare.com", "Cloudflare", None),
+    ("railway.app", "Railway", None),
+    ("proton.me", "Proton", None),
+    ("microsoft.com", "Microsoft", None),
+    ("webmaster.yandex.ru", "Yandex Webmaster", None),
+    ("yandex.ru", "Yandex", None),
 )
 
 RECOVERY = {
@@ -85,7 +109,9 @@ KINDS: tuple[Kind, ...] = (
         "ты сам; если нет — аккаунт уже уводят",
         "Если это не ты — восстанавливай доступ немедленно и заверши все сеансы.",
         ("password changed", "password was changed", "password has been changed", "changed your password",
-         "пароль изменен", "пароль был изменен", "изменили пароль"),
+         "пароль изменен", "пароль был изменен", "изменили пароль",
+         "изменение пароля",                                # Microsoft: «Изменение пароля учетной записи Майкрософт»
+         "password has changed", "password was reset"),     # GitHub: «Your password has changed», «…was reset»
     ),
     Kind(
         "email_changed", "critical", "изменена почта аккаунта",
@@ -93,14 +119,50 @@ KINDS: tuple[Kind, ...] = (
         "ты сам; если нет — это главный шаг угона: дальше пароль сбросят на чужую почту",
         "Если это не ты — аккаунт уводят: восстанавливай доступ немедленно.",
         ("email address changed", "email was changed", "email address has been changed", "changed your email",
-         "адрес электронной почты изменен", "изменен адрес электронной почты", "почта изменена"),
+         "адрес электронной почты изменен", "изменен адрес электронной почты", "почта изменена",
+         "email address was added"),                        # GitHub: «An email address was added to your account.»
+    ),
+    Kind(
+        "phone_changed", "critical", "изменён телефон аккаунта",
+        "Сменили номер телефона, на который приходят коды входа и восстановления.",
+        "ты сам — новый номер; если нет — угонщик забирает восстановление себе",
+        "Если это не ты — восстанавливай доступ немедленно: с чужим номером пароль сбросят без тебя.",
+        # Yandex ID: «The phone number linked to your Yandex account has been changed».
+        ("phone number linked", "phone number has been changed", "номер телефона изменен",
+         "изменен номер телефона"),
     ),
     Kind(
         "2fa_changed", "critical", "изменена двухфакторная защита",
         "Двухфакторную защиту выключили или сменили.",
         "ты сам; если нет — угонщик убирает второй ключ",
         "Если это не ты — верни 2FA и смени пароль.",
-        ("2-step verification", "two-step verification", "two-factor", "двухэтапн", "двухфакторн"),
+        ("2-step verification", "two-step verification", "two-factor", "двухэтапн", "двухфакторн",
+         "passkey"),                                        # GitHub: «A passkey was removed from your account»
+    ),
+    Kind(
+        "new_owner", "critical", "у сайта новый владелец в поиске",
+        "У сайта появился ещё один подтверждённый владелец в панели поисковика: он может убрать страницы из "
+        "поиска, поменять настройки и видеть статистику.",
+        "ты сам — подтвердил сайт заново или другим способом, подключил сервис; если нет — у кого-то есть доступ "
+        "к DNS или файлам сайта",
+        "Если это не ты — удали чужого владельца в настройках ресурса (Search Console: Настройки → Пользователи "
+        "и разрешения) и убери его код подтверждения — запись DNS или файл, иначе права вернутся.",
+        # Search Console: «New owner for example.com», «У сайта example.com появился новый владелец», and the
+        # message id WNC-627102 in the body of every language (support.google.com/webmasters/answer/140528).
+        # Yandex.Webmaster names the notification «Делегирование прав на управление сайтом» (its help pages);
+        # no sample of the mail itself yet. Bing Webmaster: no public sample — not matched.
+        ("new owner for", "появился новый владелец", "wnc-627102", "делегирование прав"),
+    ),
+    Kind(
+        "new_key", "critical", "добавлен ключ, токен или приложение",
+        "В аккаунт добавили новый способ входить без пароля: токен, ключ, пароль приложения или стороннее "
+        "приложение с доступом.",
+        "ты сам — для бота, деплоя или нового сервиса; если нет — угонщик закрепляется: такой ключ переживёт "
+        "смену пароля",
+        "Если это не ты — отзови ключ или приложение в настройках безопасности аккаунта, потом смени пароль.",
+        # GitHub: «A personal access token (classic) has been added to your account», «A third-party OAuth
+        # application has been added…»; Yandex ID: «Вы создали пароль для приложения…», «Вы привязали аккаунт…».
+        ("added to your account", "пароль для приложения", "привязали аккаунт"),
     ),
     Kind(
         "new_login", "critical", "новый вход в аккаунт",
@@ -109,7 +171,10 @@ KINDS: tuple[Kind, ...] = (
         "Если это не ты — смени пароль и заверши чужие сеансы.",
         ("new sign-in", "new login", "signed in", "logged in", "new device", "sign-in attempt",
          "login attempt", "новый вход", "выполнен вход", "вход в аккаунт", "новое устройство",
-         "попытка входа"),
+         "попытка входа",
+         "review this sign in",                             # GitHub: «Please review this sign in»
+         "accessed from a new ip",                          # Cloudflare: «…has been accessed from a new IP address»
+         "unusual sign-in", "действия при входе"),          # Microsoft: «Необычные действия при входе…»
     ),
     Kind(
         "login_code", "warning", "пришёл код входа",
@@ -117,7 +182,8 @@ KINDS: tuple[Kind, ...] = (
         "ты сам входишь; если нет — кто-то знает пароль и упёрся в код",
         "Если код запрашивал не ты — кто-то знает твой пароль: смени его.",
         ("verification code", "login code", "security code", "confirmation code", "one-time code",
-         "instagram code", "код подтверждения", "код для входа", "код безопасности", "одноразовый код"),
+         "instagram code", "код подтверждения", "код для входа", "код безопасности", "одноразовый код",
+         "verify your device"),                             # GitHub: a sign-in from a new device, by code
     ),
     Kind(
         "security_alert", "warning", "оповещение безопасности",
@@ -125,6 +191,7 @@ KINDS: tuple[Kind, ...] = (
         "новый вход, смена настроек или подозрительная активность",
         "Проверь недавнюю активность в аккаунте.",
         ("security alert", "suspicious", "unusual activity", "оповещение системы безопасности",
+         "оповещение о безопасности",                       # Microsoft: «Оповещение о безопасности учетной записи…»
          "подозрительн", "необычн"),
     ),
 )
@@ -171,9 +238,13 @@ def sender_of(mail: Mail) -> tuple[str, str | None]:
     """
     candidates = [mail.sender] + _FORWARDED_FROM.findall(mail.text[:2000])
     for address in candidates:
-        domain = address.rsplit("@", 1)[-1].strip(" <>").lower()
+        address = address.strip(" <>").lower()
+        domain = address.rsplit("@", 1)[-1]
         for suffix, display, platform_id in SENDERS:
-            if domain == suffix or domain.endswith("." + suffix):
+            if "@" in suffix:
+                if address == suffix:
+                    return display, platform_id
+            elif domain == suffix or domain.endswith("." + suffix):
                 return display, platform_id
     # An unknown sender is anyone's text: its domain must not be a link.
     return defang(mail.sender.rsplit("@", 1)[-1].strip(" <>").lower()) or "?", None
