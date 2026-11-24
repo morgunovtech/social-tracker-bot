@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS comment_reviews (
     label TEXT NOT NULL DEFAULT '',
     reviewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     acted_at TIMESTAMP,
+    edited_at TIMESTAMP,
     UNIQUE (chat_id, message_id)
 );
 """
@@ -198,6 +199,9 @@ class Database:
             if "shown_at" not in pending:
                 await db.execute("ALTER TABLE pending_notifications ADD COLUMN shown_at TIMESTAMP")
             await db.execute(_CREATE_COMMENTS)
+            reviews = {row[1] for row in await (await db.execute("PRAGMA table_info(comment_reviews)")).fetchall()}
+            if "edited_at" not in reviews:
+                await db.execute("ALTER TABLE comment_reviews ADD COLUMN edited_at TIMESTAMP")
             await db.execute(_CREATE_CHANNEL_EVENTS)
             await db.execute(_CREATE_CHANNEL_POSTS)
             await db.commit()
@@ -238,10 +242,17 @@ class Database:
                     SELECT platform, count, source, collected_at FROM backup.followers
                     """
                 )
-                # A live secret keeps its own dates: the backup has only the dates.
+                # A secret and its dates travel together. A live secret keeps its
+                # own; a backup without the secret (every Sunday backup: the
+                # secrets are wiped from it) brings no dates either, or the
+                # LinkedIn screen would age a cookie the bot does not have.
                 skip: tuple[str, ...] = ()
                 for secret, keys in _SECRET_KEYS.items():
-                    if await _scalar(db, "SELECT COUNT(*) FROM settings WHERE key = ?", (secret,)):
+                    live = await _scalar(db, "SELECT COUNT(*) FROM settings WHERE key = ? AND value != ''", (secret,))
+                    saved = await _scalar(
+                        db, "SELECT COUNT(*) FROM backup.settings WHERE key = ? AND value != ''", (secret,)
+                    )
+                    if live or not saved:
                         skip += keys
                 await db.execute(
                     f"""
@@ -360,7 +371,8 @@ class Database:
             return dict(row) if row else None
 
     async def get_history(self, platform: str, days: int) -> list[dict]:
-        since = (utcnow() - timedelta(days=days)).date()
+        """The rows of the last `days` UTC days, today included: 7 is a week, not eight days."""
+        since = (utcnow() - timedelta(days=max(days, 1) - 1)).date()
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
@@ -493,6 +505,34 @@ class Database:
                 )
             ).fetchone()
             return dict(row) if row else None
+
+    async def rereview(
+        self, review_id: int, user_name: str, text: str, media: str, category: str, confidence: int, reason: str,
+    ) -> None:
+        """An edited comment classified again: the new verdict replaces the
+        old one, and the owner's action and label on the old text go with it —
+        the card is about what the comment says now. reviewed_at moves, so the
+        edit counts toward the daily limit."""
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                """
+                UPDATE comment_reviews SET user_name = ?, text = ?, media = ?, category = ?, confidence = ?,
+                    reason = ?, action = '', label = '', acted_at = NULL,
+                    reviewed_at = CURRENT_TIMESTAMP, edited_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (user_name, text, media, category, confidence, reason, review_id),
+            )
+            await db.commit()
+
+    async def touch_review(self, review_id: int) -> None:
+        """An edit the model called fine still counts toward the daily limit."""
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                "UPDATE comment_reviews SET reviewed_at = CURRENT_TIMESTAMP, edited_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (review_id,),
+            )
+            await db.commit()
 
     async def update_review(self, review_id: int, *, action: str | None = None, label: str | None = None) -> None:
         """What the owner did with a card: the action, the label, or both."""

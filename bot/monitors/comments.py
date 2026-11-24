@@ -267,6 +267,8 @@ def card(review: dict, channel_title: str = "", first_message: bool = False) -> 
     who = [clean(channel_title), defang(review["user_name"])]   # a display name can be a link too
     if first_message:
         who.append(t("первое сообщение в группе"))
+    if review.get("edited_at"):
+        who.append(t("✏️ отредактирован после публикации"))
     if review["media"]:
         who.append(t(MEDIA_LABELS.get(review["media"], review["media"])))
     lines = [head, " · ".join(part for part in who if part)]
@@ -356,12 +358,16 @@ def _client(config: Config, watch: Watch) -> anthropic.AsyncAnthropic:
     return watch.client
 
 
-async def review(bot: Bot, config: Config, db: Database, watch: Watch, message: Message) -> int | None:
+async def review(
+    bot: Bot, config: Config, db: Database, watch: Watch, message: Message, edited: bool = False,
+) -> int | None:
     """Look at one group message; returns the review id when a card was sent.
 
     Skips what is not a comment by a person, a group other than the channel's
     own, and the group's admins. Every classified comment is recorded; only a
-    flagged one becomes a card."""
+    flagged one becomes a card. edited — Telegram's edited_message: a comment
+    that was fine when posted and is a drug shop after an edit is looked at
+    again; one the owner already deleted or banned is not."""
     if not await monitors.is_on(db, config, MONITOR_ID):
         return None
     comment = extract(message)
@@ -372,8 +378,9 @@ async def review(bot: Bot, config: Config, db: Database, watch: Watch, message: 
         return None
     if comment.user_id == config.admin_chat_id or comment.user_id in await admin_ids(bot, watch):
         return None
-    if await db.get_review_by_message(comment.chat_id, comment.message_id) is not None:
-        return None   # Telegram re-delivered the update
+    before = await db.get_review_by_message(comment.chat_id, comment.message_id)
+    if before is not None and (not edited or before["action"] in ("deleted", "banned")):
+        return None   # Telegram re-delivered the update, or the comment is gone
     if await over_daily_limit(bot, config, db):
         return None
 
@@ -391,25 +398,46 @@ async def review(bot: Bot, config: Config, db: Database, watch: Watch, message: 
             await _api_failed(bot, config, db, e)
             return None
     await _api_recovered(bot, config, db)
-    return await record_and_report(bot, config, db, watch, comment, verdict, first_message)
+    return await record_and_report(bot, config, db, watch, comment, verdict, first_message, before, edited)
 
 
 async def record_and_report(
     bot: Bot, config: Config, db: Database, watch: Watch, comment: Comment, verdict: Verdict, first_message: bool,
+    before: dict | None = None, edited: bool = False,
 ) -> int | None:
+    """Store the verdict and send the card of a flagged comment. before — the
+    stored review of an edited comment: a flagged edit replaces it and gets a
+    card of its own; an edit the model calls fine leaves a flagged card as it
+    was (the owner still decides on what was posted). edited — the comment
+    was edited, whether or not it was looked at when it was posted.
+
+    The card is held in the queue when Telegram does not take it (a flood
+    limit in a spam wave): the update is not sent again, so a lost card would
+    be lost for good."""
     # Only a card needs the text and the name; a comment the model called fine
     # keeps its author's id alone (for «first message in the group»).
     stored_text = " ".join(comment.text.split())[:STORED_TEXT_LEN] if verdict.flagged else ""
     stored_name = comment.user_name if verdict.flagged else ""
-    link = message_link(comment.chat_id, comment.message_id, watch.group_username)
-    review_id = await db.add_review(
-        comment.chat_id, comment.message_id, comment.user_id, stored_name, stored_text, comment.media,
-        link, verdict.category, verdict.confidence, verdict.reason,
-    )
-    if review_id is None or not verdict.flagged:
-        return None
+    if before is not None:
+        review_id = before["id"]
+        if not verdict.flagged:
+            await db.touch_review(review_id)
+            return None
+        await db.rereview(review_id, stored_name, stored_text, comment.media, verdict.category, verdict.confidence,
+                          verdict.reason)
+    else:
+        link = message_link(comment.chat_id, comment.message_id, watch.group_username)
+        review_id = await db.add_review(
+            comment.chat_id, comment.message_id, comment.user_id, stored_name, stored_text, comment.media,
+            link, verdict.category, verdict.confidence, verdict.reason,
+        )
+        if review_id is not None and edited:
+            await db.touch_review(review_id)    # posted before the bot looked: the card still says it was edited
+        if review_id is None or not verdict.flagged:
+            return None
     text, markup = card(await db.get_review(review_id), watch.group_title, first_message)
-    await notifier.send(bot, config, db, text, notifier.priority_for(text), reply_markup=markup, no_preview=True)
+    await notifier.send(bot, config, db, text, notifier.priority_for(text), reply_markup=markup, no_preview=True,
+                        hold_on_error=True)
     return review_id
 
 

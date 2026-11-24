@@ -110,6 +110,26 @@ async def test_restore_brings_back_the_cookie_when_live_has_none(db, tmp_path):
     assert await db.get_setting("linkedin_li_at_set_at") == "2026-01-01T00:00:00+00:00"
 
 
+async def test_restore_brings_no_dates_without_their_secret(db, tmp_path):
+    # A Sunday backup: the cookie and the token are wiped from it, their dates are not.
+    backup = await _backup_db(
+        tmp_path / "backup.db", rows=[],
+        settings={"linkedin_li_at_set_at": "2026-01-01T00:00:00+00:00",
+                  "instagram_token_set_at": "2026-01-01T00:00:00+00:00", "report_time": "09:15"},
+    )
+    await db.restore_from(backup._db_path)
+    assert await db.get_setting("linkedin_li_at_set_at") is None   # no cookie here to be that old
+    assert await db.get_setting("instagram_token_set_at") is None
+    assert await db.get_setting("report_time") == "09:15"
+
+
+async def test_history_is_as_many_days_as_asked(db, insert):
+    for days_ago in range(10):
+        insert("telegram", 1000 + days_ago, days_ago)
+    assert len(await db.get_history("telegram", 7)) == 7           # a week: today and six days back
+    assert len(await db.get_history("telegram", 1)) == 1
+
+
 async def test_restore_twice_adds_nothing(db, tmp_path):
     backup = await _backup_db(tmp_path / "backup.db", rows=[("youtube", 100, 3)], settings={})
     assert (await db.restore_from(backup._db_path))["added"] == 1

@@ -77,6 +77,8 @@ SECRET_COMMANDS = ("setcookie", "igtoken")
 # handles is named too.
 ALLOWED_UPDATES = (
     Update.MESSAGE,
+    Update.EDITED_MESSAGE,     # a comment edited into spam is reviewed again
+
     Update.CALLBACK_QUERY,
     Update.MY_CHAT_MEMBER,
     Update.CHANNEL_POST,
@@ -280,13 +282,19 @@ async def on_group_update(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     the owner's chat; a join, a leave, a post or a reaction in the channel is
     recorded (bot/monitors/channel.py)."""
     chat = update.effective_chat
+    edited = getattr(update, "edited_message", None)
     if chat is None or chat.type == ChatType.PRIVATE:
+        if edited is not None:
+            # The owner fixed a typo in an old message: not a new command.
+            # python-telegram-bot's command and text handlers take edits too.
+            raise ApplicationHandlerStop
         return
     config, db = _deps(context)
-    message = update.message
+    message = update.message or edited
     if message is not None and chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
         context.application.create_task(
-            comments.review(context.bot, config, db, _watch(context), message), update=update
+            comments.review(context.bot, config, db, _watch(context), message, edited=edited is not None),
+            update=update,
         )
     elif chat.type == ChatType.CHANNEL:
         await channel.record(db, config, update)

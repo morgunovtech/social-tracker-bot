@@ -51,6 +51,7 @@ STRINGS: dict[str, str] = {
     "{icon} Комментарии: {label}": "{icon} Comments: {label}",
     "{icon} Комментарии: {label} — уверенность {confidence}%": "{icon} Comments: {label} — confidence {confidence}%",
     "первое сообщение в группе": "first message in the group",
+    "✏️ отредактирован после публикации": "✏️ edited after posting",
     "Почему: {reason}": "Why: {reason}",
     "Модель не стала оценивать это сообщение — обычно так бывает с самым тяжёлым контентом. Посмотри сам.": (
         "The model declined to judge this message — that usually happens with the worst content. Have a look yourself."
