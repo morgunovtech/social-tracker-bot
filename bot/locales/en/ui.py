@@ -423,6 +423,8 @@ STRINGS: dict[str, str] = {
         "back — I bring the history back without overwriting what is already collected.",
     "• После обновления пишу «🔄 Бот обновился», по воскресеньям — об уязвимостях в своих пакетах.":
         "• After an update I write \"🔄 The bot has been updated\", on Sundays — about vulnerabilities in my packages.",
+    "• Если обновление поменяло, когда и как я пишу, а ты — нет, скажу об этом один раз, с кнопкой на настройку.":
+        "• If an update changed when and how I write while you didn't, I say so once, with a button to the setting.",
     "<b>Где что</b>": "<b>Where things are</b>",
     "🏠 Главная — отчёт, «🔄 Обновить данные», 📈 Динамика, 🛡 Безопасность, 📣 Канал, 🔌 Подключения, "
     "«🔕 Помолчать…», ⚙️ Настройки.":

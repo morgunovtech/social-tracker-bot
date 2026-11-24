@@ -2,6 +2,14 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## Unreleased
+
+**An update that changed how the bot behaves says so once** (the owner's `BOT_PRINCIPLES.md`, §6)
+- At every start the bot notes what it actually does — the report's days, time and zone, quiet hours, «Коротко без изменений», which checks are on, which security mails ring and the thresholds of its alerts — next to what the owner set for it: the chat settings and the `.env` values they are computed from (`bot/behavior.py`, kept in the setting `behavior_snapshot`; never a secret — a check's «configured» is a yes or no).
+- At the next start a value that moved while everything the owner set stayed the same was moved by the new version: one «ℹ️ После обновления я работаю иначе…» lists each change as «now — was before», with buttons to the settings it concerns (🌍 Часовой пояс, 🕗 Время отчёта, 🔔 Когда писать, 🧩 Мониторинги, ⚙️ Настройки). A change made in the chat or in `.env` is the owner's and is not told back. A check that is new and on by default is named; a new kind of security mail and a changed level or threshold are told only while their monitor is on. The snapshot is kept only once the message went out, so a send that failed is told at the next start.
+- The first case, 1.5.0's: an empty zone used to mean UTC and now follows the chat language, so `REPORT_HOUR_UTC=4` moved from 04:00 UTC to 04:00 Moscow without a word. A bot that ran before and still keeps its schedule in the language's zone — no `TIMEZONE`, no `REPORT_TZ`, nothing picked in the chat — hears it once with this update, with the time it used to be on today's clock and the buttons to pick its zone and time.
+- Alerts may open the settings screens now: `open:rtz`, `open:rtime`, `open:when`, `open:mod`, `open:set`.
+
 ## 1.6.0 — 2026-11-24
 
 The digest after a quiet night or a `/mute` reads like the principles say: one headline per held message, 🔴 and 🟠 first, and «ℹ️ N» for the rest of any of them. And 🛡 Security's recent events read in the chat language, whatever language they were recorded in.

@@ -4,14 +4,14 @@ import logging
 
 from telegram.ext import Application
 
-from bot import watchdog
+from bot import behavior, watchdog
 from bot.config import Config
 from bot.db import Database
 from bot.handlers import ALLOWED_UPDATES, collect_lock, register_handlers, restore_owner, show_keyboard_once
 from bot.i18n import set_language
 from bot.redact import RedactingFormatter
 from bot.scheduler import setup_scheduler
-from bot.updates import report_startup_changes
+from bot.updates import SNAPSHOT_KEY, report_startup_changes
 
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 _config: Config | None = None
@@ -70,11 +70,23 @@ async def _post_init(app: Application) -> None:
     await _step("set_chat_menu_button", app.bot.set_chat_menu_button())
     await _step("bottom buttons", show_keyboard_once(app.bot, config, db))
 
-    # «🔄 Бот обновился» after a deploy; never let it block the start.
+    # «🔄 Бот обновился» after a deploy, and what the update moved in how the
+    # bot behaves (bot/behavior.py); neither may block the start. The second
+    # needs to know whether the bot ran before — read before the first writes.
+    pending = None
+    try:
+        pending = await behavior.detect(db, config, ran_before=await db.get_setting(SNAPSHOT_KEY) is not None)
+    except Exception:
+        logger.exception("Behaviour snapshot failed")
     try:
         await report_startup_changes(app.bot, config, db)
     except Exception:
         logger.exception("Startup update notice failed")
+    if pending is not None:
+        try:
+            await behavior.announce(app.bot, config, db, pending)
+        except Exception:
+            logger.exception("Behaviour change notice failed")
 
     logger.info("Bot ready: scheduler + DB initialized")
 

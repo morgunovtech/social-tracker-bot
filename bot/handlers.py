@@ -1280,6 +1280,11 @@ async def _screen(context, screen_id: str) -> ui.Screen | None:
         cb.COMMENTS: lambda: ui.comments_screen(db, config),
         cb.CONNECTIONS: lambda: ui.connections(db, config),
         cb.WATCHDOG: lambda: ui.watchdog_screen(db, config),
+        cb.SETTINGS: lambda: ui.settings(db, config),
+        cb.MONITORS: lambda: ui.monitors_screen(db, config),
+        cb.OPEN_TIME: lambda: ui.report_time(db, config),
+        cb.OPEN_TZ: lambda: ui.timezone(db, config),
+        cb.OPEN_WHEN: lambda: ui.when_to_write(db, config),
     }
     builder = builders.get(screen_id)
     return await builder() if builder else None

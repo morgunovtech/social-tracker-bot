@@ -86,6 +86,40 @@ STRINGS: dict[str, str] = {
     "{head} — свежие данные собрать не удаётся": "{head} — fresh data cannot be collected",
     "{head} — сегодня собрать не удалось": "{head} — today's collection failed",
     "{head} — cookie живёт {days} дн., пора обновить": "{head} — the cookie is {days} days old, time to renew it",
+    # --- bot/behavior.py: what an update moved in how the bot behaves
+    "ℹ️ После обновления я работаю иначе — это поменяла новая версия, а не ты:":
+        "ℹ️ Since the update I work differently — the new version changed this, not you:",
+    "Если так не нужно — поменяй кнопкой ниже.": "If that is not what you want, change it with a button below.",
+    "{days}, {time} по поясу {zone}": "{days}, {time} in the {zone} zone",
+    "• Отчёт: {now} — было {before}": "• Report: {now} — was {before}",
+    "• Тихие часы: {now} — было {before}": "• Quiet hours: {now} — were {before}",
+    "• «Коротко без изменений»: {now} — было {before}": "• «Short when unchanged»: {now} — was {before}",
+    "• Проверка «{label}»: {now} — была {before}": "• The «{label}» check: {now} — was {before}",
+    "• Новая проверка включена: {label} — {what}": "• A new check is on: {label} — {what}",
+    "• Письма «{title}» теперь распознаю: {level}": "• I now recognise «{title}» mails: {level}",
+    "• Письма «{title}»: {now} — было {before}": "• «{title}» mails: {now} — were {before}",
+    "• {label}: {now} — было {before}": "• {label}: {now} — was {before}",
+    "🔴 звонит": "🔴 rings",
+    "🟠 без звука": "🟠 silent",
+    "включена": "on",
+    "выключена": "off",
+    "падение подписчиков — тревога от стольких за сутки": "a drop in followers — an alert from this many a day",
+    "падение подписчиков — и от такой доли, %": "a drop in followers — and from this share, %",
+    "сбор не удаётся — тревога на такой день подряд": "collection fails — an alert on this day in a row",
+    "профиль не читается — тревога после стольких проверок подряд":
+        "the profile can't be read — an alert after this many checks in a row",
+    "почтовый воркер молчит — тревога после стольких опросов подряд":
+        "the mail worker is silent — an alert after this many polls in a row",
+    "опасный комментарий звонит при уверенности от, %": "a dangerous comment rings from this confidence, %",
+    (
+        "• Отчёт: {now}. До версии {version} это же время считалось по UTC — {then} по этому поясу: "
+        "с {version} пояс, пока его не выбрали, следует языку бота. Я не знаю, где ты, — выбери свой пояс, "
+        "отчёт останется в тот же момент, а время поправишь кнопкой «🕗 Время отчёта»."
+    ): (
+        "• Report: {now}. Before version {version} the same time was read in UTC — {then} in this zone: "
+        "since {version} the zone follows the bot's language until one is chosen. I don't know where you are — "
+        "pick your zone, the report stays at the same moment, and set the time with «🕗 Report time»."
+    ),
     # --- bot/updates.py: the bot's own updates
     "  • сборка {old} → {new}": "  • build {old} → {new}",
     "🔄 Бот обновился:\n": "🔄 The bot has been updated:\n",

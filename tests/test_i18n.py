@@ -405,3 +405,39 @@ async def test_comment_cards(db):
                     english_only(button.text)
     text, _ = comments.card({**await db.get_review(1), "category": "refused", "confidence": 0, "action": "", "label": ""})
     english_only(text)
+
+
+async def test_behaviour_notice(config, db, monkeypatch):
+    """bot/behavior.py: every kind of line the update notice can carry, and its buttons."""
+    import json
+
+    from bot import behavior
+
+    bot = FakeBot()
+    mail_on = dataclasses.replace(config, security_mail_url="https://mail.example", security_mail_token="x",
+                                  anthropic_api_key="k")
+    await behavior.announce(bot, mail_on, db, await behavior.detect(db, mail_on, ran_before=False))
+    snapshot = json.loads(await db.get_setting(behavior.SNAPSHOT_KEY))
+    items = snapshot["items"]
+    items["schedule"]["value"] = {"dow": "mon-fri", "time": "04:00", "tz": "Europe/Moscow"}
+    items["quiet_hours"]["value"] = "23-8"
+    items["short_week"]["value"] = True
+    items["monitor:followers"]["value"] = False
+    del items["monitor:hygiene"]
+    del items["mail:login_code"]
+    items["mail:new_login"]["value"] = "warning"
+    for th in behavior.THRESHOLDS:
+        items[f"threshold:{th.key}"]["value"] = -1
+    await db.set_setting(behavior.SNAPSHOT_KEY, json.dumps(snapshot))
+    assert await behavior.announce(bot, mail_on, db, await behavior.detect(db, mail_on, ran_before=True))
+    english_only(bot.messages[-1])
+    for row in bot.markups[-1].inline_keyboard:
+        for button in row:
+            english_only(button.text)
+
+    # 1.5.0's zone by language, told once to a bot that ran before.
+    monkeypatch.setenv("REPORT_TZ", "")
+    moscow = dataclasses.replace(config, report_tz="Europe/Moscow")
+    await db.set_setting(behavior.SNAPSHOT_KEY, "")
+    assert await behavior.announce(bot, moscow, db, await behavior.detect(db, moscow, ran_before=True))
+    english_only(bot.messages[-1])
