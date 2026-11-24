@@ -4,6 +4,17 @@ The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists 
 
 ## Unreleased
 
+**Changed**
+- Security mail from Cloudflare is not read any more (1.7.0 added it): new logins and new API tokens on the Cloudflare account are TofsDevOps's — it reads the account's audit log through the API (TofsDevOps 3.2.0), which is more reliable than mail, and a second alert from here would bring each one twice (the owner's `BOT_PRINCIPLES.md`, «Кто за что отвечает»). `noreply@notify.cloudflare.com` is gone from `SENDERS` and from the forwarding filter in `mail-worker/README.md`; a Cloudflare mail forwarded by hand is an «ℹ️ письмо без признаков тревоги».
+
+**Fixed** (the code review of 2026-11-24)
+- A comment written under a channel's name — how a spam network usually speaks in a discussion group — was never reviewed: Telegram shows it from the service account `Channel_Bot`, and the monitor skipped every message with a `sender_chat`. Now only the group's own anonymous admins and the owner's channel are skipped; another channel's comment is classified like any other, the card names the channel (📣), and 🔨 bans the channel from the group (`ban_chat_sender_chat`). New column `comment_reviews.sender_chat_id`, added at start to an older database.
+- The «🔄 Бот обновился» notice was lost when Telegram did not take it in the first seconds after a deploy: the snapshot of versions was saved before the send, so the next start saw no change. The snapshot is saved only once the notice went out.
+
+## 1.7.0 — 2026-11-24
+
+The gaps found after the day's cleanup, closed: the bot now watches what it sends out by itself, tells once when an update moved how it behaves (and tells 1.5.0's silent move of the report to 04:00 Moscow), follows the links already in the profiles every week, and reads the security mail of the accounts that hold the products and the domain — GitHub, Cloudflare, Microsoft, Yandex, a new owner of the site in Search Console. Plus the fixes from the code review of 2026-11-24.
+
 **An update that changed how the bot behaves says so once** (the owner's `BOT_PRINCIPLES.md`, §6)
 - At every start the bot notes what it actually does — the report's days, time and zone, quiet hours, «Коротко без изменений», which checks are on, which security mails ring and the thresholds of its alerts — next to what the owner set for it: the chat settings and the `.env` values they are computed from (`bot/behavior.py`, kept in the setting `behavior_snapshot`; never a secret — a check's «configured» is a yes or no).
 - At the next start a value that moved while everything the owner set stayed the same was moved by the new version: one «ℹ️ После обновления я работаю иначе…» lists each change as «now — was before», with buttons to the settings it concerns (🌍 Часовой пояс, 🕗 Время отчёта, 🔔 Когда писать, 🧩 Мониторинги, ⚙️ Настройки). A change made in the chat or in `.env` is the owner's and is not told back. A check that is new and on by default is named; a new kind of security mail and a changed level or threshold are told only while their monitor is on. The snapshot is kept only once the message went out, so a send that failed is told at the next start.
@@ -40,8 +51,6 @@ The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists 
 - A restored Sunday backup brought back the date the LinkedIn cookie (and the Instagram token) was set without the cookie itself, which the backup leaves out: the LinkedIn screen then aged a cookie from `.env` by the old one's date. A secret's dates now come back only together with the secret.
 - `/history 7` showed eight days: «the last N days» counted today plus N days back. It is N days now, today included, in the tables, the chart and the bot-inflow check.
 - An edit Telegram delivered twice (the bot restarted before it confirmed the update) was classified and carded twice. The time of the edit is kept with the review now, and an edit the bot has already looked at is skipped; a later edit is a new look. And an edit of an author's first comment still tells the model and the card «first message in the group»: the stored row of the comment itself no longer counts as an earlier message.
-- A comment written under a channel's name — how a spam network usually speaks in a discussion group — was never reviewed: Telegram shows it from the service account `Channel_Bot`, and the monitor skipped every message with a `sender_chat`. Now only the group's own anonymous admins and the owner's channel are skipped; another channel's comment is classified like any other, the card names the channel (📣), and 🔨 bans the channel from the group (`ban_chat_sender_chat`). New column `comment_reviews.sender_chat_id`, added at start to an older database.
-- The «🔄 Бот обновился» notice was lost when Telegram did not take it in the first seconds after a deploy: the snapshot of versions was saved before the send, so the next start saw no change. The snapshot is saved only once the notice went out.
 
 ## 1.6.0 — 2026-11-24
 
