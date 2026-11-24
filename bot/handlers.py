@@ -26,7 +26,7 @@ from telegram.ext import (
 )
 
 from bot import callbacks as cb
-from bot import monitors, notifier, ui, watchdog
+from bot import monitors, notifier, reputation, ui, watchdog
 from bot.config import DOW_ORDER, Config, normalize_dow, normalize_tz
 from bot.db import HELD_KEEP_DAYS, Database, utcnow
 from bot.i18n import t
@@ -57,7 +57,10 @@ AWAITING_INPUT = 2       # a cookie, a token or a time zone, by button (ui.input
 # End a dangling input conversation after this many seconds of silence.
 LI_CONV_TIMEOUT = 120
 # What each entry button asks for.
-INPUT_KINDS = {cb.LI_COOKIE: "cookie", cb.IG_TOKEN: "token", cb.TZ_OTHER: "tz", cb.WD_URL: "watchdog"}
+INPUT_KINDS = {cb.LI_COOKIE: "cookie", cb.IG_TOKEN: "token", cb.TZ_OTHER: "tz", cb.WD_URL: "watchdog",
+               cb.REP_WORDS: "rep_words", **{entry: monitor for monitor, entry in cb.REP_KEYS.items()}}
+# A service-account key file is small; anything bigger is not one.
+KEY_FILE_MAX_BYTES = 20_000
 
 # Longest /history period: keeps the table under Telegram's 4096-char message limit.
 HISTORY_MAX_DAYS = 90
@@ -896,6 +899,37 @@ async def _store_watchdog(update: Update, context: ContextTypes.DEFAULT_TYPE, te
     return True
 
 
+async def _store_rep_key(update: Update, context: ContextTypes.DEFAULT_TYPE, monitor_id: str, value: str) -> bool:
+    """A reputation source's read-only key (🔎 Репутация → 🔑): out of the
+    chat first, then a live test call, kept only when the source answered.
+    False keeps the step open."""
+    config, db = _deps(context)
+    chat = update.effective_chat
+    deleted = True
+    try:
+        await update.message.delete()
+    except Exception:
+        deleted = False
+    note = "" if deleted else "\n" + t("🟠 Удалить сообщение с ключом не получилось — удали его из чата вручную.")
+    source = reputation.BY_MONITOR[monitor_id]
+    await chat.send_message(t("⏳ Проверяю ключ…"))
+    async with aiohttp.ClientSession() as session:
+        error, seen = await source.module.check(session, value.strip())
+    if error is not None:
+        screen = ui.input_retry(
+            t("❌ {source} не принял ключ: {reason}. Пришли его ещё раз или нажми «✖️ Отмена».").format(
+                source=t(source.label), reason=reputation.reason(error, seen)) + note
+        )
+        await chat.send_message(screen.text, **_markup(screen))
+        return False
+    await db.set_setting(monitors.BY_ID[monitor_id].secret, value.strip())
+    screen = (await ui.reputation_screen(db, config)).noted(
+        t("✅ {source} подключён: {seen}").format(source=t(source.label), seen=seen) + note
+    )
+    await chat.send_message(screen.text, **_markup(screen))
+    return True
+
+
 @_admin_only
 async def cmd_cookieage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config, db = _deps(context)
@@ -964,6 +998,16 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     """A file without a caption: a database file is offered for a restore
     with one button (the file used to be ignored in silence); anything else
     gets a hint."""
+    document = update.message.document
+    name = (getattr(document, "file_name", None) or "").lower()
+    if name.endswith(".json") and (document.file_size or 0) <= KEY_FILE_MAX_BYTES:
+        # The Search Console key comes as a file from Google Cloud: taken as
+        # if it was pasted into «🔑 Google».
+        file = await document.get_file()
+        raw = bytes(await file.download_as_bytearray()).decode("utf-8", errors="replace")
+        if reputation.google.parse_key(raw) is not None:
+            await _store_rep_key(update, context, "rep_google", raw)
+            return
     if _looks_like_backup(update.message.document):
         await update.message.reply_text(
             t("Это бэкап базы? Могу вернуть из него историю — уже собранное не перезапишется."),
@@ -1239,6 +1283,21 @@ async def _cb_linkedin(press: _Press, context, args: list[str]) -> None:
     await _show(press.query, screen)
 
 
+async def _cb_reputation(press: _Press, context, args: list[str]) -> None:
+    """rep — the screen; rep:now — this week's report at once (a check that
+    the keys work, or a report on demand)."""
+    config, db = _deps(context)
+    if args == ["now"]:
+        await press.answer(t("⏳ Собираю отчёт…"))
+        if not await reputation.send(context.bot, config, db):
+            await context.bot.send_message(
+                chat_id=config.admin_chat_id,
+                text=t("🔎 За неделю сказать нечего: подключённые источники ничего не нашли."),
+            )
+        return
+    await _show(press.query, await ui.reputation_screen(db, config))
+
+
 async def _cb_watchdog(press: _Press, context, args: list[str]) -> None:
     """wd — the screen; wd:test — a live ping now; wd:off — asked first; wd:off:yes — off."""
     config, db = _deps(context)
@@ -1288,6 +1347,7 @@ async def _screen(context, screen_id: str) -> ui.Screen | None:
         cb.COMMENTS: lambda: ui.comments_screen(db, config),
         cb.CONNECTIONS: lambda: ui.connections(db, config),
         cb.WATCHDOG: lambda: ui.watchdog_screen(db, config),
+        cb.REPUTATION: lambda: ui.reputation_screen(db, config),
         cb.SETTINGS: lambda: ui.settings(db, config),
         cb.MONITORS: lambda: ui.monitors_screen(db, config),
         cb.OPEN_TIME: lambda: ui.report_time(db, config),
@@ -1391,6 +1451,7 @@ _ROUTES: dict[str, Route] = {
     ui.CHANNEL: _cb_channel,
     cb.CONNECTIONS: _cb_connections,
     cb.WATCHDOG: _cb_watchdog,
+    cb.REPUTATION: _cb_reputation,
     cb.OPEN: _cb_open,
     cb.DIGEST: _cb_digest,
     cb.MUTE: _cb_mute,
@@ -1525,6 +1586,14 @@ async def input_conv_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await _reply(update, (await ui.settings(db, config)).noted(note))
     elif kind == "watchdog" and not await _store_watchdog(update, context, value):
         context.user_data["awaiting"] = "watchdog"
+        return AWAITING_INPUT
+    elif kind == "rep_words":
+        words = reputation.parse_words(value)
+        await db.set_setting(reputation.WORDS_KEY, ", ".join(words))
+        note = t("✅ Брендовые слова: {words}").format(words=", ".join(words)) if words else t("Брендовые слова убраны")
+        await _reply(update, (await ui.reputation_screen(db, config)).noted(note))
+    elif kind in reputation.BY_MONITOR and not await _store_rep_key(update, context, kind, value):
+        context.user_data["awaiting"] = kind
         return AWAITING_INPUT
     return ConversationHandler.END
 

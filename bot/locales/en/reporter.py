@@ -120,6 +120,21 @@ STRINGS: dict[str, str] = {
         "since {version} the zone follows the bot's language until one is chosen. I don't know where you are — "
         "pick your zone, the report stays at the same moment, and set the time with «🕗 Report time»."
     ),
+    # --- bot/reputation/: the weekly reputation report
+    "Яндекс": "Yandex",
+    "🔍 {source}: {shows} {shows_word}, {clicks} {clicks_word} по брендовым запросам{change}":
+        "🔍 {source}: {shows} {shows_word}, {clicks} {clicks_word} on brand queries{change}",
+    "🤖 ИИ-ассистенты открывали твои страницы {n} {times}{change}": "🤖 AI assistants opened your pages {n} {times}{change}",
+    "чаще всего — {host}": "most often — {host}",
+    "👥 Подписчики: {total}, {delta} за неделю": "👥 Followers: {total}, {delta} this week",
+    "это не тот ключ или он не читается": "it is not the right key, or it cannot be read",
+    "у ключа нет доступа ни к одному сайту": "the key has access to no site",
+    "не заданы брендовые слова": "no brand words are set",
+    "на этом тарифе API этих данных не отдаёт": "the API does not give this data on this plan",
+    "у ключа нет доступа ни к одному сайту — добавь {who} в пользователи ресурса":
+        "the key has access to no site — add {who} as a user of the property",
+    "⚠️ {source}: не смог получить данные — {reason}": "⚠️ {source}: could not get the data — {reason}",
+    "🔎 <b>Репутация за неделю</b> · {start}–{end}": "🔎 <b>Reputation this week</b> · {start}–{end}",
     # --- bot/updates.py: the bot's own updates
     "  • сборка {old} → {new}": "  • build {old} → {new}",
     "🔄 Бот обновился:\n": "🔄 The bot has been updated:\n",
@@ -171,4 +186,7 @@ STRINGS: dict[str, str] = {
 # Russian singular → (English singular, English plural).
 PLURALS: dict[str, tuple[str, str]] = {
     "подписчик": ("follower", "followers"),
+    "показ": ("impression", "impressions"),
+    "клик": ("click", "clicks"),
+    "раз": ("time", "times"),
 }

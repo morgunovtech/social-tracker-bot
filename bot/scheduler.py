@@ -15,7 +15,7 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from telegram import Bot
 
-from bot import monitors, notifier, platforms, tofs_status, watchdog
+from bot import monitors, notifier, platforms, reputation, tofs_status, watchdog
 from bot.callbacks import CHANNEL, CONNECTIONS, DYNAMICS, SECURITY, WATCHDOG
 from bot.chart import render_chart
 from bot.config import DOW_ORDER, Config, normalize_tz
@@ -497,6 +497,13 @@ async def _scheduled_job(
             logger.info("Sent %d profile link message(s)", sent)
     except Exception:
         logger.exception("Profile link check failed")
+
+    # Weekly, counted from the last one: the reputation report (bot/reputation/).
+    try:
+        if await reputation.run(bot, config, db):
+            logger.info("Reputation report sent")
+    except Exception:
+        logger.exception("Reputation report failed")
 
 
 async def _profile_job(bot: Bot, config: Config, db: Database) -> None:

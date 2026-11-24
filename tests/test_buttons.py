@@ -248,7 +248,7 @@ async def test_connections_screen_states(config, db):
     assert "Telegram — @test_channel · ⏳ первый сбор ещё не был" in screen.text
     assert "➖ Instagram — не подключено: INSTAGRAM_USERNAME в .env" in screen.text
     assert "LinkedIn — https://www.linkedin.com/in/test/ · ✏️ число вручную" in screen.text
-    assert buttons(screen.keyboard) == {"li": "💼 LinkedIn", "wd": "⏱ Сторож", "home": "🏠 Главная"}
+    assert buttons(screen.keyboard) == {"li": "💼 LinkedIn", "wd": "⏱ Сторож", "rep": "🔎 Репутация", "home": "🏠 Главная"}
     await db.set_setting("linkedin_li_at", COOKIE)
     assert "🟠 подтверди первое число" in (await ui.connections(db, config)).text
     await db.upsert("linkedin", 4500, source="cookie")
