@@ -2,7 +2,9 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
-## Unreleased
+## 1.8.3 — 2026-11-24
+
+A wrong `BOT_TOKEN` — empty, the placeholder from `.env.example`, or one Telegram refuses — stops the bot with one line that says what to do, and a refused token is no longer printed in the log.
 
 **Fixed**
 - A first start with `.env.example` copied as is — `BOT_TOKEN=your_telegram_bot_token` — ended in a python-telegram-bot `InvalidToken` traceback. The bot now checks the token's shape at start and stops with one line that says what to do: paste the token @BotFather gave you (`123456:ABC…`) into `.env` or the Railway variables. Every other wrong setting in `.env` stops with its one line too, no traceback.
