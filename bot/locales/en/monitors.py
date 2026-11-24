@@ -20,6 +20,38 @@ STRINGS: dict[str, str] = {
     "Отправки наружу": "Outgoing deliveries",
     "цифры на сайт, строки в TofsDevOps, отметки сторожу: сутки не доходят — скажу, где и почему":
         "the counts to your site, the lines to TofsDevOps, the watchdog's marks: a day without one landing — I say where and why",
+    "Ссылки в профилях": "Profile links",
+    "раз в неделю — куда ведут ссылки в описаниях: не открывается, переадресация, технический адрес":
+        "weekly — where the links in the descriptions lead: does not open, a redirect, a technical host",
+    # bot/monitors/links.py
+    "адрес {host} не находится": "the address {host} does not resolve",
+    "сертификат сайта не принимается": "the site's certificate is not accepted",
+    "защищённое соединение не устанавливается": "a secure connection cannot be set up",
+    "сайт не принимает соединение": "the site refuses the connection",
+    "сайт не ответил за 15 с": "the site did not answer in 15 s",
+    "страница не найдена ({status})": "page not found ({status})",
+    "сайт отвечает ошибкой {status}": "the site answers with error {status}",
+    "переадресаций больше {n}": "more than {n} redirects",
+    "{platform}, {field}": "{platform}, {field}",
+    "🟠 {where}: ссылка не открывается — {why}": "🟠 {where}: a link does not open — {why}",
+    "проверка ссылок раз в неделю": "links are checked weekly",
+    "✅ {where}: ссылка снова открывается — {link}": "✅ {where}: the link opens again — {link}",
+    "Не открывалась": "Did not open for",
+    "• {where}: {link} → {final} — ведёт через переадресацию, лучше поставить конечный адрес":
+        "• {where}: {link} → {final} — goes through a redirect; the final address is better",
+    (
+        "• {where}: {link} — ведёт на технический адрес {final}; если у сайта есть свой домен, "
+        "лучше он"
+    ): "• {where}: {link} — lands on the technical host {final}; if the site has a domain of its own, that one is better",
+    "ℹ️ Ссылки в профилях — можно лучше:": "ℹ️ Profile links — could be better:",
+    "Поправить можно в самом профиле; я проверю снова через неделю.":
+        "Fix them in the profile itself; I'll check again in a week.",
+    "Кто нажмёт эту ссылку в профиле, попадёт на ошибку, а не к тебе.":
+        "Whoever taps this link in the profile gets an error instead of you.",
+    "страницу удалили или переименовали, домен переехал или истёк, сайт лежит":
+        "the page was deleted or renamed, the domain moved or expired, the site is down",
+    "Открыть ссылку самому: может, сайт лежит прямо сейчас.": "Open the link yourself: the site may be down right now.",
+    "Если адрес сменился — поправить описание в профиле.": "If the address changed, fix the description in the profile.",
     # bot/monitors/outgoing.py
     "Цифры на сайт": "Counts to the site",
     "Строки в TofsDevOps": "Lines to TofsDevOps",

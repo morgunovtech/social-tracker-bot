@@ -133,6 +133,13 @@ MONITORS: tuple[Monitor, ...] = (
         requires=_has_profiles,
         needs="Telegram-канал, YouTube или Instagram",
     ),
+    Monitor(
+        "links",
+        "Ссылки в профилях",
+        "раз в неделю — куда ведут ссылки в описаниях: не открывается, переадресация, технический адрес",
+        requires=_has_profiles,
+        needs="Telegram-канал, YouTube или Instagram",
+    ),
     Monitor("hygiene", "Чек-лист безопасности", "2FA и пароли: балл в отчёте, напоминание раз в месяц"),
     Monitor(
         "outgoing",

@@ -443,3 +443,30 @@ async def test_behaviour_notice(config, db, monkeypatch):
     await db.set_setting(behavior.SNAPSHOT_KEY, "")
     assert await behavior.announce(bot, moscow, db, await behavior.detect(db, moscow, ran_before=True))
     english_only(bot.messages[-1])
+
+
+async def test_profile_link_messages(config, db, monkeypatch):
+    """bot/monitors/links.py: a broken link, its recovery and the ℹ️ notes, in English."""
+    import json
+
+    from bot.monitors import links
+
+    results = {
+        "https://gone.example/x": links.Result(links.BROKEN, "gone.example", t("страница не найдена ({status})")
+                                               .format(status=404), "HTTP 404"),
+        "https://morgunov.tech": links.Result(links.REDIRECT, "s.morgunov.tech"),
+        "https://foundyou.pages.dev": links.Result(links.TECHNICAL, "foundyou.pages.dev"),
+    }
+
+    async def check_links(session, urls, retry_after=0):
+        return {url: results[url] for url in urls}
+
+    monkeypatch.setattr(links, "check_links", check_links)
+    await db.set_setting("profile_telegram", json.dumps(
+        {"description": "https://gone.example/x morgunov.tech foundyou.pages.dev"}))
+    bot = FakeBot()
+    assert await links.check(bot, config, db, None) == 2
+    results["https://gone.example/x"] = links.Result(links.OK, "gone.example")
+    assert await links.check(bot, config, db, None) == 1
+    for text in bot.messages:
+        english_only(text)
