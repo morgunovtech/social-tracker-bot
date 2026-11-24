@@ -405,6 +405,8 @@ async def test_comment_cards(db):
                     english_only(button.text)
     text, _ = comments.card({**await db.get_review(1), "category": "refused", "confidence": 0, "action": "", "label": ""})
     english_only(text)
+    text, _ = comments.card({**await db.get_review(1), "edited_at": "2026-11-24 10:00:00"})
+    english_only(text)
 
 
 async def test_behaviour_notice(config, db, monkeypatch):

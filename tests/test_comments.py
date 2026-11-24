@@ -453,3 +453,72 @@ async def test_comments_command_and_security_button(make_update, make_context):
     security = make_update(callback="sec")
     await handlers.on_callback(security, make_context())
     assert buttons(security.callback_query.markups[0])["cm"] == "💬 Комментарии канала"
+
+
+# --- an edited comment, a card Telegram did not take ------------------------
+
+async def test_a_comment_edited_into_a_drug_shop_is_reviewed_again(group_bot, config, db, verdicts):
+    verdicts.queue += [Verdict("ok", 97, "обычный комментарий"), dangerous()]
+    watch = comments.Watch()
+    assert await comments.review(group_bot, config, db, watch, message("Спасибо за пост")) is None
+    # The same message, edited an hour later.
+    assert await comments.review(group_bot, config, db, watch, message("Есть мефф, пиши в лс"), edited=True) == 1
+    (text,) = group_bot.messages
+    assert text.startswith("🔴 Комментарии: наркотики") and "✏️ отредактирован после публикации" in text
+    stored = await db.get_review(1)
+    assert stored["category"] == "drugs" and stored["text"] == "Есть мефф, пиши в лс" and stored["edited_at"]
+    assert (await db.review_stats())["checked"] == 1                     # one message, one row
+
+
+async def test_an_edit_of_a_deleted_comment_is_not_reviewed_and_a_fine_edit_keeps_the_card(
+    group_bot, config, db, verdicts,
+):
+    verdicts.queue += [dangerous(), Verdict("ok", 95, "уже нормально")]
+    watch = comments.Watch()
+    await comments.review(group_bot, config, db, watch, message("мефф"))
+    # Edited into something harmless: the card about what was posted stays as it was.
+    assert await comments.review(group_bot, config, db, watch, message("привет"), edited=True) is None
+    assert (await db.get_review(1))["category"] == "drugs" and len(group_bot.messages) == 1
+    await db.update_review(1, action="deleted", label="confirmed")
+    assert await comments.review(group_bot, config, db, watch, message("мефф снова"), edited=True) is None
+    assert len(verdicts.samples) == 2                                    # the last edit was not sent to the model
+
+
+async def test_a_card_telegram_did_not_take_waits_in_the_queue(group_bot, config, db, verdicts):
+    from telegram.error import RetryAfter
+
+    from bot import notifier
+
+    verdicts.queue.append(dangerous())
+
+    async def flood(*args, **kwargs):
+        raise RetryAfter(30)
+
+    sent = group_bot.send_message
+    group_bot.send_message = flood                                       # a spam wave hit the flood limit
+    assert await comments.review(group_bot, config, db, comments.Watch(), message("мефф")) == 1
+    assert group_bot.messages == []
+    group_bot.send_message = sent
+    assert await notifier.flush_queue(group_bot, config, db) == 1        # the next minute
+    (text,) = group_bot.messages
+    assert text.startswith("🕒 ") and "🔴 Комментарии: наркотики" in text
+    assert buttons(group_bot.markups[0]) == {"cm:del:1": "🗑 Удалить", "cm:ban:1": "🔨 Удалить и забанить", "cm:ok:1": "✅ Всё в порядке"}
+
+
+async def test_edits_reach_the_review_and_never_the_owner_handlers(group_bot, config, db, verdicts, make_context):
+    from telegram import Update
+
+    assert Update.EDITED_MESSAGE in handlers.ALLOWED_UPDATES
+    context = make_context()
+    verdicts.queue.append(dangerous())
+    edit = SimpleNamespace(effective_chat=SimpleNamespace(type="supergroup"), message=None,
+                           edited_message=message("мефф"))
+    with pytest.raises(ApplicationHandlerStop):
+        await handlers.on_group_update(edit, context)
+    await asyncio.gather(*context.application.tasks)
+    assert "✏️ отредактирован после публикации" in group_bot.messages[0]
+    # The owner fixing a typo in an old /settime: not a new command.
+    private_edit = SimpleNamespace(effective_chat=SimpleNamespace(type="private"), message=None,
+                                   edited_message=SimpleNamespace(text="/settime 09:00"))
+    with pytest.raises(ApplicationHandlerStop):
+        await handlers.on_group_update(private_edit, context)

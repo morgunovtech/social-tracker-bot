@@ -279,9 +279,13 @@ async def send(
     no_preview: bool = False,
     actions: Iterable[str] = (),
     monitor: str | None = None,
+    hold_on_error: bool = False,
 ) -> bool:
     """Deliver now, silently unless CRITICAL, or queue for the digest.
-    True when delivered or queued; a Telegram error propagates. Before the
+    True when delivered or queued; a Telegram error propagates — unless
+    hold_on_error: then the message waits in the queue and goes out with the
+    next flush, with the time it happened above it (a comment card has no
+    other way back: Telegram does not send the comment again). Before the
     first /start there is nobody to write to: False, and nothing is queued.
 
     reply_markup is a keyboard of the message's own (a card); actions and
@@ -301,13 +305,19 @@ async def send(
         await db.queue_notification(text, stored, utcnow().strftime("%Y-%m-%d %H:%M:%S"))
         logger.info("Queued (quiet hours / mute): %s", text[:60])
         return True
-    await bot.send_message(
-        chat_id=config.admin_chat_id,
-        text=text,
-        reply_markup=markup,
-        disable_notification=priority is not Priority.CRITICAL,
-        link_preview_options=NO_PREVIEW if no_preview else None,
-    )
+    try:
+        await bot.send_message(
+            chat_id=config.admin_chat_id,
+            text=text,
+            reply_markup=markup,
+            disable_notification=priority is not Priority.CRITICAL,
+            link_preview_options=NO_PREVIEW if no_preview else None,
+        )
+    except Exception:
+        if not hold_on_error:
+            raise
+        logger.warning("Telegram did not take the message — held for the next flush: %s", text[:60], exc_info=True)
+        await db.queue_notification(text, stored, utcnow().strftime("%Y-%m-%d %H:%M:%S"))
     return True
 
 

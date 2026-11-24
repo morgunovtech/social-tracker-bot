@@ -10,6 +10,13 @@ The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists 
 - The first case, 1.5.0's: an empty zone used to mean UTC and now follows the chat language, so `REPORT_HOUR_UTC=4` moved from 04:00 UTC to 04:00 Moscow without a word. A bot that ran before and still keeps its schedule in the language's zone — no `TIMEZONE`, no `REPORT_TZ`, nothing picked in the chat — hears it once with this update, with the time it used to be on today's clock and the buttons to pick its zone and time.
 - Alerts may open the settings screens now: `open:rtz`, `open:rtime`, `open:when`, `open:mod`, `open:set`.
 
+**Fixed** (the code review of 2026-11-24)
+- A comment edited after it was posted was never looked at again: the bot did not ask Telegram for edits, and one comment was one review for good. A harmless comment edited into a drug shop stayed. The bot now asks for `edited_message`; an edit in the discussion group is classified again, and a flagged one replaces the stored verdict (the owner's earlier action and mark go with the old text) and comes as a card of its own, «✏️ отредактирован после публикации». An edit the model calls fine leaves a flagged card as it was; an edit of a comment already deleted or banned is not sent to the model. Edits count toward `COMMENTS_DAILY_LIMIT`. A database of an older version gets the `edited_at` column at start.
+- An edit in the owner's own chat (a typo fixed in an old `/settime`) is ignored: python-telegram-bot hands edits to command handlers too, and they would have run the command again.
+- A comment card that Telegram did not take — a flood limit in a spam wave, a network error — was lost: the review was stored first, and Telegram does not send the comment again. Now it waits in the queue and comes with the next minute's flush, whole, with the time above it (`notifier.send(hold_on_error=True)`).
+- A restored Sunday backup brought back the date the LinkedIn cookie (and the Instagram token) was set without the cookie itself, which the backup leaves out: the LinkedIn screen then aged a cookie from `.env` by the old one's date. A secret's dates now come back only together with the secret.
+- `/history 7` showed eight days: «the last N days» counted today plus N days back. It is N days now, today included, in the tables, the chart and the bot-inflow check.
+
 ## 1.6.0 — 2026-11-24
 
 The digest after a quiet night or a `/mute` reads like the principles say: one headline per held message, 🔴 and 🟠 first, and «ℹ️ N» for the rest of any of them. And 🛡 Security's recent events read in the chat language, whatever language they were recorded in.
