@@ -46,14 +46,25 @@ Telegram error propagate, so the callers that retry on failure (profile,
 mail) keep working; while muted or in quiet hours a NORMAL message is queued,
 and deferred() tells a caller in advance whether a priority would wait.
 flush_queue() runs every minute from the scheduler and right after /unmute:
-when the silence is over it delivers the queue as one numbered digest with
-the time of each item in the owner's zone; an item with buttons of its own
-(a card), or one too long for the digest, goes alone, with its time above.
+when the silence is over it delivers the queue as one numbered digest of
+headlines (BOT_PRINCIPLES §3) — the first line of each held message, its
+icon first, 🔴 then 🟠 then the rest, each with the time it happened in the
+owner's zone. «ℹ️ N» under the digest sends item N whole, below it, with the
+buttons it would have had (held_item); a longer backlog, or more than
+DIGEST_BUTTONS such items, continues in the next message. A card — a message
+with buttons of its own, which act on its text — comes after the digest,
+whole, with its time above.
+
+Nothing held is lost: a row leaves the queue only once Telegram took the
+digest with its headline; then its full text stays for «ℹ️ N» for
+HELD_KEEP_DAYS (bot/db.py) — a row with nothing behind its headline is
+deleted at once. Everything lives in the DB, so a restart changes nothing.
 
 Action rows (`actions`, `monitor`): the screens an alert leads to, «🔕 Тихо
 8 ч» under what may wait, «⚙️ Не присылать такие» under a 🟠 one. They are
 built by bot/callbacks.py and, unlike a card's buttons, do not take a message
-out of the digest: the digest gets one row for all its items.
+out of the digest: the digest gets one row for all its items, and «ℹ️ N»
+brings back the item's own row, switch-off included.
 """
 
 from __future__ import annotations
@@ -65,13 +76,15 @@ from datetime import datetime, timedelta
 from enum import Enum
 from zoneinfo import ZoneInfo
 
-from telegram import Bot, InlineKeyboardMarkup, ReplyKeyboardMarkup
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
+from bot import humanize
+from bot.callbacks import DIGEST as DIGEST_CALLBACK
 from bot.callbacks import actions_markup
 from bot.config import Config
 from bot.db import Database, parse_utc, utcnow
 from bot.i18n import t
-from bot.monitors import CRITICAL, NO_PREVIEW
+from bot.monitors import CRITICAL, NO_PREVIEW, WARNING
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +96,12 @@ MUTE_DEFAULT = timedelta(hours=8)
 MUTE_MAX = timedelta(days=7)
 # Telegram's limit is 4096; the digest keeps a margin for the header and numbering.
 SAFE_LIMIT = 4000
+TELEGRAM_LIMIT = 4096
+# The digest: one line per held message, at most this long; «ℹ️ N» buttons
+# under one message — two rows of four, as in TofsDevOps — and a longer
+# backlog continues in the next message.
+HEADLINE_MAX = 300
+DIGEST_BUTTONS = 8
 
 
 class Priority(Enum):
@@ -371,11 +390,12 @@ _flushing = False
 
 
 async def flush_queue(bot: Bot, config: Config, db: Database) -> int:
-    """Deliver the deferred messages as one digest once the silence is over;
-    returns how many were delivered. Several messages when the backlog is
-    long or an item has buttons; only rows actually sent are deleted, so a
-    Telegram error leaves the rest for the next minute. A second call while
-    one runs returns 0 — the running one has the whole queue."""
+    """Deliver the deferred messages as one digest of headlines once the
+    silence is over; returns how many were delivered. More messages when the
+    backlog is long, and a card after the digest; a row stops waiting only
+    once Telegram took the message with it, so a Telegram error leaves the
+    rest for the next minute. A second call while one runs returns 0 — the
+    running one has the whole queue."""
     global _flushing
     if _flushing:
         return 0
@@ -386,6 +406,36 @@ async def flush_queue(bot: Bot, config: Config, db: Database) -> int:
         _flushing = False
 
 
+def _rank(text: str) -> int:
+    """🔴 first, then 🟠, then the rest — a recovery, a fact, a report."""
+    if text.startswith(CRITICAL):
+        return 0
+    return 1 if text.startswith(WARNING) else 2
+
+
+def _head(text: str) -> str:
+    """The item's line in the digest: the first line of the message, its icon
+    first (BOT_PRINCIPLES §3: a digest shows the headline only)."""
+    head = humanize.headline(text).rstrip().rstrip(":")
+    return head if len(head) <= HEADLINE_MAX else head[: HEADLINE_MAX - 1] + "…"
+
+
+def _has_more(row: dict, spec: dict | None) -> bool:
+    """Is there anything behind the headline: more lines, a first line too
+    long for the digest, or a «⚙️ Не присылать такие» of its own, which the
+    digest's shared row leaves out."""
+    first = humanize.headline(row["text"]).strip()
+    return first != row["text"].strip() or len(first) > HEADLINE_MAX or bool(spec and spec.get("monitor"))
+
+
+def _details_kb(details: list[tuple[int, int]], shared: InlineKeyboardMarkup | None) -> InlineKeyboardMarkup | None:
+    """«ℹ️ N» buttons, four in a row, above the digest's shared action row."""
+    buttons = [InlineKeyboardButton(f"ℹ️ {n}", callback_data=f"{DIGEST_CALLBACK}:{row_id}") for n, row_id in details]
+    rows = [buttons[i:i + 4] for i in range(0, len(buttons), 4)]
+    rows += list(shared.inline_keyboard) if shared else []
+    return InlineKeyboardMarkup(rows) if rows else None
+
+
 async def _flush(bot: Bot, config: Config, db: Database) -> int:
     if config.admin_chat_id is None or await deferred(db, config, Priority.NORMAL):
         return 0
@@ -393,42 +443,72 @@ async def _flush(bot: Bot, config: Config, db: Database) -> int:
     if not rows:
         return 0
     tz = await owner_tz(db, config)
-    header = t("🌙 Накопилось, пока было тихо:") + "\n\n"
-    text, batch, specs, delivered = header, [], [], 0
+    # Oldest first within a level: rows come in the order they were held.
+    rows = sorted(rows, key=lambda row: _rank(row["text"]))
+    held = [(row, *_stored(row.get("markup"))) for row in rows]
+    hint = "\n" + t("ℹ️ N — пункт целиком, с его кнопками.")
+    delivered, number = 0, 0
+    text, batch, specs, details = t("🌙 Накопилось, пока было тихо:") + "\n\n", [], [], []
 
-    async def deliver(body: str, items: list[dict], markup: InlineKeyboardMarkup | None = None) -> None:
-        nonlocal delivered
+    async def send_batch() -> None:
+        nonlocal delivered, text, batch, specs, details
+        body = text + (hint if details else "")
         await bot.send_message(
-            chat_id=config.admin_chat_id, text=body.rstrip(), reply_markup=markup,
+            chat_id=config.admin_chat_id, text=body.rstrip(), reply_markup=_details_kb(details, _union(specs)),
             disable_notification=True, link_preview_options=NO_PREVIEW,
         )
-        await db.delete_notifications([r["id"] for r in items])
-        delivered += len(items)
-
-    async def deliver_batch() -> None:
-        nonlocal text, batch, specs
-        await deliver(text, batch, _union(specs))
-        text, batch, specs = t("🌙 (продолжение)") + "\n\n", [], []
+        # Telegram has the headlines: what has more behind it is kept for «ℹ️ N», the rest is done with.
+        opened = {row_id for _, row_id in details}
+        await db.mark_shown([r["id"] for r in batch if r["id"] in opened], utcnow())
+        await db.delete_notifications([r["id"] for r in batch if r["id"] not in opened])
+        delivered += len(batch)
+        text, batch, specs, details = t("🌙 (продолжение)") + "\n\n", [], [], []
 
     try:
-        for row in rows:
+        for row, markup, spec in held:
+            if markup is not None:
+                continue                   # a card: after the digest, with its buttons
             stamp = _stamp(row.get("created_at"), tz)
-            markup, spec = _stored(row.get("markup"))
-            if markup is not None or len(row["text"]) > SAFE_LIMIT - len(header) - 20:
-                if batch:
-                    await deliver_batch()
-                alone = f"🕒 {stamp}\n{row['text']}" if stamp and len(row["text"]) + 20 < SAFE_LIMIT else row["text"]
-                await deliver(alone, [row], markup or (_union([spec]) if spec else None))
-                continue
-            body = f"{stamp} · {row['text']}" if stamp else row["text"]
-            if batch and len(text) + len(body) + 8 > SAFE_LIMIT:
-                await deliver_batch()
+            number += 1
+            line = f"{number}. {stamp} · {_head(row['text'])}" if stamp else f"{number}. {_head(row['text'])}"
+            more = _has_more(row, spec)
+            if batch and (len(text) + len(line) + len(hint) + 2 > SAFE_LIMIT or (more and len(details) >= DIGEST_BUTTONS)):
+                await send_batch()
             batch.append(row)
             if spec:
                 specs.append(spec)
-            text += f"{len(batch)}. {body}\n\n"
+            if more:
+                details.append((number, row["id"]))
+            text += line + "\n"
         if batch:
-            await deliver(text, batch, _union(specs))
+            await send_batch()
+        # A card's buttons act on its text (delete a comment, open a build log): it comes whole, on its own.
+        for row, markup, _ in held:
+            if markup is None:
+                continue
+            stamp = _stamp(row.get("created_at"), tz)
+            alone = f"🕒 {stamp}\n{row['text']}" if stamp and len(row["text"]) + 20 < SAFE_LIMIT else row["text"]
+            await bot.send_message(
+                chat_id=config.admin_chat_id, text=alone, reply_markup=markup,
+                disable_notification=True, link_preview_options=NO_PREVIEW,
+            )
+            await db.delete_notifications([row["id"]])
+            delivered += 1
     except Exception:
         logger.exception("Digest delivery failed — the rest waits for the next minute")
     return delivered
+
+
+async def held_item(db: Database, config: Config, row_id: int) -> tuple[str, InlineKeyboardMarkup | None] | None:
+    """«ℹ️ N» under a digest: the held message whole, with the time it
+    happened above and the buttons it would have had; None once its full
+    text is gone (HELD_KEEP_DAYS after the digest)."""
+    row = await db.held(row_id, utcnow())
+    if row is None:
+        return None
+    markup, spec = _stored(row.get("markup"))
+    if spec:
+        markup = actions_markup(spec.get("actions") or [], mute=bool(spec.get("mute")), monitor=spec.get("monitor"))
+    stamp = _stamp(row.get("created_at"), await owner_tz(db, config))
+    text = f"🕒 {stamp}\n{row['text']}" if stamp and len(row["text"]) + 20 < SAFE_LIMIT else row["text"]
+    return (text if len(text) <= TELEGRAM_LIMIT else text[: TELEGRAM_LIMIT - 1] + "…"), markup

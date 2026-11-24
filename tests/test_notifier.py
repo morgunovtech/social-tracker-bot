@@ -7,6 +7,7 @@ import pytest
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot import notifier
+from bot.db import HELD_KEEP_DAYS, Database
 from bot.notifier import Priority, flush_queue, parse_duration, parse_quiet_hours, send
 
 NIGHT = datetime(2026, 11, 23, 2, 30, tzinfo=UTC)   # 02:30 UTC — inside 23-8
@@ -122,6 +123,16 @@ async def test_silence_status(config, db, clock):
 
 # --- the digest ----------------------------------------------------------------
 
+def _alert(head: str) -> str:
+    """A held alert in the one shape: headline, meaning, steps, the technical line."""
+    return f"{head}\n\nЧто это значит.\n\nЧто делать:\n• шаг\n\nТех.: деталь"
+
+
+def _details(markup) -> dict[str, str]:
+    """The «ℹ️ N» buttons under a digest: label → callback data."""
+    return {b.text: b.callback_data for row in markup.inline_keyboard for b in row if b.text.startswith("ℹ️")}
+
+
 async def test_digest_comes_as_one_message_when_the_silence_ends(bot, config, db, clock):
     await notifier.set_quiet_hours(db, "23-8")
     clock["now"] = NIGHT
@@ -133,13 +144,107 @@ async def test_digest_comes_as_one_message_when_the_silence_ends(bot, config, db
     assert await flush_queue(bot, config, db) == 2
     (digest,) = bot.messages
     assert digest.startswith("🌙 Накопилось, пока было тихо:\n\n")
-    assert "1. 02:30 · 🟠 Telegram: −50 подписчиков за день\n\n2. 02:30 · 🔄 Бот обновился:\n  • aiohttp 1 → 2" in digest
+    assert "1. 02:30 · 🟠 Telegram: −50 подписчиков за день\n2. 02:30 · 🔄 Бот обновился\n" in digest
+    assert "aiohttp" not in digest                                        # the headline only
+    assert list(_details(bot.markups[0])) == ["ℹ️ 2"]                     # item 1 has nothing behind its line
     assert bot.silent == [True]
     assert await db.peek_notifications() == []
     assert await flush_queue(bot, config, db) == 0                        # nothing comes twice
 
 
-async def test_a_message_with_buttons_or_too_long_goes_alone(bot, config, db, clock):
+async def test_the_digest_is_headlines_red_then_orange_with_a_button_each(bot, config, db, clock):
+    await notifier.set_mute(db, timedelta(hours=1))
+    await send(bot, config, db, "✅ YouTube: данные снова собираются. Ничего делать не нужно.")
+    await send(bot, config, db, _alert("🟠 Telegram: −50 подписчиков за день"), actions=("dyn",), monitor="followers")
+    await send(bot, config, db, _alert("🔴 Telegram: похоже на взлом — новый админ X"), actions=("sec",))
+    await send(bot, config, db, _alert("🟠 Instagram: пришёл код входа"), actions=("sec",), monitor="mail")
+    await notifier.set_mute(db, None)
+    assert await flush_queue(bot, config, db) == 4
+    (digest,) = bot.messages
+    assert digest.split("\n")[2:6] == [
+        "1. 12:00 · 🔴 Telegram: похоже на взлом — новый админ X",
+        "2. 12:00 · 🟠 Telegram: −50 подписчиков за день",
+        "3. 12:00 · 🟠 Instagram: пришёл код входа",
+        "4. 12:00 · ✅ YouTube: данные снова собираются. Ничего делать не нужно.",
+    ]
+    assert "Что делать" not in digest and "Тех.:" not in digest
+    assert digest.endswith("ℹ️ N — пункт целиком, с его кнопками.")
+    held = {r["text"].split("\n")[0]: r["id"] for r in await _all_rows(db)}
+    assert _details(bot.markups[0]) == {
+        "ℹ️ 1": f"dg:{held['🔴 Telegram: похоже на взлом — новый админ X']}",
+        "ℹ️ 2": f"dg:{held['🟠 Telegram: −50 подписчиков за день']}",
+        "ℹ️ 3": f"dg:{held['🟠 Instagram: пришёл код входа']}",
+    }
+    # Under the buttons, the digest's shared row: every screen its items lead to, «🔕».
+    shared = [b.callback_data for b in bot.markups[0].inline_keyboard[-1]]
+    assert shared == ["open:sec", "open:dyn", "mute:8h"]
+    # The one-liner had nothing more: it is done with; the others wait for «ℹ️ N».
+    assert len(held) == 3 and await db.peek_notifications() == []
+
+
+async def _all_rows(db) -> list[dict]:
+    import sqlite3
+
+    with sqlite3.connect(db._db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        return [dict(r) for r in conn.execute("SELECT * FROM pending_notifications ORDER BY id")]
+
+
+async def test_info_n_sends_the_item_whole_with_its_own_buttons(bot, config, db, clock):
+    await notifier.set_mute(db, timedelta(hours=1))
+    full = _alert("🟠 Telegram: −50 подписчиков за день")
+    await send(bot, config, db, full, actions=("dyn",), monitor="followers")
+    await notifier.set_mute(db, None)
+    await flush_queue(bot, config, db)
+    row_id = int(_details(bot.markups[0])["ℹ️ 1"].split(":")[1])
+    clock["now"] = DAY + timedelta(hours=3)
+    text, markup = await notifier.held_item(db, config, row_id)
+    assert text == f"🕒 12:00\n{full}"                                     # when it happened, not when opened
+    assert [b.callback_data for row in markup.inline_keyboard for b in row] == ["open:dyn", "mute:8h", "mod:followers:off"]
+    assert await notifier.held_item(db, config, row_id) is not None        # a second tap works the same
+
+
+async def test_the_full_texts_are_kept_for_a_week(bot, config, db, clock):
+    await notifier.set_mute(db, timedelta(hours=1))
+    await send(bot, config, db, _alert("🟠 one"))
+    await notifier.set_mute(db, None)
+    await flush_queue(bot, config, db)
+    row_id = int(_details(bot.markups[0])["ℹ️ 1"].split(":")[1])
+    assert await db.held(row_id, DAY + timedelta(days=HELD_KEEP_DAYS, minutes=-1)) is not None
+    assert await db.held(row_id, DAY + timedelta(days=HELD_KEEP_DAYS, minutes=1)) is None
+    assert (await db.prune(DAY + timedelta(days=HELD_KEEP_DAYS, minutes=1)))["pending_notifications"] == 1
+    assert await _all_rows(db) == []
+
+
+async def test_nothing_held_is_lost_across_a_restart(bot, config, db, clock):
+    await notifier.set_mute(db, timedelta(hours=1))
+    await send(bot, config, db, _alert("🟠 one"))
+    await send(bot, config, db, _alert("🟠 two"))
+    await notifier.set_mute(db, None)
+    send_message = bot.send_message
+
+    async def broken(*args, **kwargs):
+        raise RuntimeError("Telegram is down")
+
+    bot.send_message = broken
+    assert await flush_queue(bot, config, db) == 0                        # the digest did not go out
+    bot.send_message = send_message
+
+    # The process restarts: a new connection to the same file, a fresh notifier state.
+    restarted = Database(db._db_path)
+    await restarted.init()
+    notifier._flushing = False
+    assert len(await restarted.peek_notifications()) == 2
+    assert await flush_queue(bot, config, restarted) == 2
+    row_id = int(_details(bot.markups[0])["ℹ️ 2"].split(":")[1])
+
+    again = Database(db._db_path)
+    await again.init()
+    text, _ = await notifier.held_item(again, config, row_id)
+    assert text.endswith(_alert("🟠 two"))
+
+
+async def test_a_card_comes_whole_after_the_digest(bot, config, db, clock):
     await notifier.set_mute(db, timedelta(hours=1))
     markup = InlineKeyboardMarkup([[InlineKeyboardButton("📄 Лог сборки", url="https://example.com/log")]])
     await send(bot, config, db, "🟠 first")
@@ -148,11 +253,27 @@ async def test_a_message_with_buttons_or_too_long_goes_alone(bot, config, db, cl
     await send(bot, config, db, "🟠 last")
     await notifier.set_mute(db, None)
     assert await flush_queue(bot, config, db) == 4
-    assert [m.split("\n")[0] for m in bot.messages] == [
-        "🌙 Накопилось, пока было тихо:", "🕒 12:00", "📊 " + "x" * 4200, "🌙 (продолжение)",
-    ]
+    assert len(bot.messages) == 2
+    digest, card = bot.messages
+    assert "1. 12:00 · 🟠 first\n2. 12:00 · 🟠 last\n3. 12:00 · 📊 " in digest and len(digest) < 1000
+    assert list(_details(bot.markups[0])) == ["ℹ️ 3"]                     # the long one: a clipped line and a button
+    assert card == "🕒 12:00\n🟠 Новая версия бота не запустилась"
     assert bot.markups[1].inline_keyboard[0][0].url == "https://example.com/log"
-    assert "1. 12:00 · 🟠 first" in bot.messages[0] and "1. 12:00 · 🟠 last" in bot.messages[3]
+    text, _ = await notifier.held_item(db, config, int(_details(bot.markups[0])["ℹ️ 3"].split(":")[1]))
+    assert len(text) <= 4096 and text.startswith("📊 xxx")
+
+
+async def test_a_long_backlog_continues_with_the_numbers(bot, config, db, clock):
+    await notifier.set_mute(db, timedelta(hours=1))
+    for i in range(notifier.DIGEST_BUTTONS + 2):
+        await send(bot, config, db, _alert(f"🟠 item {i + 1}"))
+    await notifier.set_mute(db, None)
+    assert await flush_queue(bot, config, db) == notifier.DIGEST_BUTTONS + 2
+    first, second = bot.messages
+    assert list(_details(bot.markups[0])) == [f"ℹ️ {n}" for n in range(1, notifier.DIGEST_BUTTONS + 1)]
+    assert [len(row) for row in bot.markups[0].inline_keyboard[:2]] == [4, 4]
+    assert second.startswith("🌙 (продолжение)\n\n9. 12:00 · 🟠 item 9\n10. 12:00 · 🟠 item 10")
+    assert list(_details(bot.markups[1])) == ["ℹ️ 9", "ℹ️ 10"]
 
 
 async def test_a_failed_digest_keeps_the_rows(bot, config, db, clock):
@@ -170,12 +291,32 @@ async def test_a_failed_digest_keeps_the_rows(bot, config, db, clock):
 
 async def test_queue_keeps_the_newest_rows(db, monkeypatch):
     monkeypatch.setattr("bot.db.PENDING_MAX", 3)
+    await db.queue_notification("shown")
+    (shown,) = await db.peek_notifications()
+    await db.mark_shown([shown["id"]])
     for i in range(5):
         await db.queue_notification(f"m{i}")
     assert [r["text"] for r in await db.peek_notifications()] == ["m2", "m3", "m4"]
+    assert await db.held(shown["id"]) is not None              # a full text behind «ℹ️ N» is not in the count
+
+
+async def test_an_older_db_gets_the_column_and_keeps_its_queue(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    with sqlite3.connect(path) as conn:
+        conn.execute("CREATE TABLE pending_notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT NOT NULL, "
+                     "markup TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        conn.execute("INSERT INTO pending_notifications (text) VALUES ('🟠 held before the update')")
+    db = Database(str(path))
+    await db.init()
+    await db.init()                                            # twice: every start runs it
+    assert [r["text"] for r in await db.peek_notifications()] == ["🟠 held before the update"]
 
 
 async def test_backup_leaves_the_queue_behind(db, tmp_path):
+    await db.queue_notification("shown in a digest")
+    await db.mark_shown([(await db.peek_notifications())[0]["id"]])
     await db.queue_notification("held")
     copy = tmp_path / "copy.db"
     await db.snapshot_without_secrets(str(copy))

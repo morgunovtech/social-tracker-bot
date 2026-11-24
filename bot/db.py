@@ -60,17 +60,21 @@ CREATE TABLE IF NOT EXISTS security_events (
 """
 
 # Notifications held back by quiet hours or /mute (bot/notifier.py), delivered
-# as one digest when the silence ends. markup is the inline keyboard as JSON.
+# as one digest of headlines when the silence ends. markup is the inline
+# keyboard as JSON. shown_at is NULL while a row waits; once the digest with
+# its headline went out, the full text stays for «ℹ️ N» under the digest
+# until HELD_KEEP_DAYS have passed.
 _CREATE_PENDING = """
 CREATE TABLE IF NOT EXISTS pending_notifications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     text TEXT NOT NULL,
     markup TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    shown_at TIMESTAMP
 );
 """
-# The queue keeps the newest this many rows: a week of /mute must not turn
-# into a hundred-message morning.
+# The queue keeps the newest this many waiting rows: a week of /mute must not
+# turn into a hundred-message morning.
 PENDING_MAX = 100
 
 # Comments of the channel's discussion group that the classifier looked at
@@ -148,6 +152,7 @@ _SECRET_KEYS: dict[str, tuple[str, ...]] = {
 REVIEW_OK_KEEP_DAYS = 30          # comments the model called fine: only a count on /comments
 REVIEW_FLAGGED_KEEP_DAYS = 180    # cards: their buttons keep working for a while
 CHANNEL_EVENTS_KEEP_DAYS = 90     # joins and leaves, with names
+HELD_KEEP_DAYS = 7                # full texts behind a digest's «ℹ️ N»: as long as the longest /mute
 
 
 def _check_backup(path: str) -> None:
@@ -188,6 +193,10 @@ class Database:
             await db.execute(_CREATE_SETTINGS)
             await db.execute(_CREATE_EVENTS)
             await db.execute(_CREATE_PENDING)
+            # Added with the headline digest: an older DB gets the column, its waiting rows stay waiting.
+            pending = {row[1] for row in await (await db.execute("PRAGMA table_info(pending_notifications)")).fetchall()}
+            if "shown_at" not in pending:
+                await db.execute("ALTER TABLE pending_notifications ADD COLUMN shown_at TIMESTAMP")
             await db.execute(_CREATE_COMMENTS)
             await db.execute(_CREATE_CHANNEL_EVENTS)
             await db.execute(_CREATE_CHANNEL_POSTS)
@@ -201,7 +210,7 @@ class Database:
         async with aiosqlite.connect(dest_path) as db:
             placeholders = ",".join("?" * len(_SECRET_SETTINGS))
             await db.execute(f"DELETE FROM settings WHERE key IN ({placeholders})", _SECRET_SETTINGS)
-            # Held-back alerts are live state, not history.
+            # Held-back alerts and the full texts behind a digest's «ℹ️ N» are live state, not history.
             await db.execute("DELETE FROM pending_notifications")
             await db.commit()
             # Rebuild the file so deleted values don't linger in free pages.
@@ -393,7 +402,7 @@ class Database:
 
     async def queue_notification(self, text: str, markup: str | None = None, created_at: str | None = None) -> None:
         """Hold a message for the digest, stamped with when it happened; the
-        oldest rows beyond PENDING_MAX are dropped."""
+        oldest waiting rows beyond PENDING_MAX are dropped."""
         created_at = created_at or utcnow().strftime("%Y-%m-%d %H:%M:%S")
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(
@@ -402,8 +411,8 @@ class Database:
             )
             await db.execute(
                 """
-                DELETE FROM pending_notifications WHERE id NOT IN (
-                    SELECT id FROM pending_notifications ORDER BY id DESC LIMIT ?
+                DELETE FROM pending_notifications WHERE shown_at IS NULL AND id NOT IN (
+                    SELECT id FROM pending_notifications WHERE shown_at IS NULL ORDER BY id DESC LIMIT ?
                 )
                 """,
                 (PENDING_MAX,),
@@ -411,10 +420,34 @@ class Database:
             await db.commit()
 
     async def peek_notifications(self) -> list[dict]:
+        """The rows still waiting for a digest, oldest first."""
         async with aiosqlite.connect(self._db_path) as db:
             db.row_factory = aiosqlite.Row
-            cursor = await db.execute("SELECT * FROM pending_notifications ORDER BY id ASC")
+            cursor = await db.execute("SELECT * FROM pending_notifications WHERE shown_at IS NULL ORDER BY id ASC")
             return [dict(r) for r in await cursor.fetchall()]
+
+    async def mark_shown(self, ids: list[int], at: datetime | None = None) -> None:
+        """The digest with these rows' headlines went out: they stop waiting
+        and their full texts stay for «ℹ️ N» (held)."""
+        if not ids:
+            return
+        stamp = (at or utcnow()).astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                f"UPDATE pending_notifications SET shown_at = ? WHERE id IN ({','.join('?' * len(ids))})",
+                (stamp, *ids),
+            )
+            await db.commit()
+
+    async def held(self, row_id: int, now: datetime | None = None) -> dict | None:
+        """A row a digest showed as a headline, while its full text is kept."""
+        since = ((now or utcnow()) - timedelta(days=HELD_KEEP_DAYS)).astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            row = await (await db.execute(
+                "SELECT * FROM pending_notifications WHERE id = ? AND shown_at >= ?", (row_id, since)
+            )).fetchone()
+            return dict(row) if row else None
 
     async def delete_notifications(self, ids: list[int]) -> None:
         if not ids:
@@ -500,8 +533,15 @@ class Database:
             events = await db.execute(
                 "DELETE FROM channel_events WHERE occurred_at < ?", (before(CHANNEL_EVENTS_KEEP_DAYS),)
             )
+            held = await db.execute(
+                "DELETE FROM pending_notifications WHERE shown_at < ?", (before(HELD_KEEP_DAYS),)
+            )
             await db.commit()
-        return {"comment_reviews": ok.rowcount + flagged.rowcount, "channel_events": events.rowcount}
+        return {
+            "comment_reviews": ok.rowcount + flagged.rowcount,
+            "channel_events": events.rowcount,
+            "pending_notifications": held.rowcount,
+        }
 
     async def count_author_reviews(self, chat_id: int, user_id: int) -> int:
         """How many messages of this author the bot has already seen in the group."""

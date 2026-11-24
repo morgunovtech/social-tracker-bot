@@ -4,6 +4,14 @@ The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists 
 
 ## Unreleased
 
+**The digest after the silence: headlines, and the rest a tap away** (the owner's `BOT_PRINCIPLES.md`, §3)
+- What waited out quiet hours or a `/mute` used to come back as every held alert in full, one after another in one long message. Now the digest is one line per message — its headline, icon first — 🔴 first, then 🟠, then the rest (a recovery, a fact, a report), each with the time it happened.
+- «ℹ️ N» under the digest sends item N whole, below it, with the time above and the buttons it would have had — «⚙️ Не присылать такие» included, which the digest's shared row leaves out; the digest stays as it is. A line with nothing more behind it gets no button. More than eight such items, or a very long night, continue in «🌙 (продолжение)» with the numbers going on.
+- The full texts are kept for 7 days after the digest (`HELD_KEEP_DAYS`, as long as the longest `/mute`), then the daily clean-up drops them; a tap after that says so. They never go into the Sunday backup, like the queue itself.
+- A card — a message whose buttons act on it, a comment card or a failed deploy with its log — comes whole after the digest instead of splitting it.
+- Nothing held is lost, as before: a message leaves the queue only once Telegram took the digest with its line, and the queue and the full texts live in the database, so a restart changes nothing. 🔴 never waits for a digest. A database of an older version gets the new column at start and keeps what it was holding.
+- ⚙️ Настройки → 🔔 Когда писать says how the digest reads and how long the full texts are kept.
+
 **Fixed**
 - 🛡 Security's «Recent events» showed each row in the language it was recorded in: with `BOT_LANG=en`, a change recorded while the bot was Russian read «🟠 Telegram: доступ бота к списку админов — «нет» → «есть»». The security log now keeps a line before translation — the Russian template and its values as JSON; the bot's own words (a field's name, «есть», «нет», «(пусто)», a mail's kind) are translated when the screen is drawn, someone else's text (a title, a name, a subject) is shown as it was. Rows stored as finished Russian text by 1.5.0 and earlier are recognised by the lines those versions wrote and read the same way, an old 🚨 line as today's 🔴 with «похоже на взлом»; a row that matches none of them is shown as it is.
 - The alert about the bot's access to the channel's admin list said «нет» → «есть» in an English chat too: the two words are the bot's own and are translated now.

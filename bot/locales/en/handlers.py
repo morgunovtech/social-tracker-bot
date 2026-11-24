@@ -151,6 +151,8 @@ STRINGS: dict[str, str] = {
         "Didn't get that. Everything is on the buttons under the input field: 🏠 Home, 📖 What I do, ❓ Icons.",
     "Кнопка устарела — вот главная. Она всегда под полем ввода: «🏠 Главная»":
         "This button is outdated — here is the home screen. It is always under the input field: \"🏠 Home\"",
+    "Полного текста уже нет: я храню его {days} дн. после сводки.":
+        "The full text is gone: I keep it for {days} days after the digest.",
     "Такой команды нет. Все команды — в «📖 Что я умею» под полем ввода.":
         "No such command. Every command is in \"📖 What I do\" under the input field.",
     "Главные кнопки теперь под полем ввода: 🏠 Главная, 📖 Что я умею и ❓ Значки. Меню ☰ убрал — "

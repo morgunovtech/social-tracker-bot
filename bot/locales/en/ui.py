@@ -264,6 +264,11 @@ STRINGS: dict[str, str] = {
         "a dangerous comment — comes at once, with sound. Everything else comes as a digest when the silence ends.",
     "🌙 Накопилось, пока было тихо:": "🌙 Piled up while it was quiet:",
     "🌙 (продолжение)": "🌙 (continued)",
+    "ℹ️ N — пункт целиком, с его кнопками.": "ℹ️ N — the item in full, with its buttons.",
+    "Сводка — строка на событие, 🔴 и 🟠 первыми, у каждого время; «ℹ️ N» под ней присылает пункт целиком. "
+    "Полные тексты храню {days} дн.":
+        "The digest is a line per event, 🔴 and 🟠 first, each with its time; \"ℹ️ N\" under it sends the item "
+        "in full. I keep the full texts for {days} days.",
     "/modules — мониторинги": "/modules — monitors",
     "/comments — комментарии канала: что проверено и насколько точно": (
         "/comments — the channel's comments: what was checked and how accurately"

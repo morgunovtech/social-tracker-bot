@@ -358,13 +358,27 @@ async def test_alerts(config, db):
         english_only(t(kind.advice))
 
 
-async def test_digest(config, db):
-    bot = FakeBot()
+async def test_digest(config, db, make_update, make_context, bot):
     await notifier.set_mute(db, timedelta(hours=1))
     await notifier.send(bot, config, db, "x")
+    await notifier.send(bot, config, db, humanize.alert("🟠 y", "follower_drop", "z"), monitor="followers")
     await notifier.set_mute(db, None)
-    assert await notifier.flush_queue(bot, config, db) == 1
-    english_only(bot.messages[0])
+    assert await notifier.flush_queue(bot, config, db) == 2
+    english_only(bot.messages[0])                                  # the headlines and the «ℹ️ N» hint
+    for row in bot.markups[0].inline_keyboard:
+        for button in row:
+            english_only(button.text)
+    # «ℹ️ N»: the item whole, with its own row; a button whose text is gone says so.
+    data = next(b.callback_data for row in bot.markups[0].inline_keyboard for b in row if b.text == "ℹ️ 1")
+    for callback in (data, "dg:999"):
+        update = make_update(callback=callback)
+        await handlers.on_callback(update, make_context())
+        for answer in update.callback_query.answers:
+            english_only(answer["text"] or "")
+    english_only(bot.messages[-1])
+    for row in bot.markups[-1].inline_keyboard:
+        for button in row:
+            english_only(button.text)
 
 
 async def test_backup_caption(config, db):

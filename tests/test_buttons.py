@@ -65,7 +65,31 @@ async def test_the_digest_gets_one_row_for_all_its_items(bot, config, db):
     assert await flush_queue(bot, config, db) == 3
     (digest,) = bot.messages
     assert "1. " in digest and "3. " in digest                              # still one message
-    assert buttons(bot.markups[0]) == {"open:sec": "🛡 Безопасность", "open:dyn": "📈 Динамика", "mute:8h": "🔕 Тихо 8 ч"}
+    shared = bot.markups[0].inline_keyboard[-1]
+    assert {b.callback_data: b.text for b in shared} == {
+        "open:sec": "🛡 Безопасность", "open:dyn": "📈 Динамика", "mute:8h": "🔕 Тихо 8 ч",
+    }
+    # The switch-offs stay with their items: «ℹ️ N» brings each one back with its own row.
+    assert [b.text for b in bot.markups[0].inline_keyboard[0]] == ["ℹ️ 1", "ℹ️ 2"]
+
+
+async def test_info_n_under_a_digest_sends_the_item_below_it(make_update, make_context, bot, config, db):
+    await notifier.set_mute(db, timedelta(hours=1))
+    full = "🟠 Telegram: −50 подписчиков за день\n\nЧто делать:\n• посмотреть 📈 Динамику"
+    await send(bot, config, db, full, actions=(cb.DYNAMICS,), monitor="followers")
+    await notifier.set_mute(db, None)
+    await flush_queue(bot, config, db)
+    data = next(b.callback_data for row in bot.markups[0].inline_keyboard for b in row if b.text == "ℹ️ 1")
+    query = await press(make_update, make_context, data)
+    assert query.edits == []                                                # the digest stays as it is
+    assert bot.messages[-1].startswith("🕒 ") and bot.messages[-1].endswith(full)
+    assert buttons(bot.markups[-1]) == {
+        "open:dyn": "📈 Динамика", "mute:8h": "🔕 Тихо 8 ч", "mod:followers:off": "⚙️ Не присылать такие",
+    }
+    sent = len(bot.messages)
+    query = await press(make_update, make_context, "dg:999")
+    assert query.answers[0]["text"] == "Полного текста уже нет: я храню его 7 дн. после сводки."
+    assert len(bot.messages) == sent
 
 
 async def test_the_report_and_the_alerts_carry_their_rows(bot, config, db, insert, monkeypatch):
