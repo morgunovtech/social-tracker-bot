@@ -88,7 +88,12 @@ async def test_the_report_and_the_alerts_carry_their_rows(bot, config, db, inser
     }
     mixed = CollectOutcome(report="", has_change=True, drops={"youtube": (100, 50)}, errors={"linkedin_cookie_expired": True})
     await send_alerts(bot, config, db, mixed)
-    assert not {"mod:followers:off", "mod:collection:off"} & set(buttons(bot.markups[1]))   # two monitors: no switch-off
+    # One message per problem, each with its own monitor's switch-off (BOT_PRINCIPLES §3).
+    assert len(bot.messages) == 3 and bot.messages[1].startswith("🟠 LinkedIn cookie истёк")
+    assert buttons(bot.markups[1]) == {
+        "open:conn": "🔌 Подключения", "mute:8h": "🔕 Тихо 8 ч", "mod:collection:off": "⚙️ Не присылать такие",
+    }
+    assert "mod:followers:off" in buttons(bot.markups[2])
 
 
 # --- the routes behind the rows ------------------------------------------------

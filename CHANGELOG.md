@@ -21,6 +21,12 @@ The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists 
 - The daily ping uses the address from the chat first and `HEALTHCHECK_URL` as the fallback; it reads the body too, and its outcome shows on 🔌 Подключения (✅ last ping, 🟠 the watchdog refuses it, ⚠️ could not reach it).
 - After the first collection that read a network, the bot offers the watchdog once, unless one is already set.
 
+**One alert shape** (§3)
+- Every alert reads top to bottom the same way, as in TofsDevOps: the headline, what it means and what it usually is, what to do in two or three steps, the technical line last («Тех.: HTTP 500 · 6 опросов подряд»). `bot/humanize.py` holds the words — one dictionary of explanations for the follower drop and the bot influx, the collection failures, the cookie and the token, the profile changes and the hijack signs, the unreadable profile, the security emails, the silent mail worker, the comment check down and its daily limit.
+- One message per problem: a drop and an expired cookie of the same morning used to share one message and its buttons; now each has its own, with its own «⚙️ Не присылать такие». A milestone stays one line — it is a fact, not a problem. The profile's changes of one check stay one alert, the hijack signs first; «🛡 Профиль» above them and the fixed advice under them are gone.
+- A recovery says how long it lasted, from the first failed check of the series: «✅ Почтовый воркер снова отвечает. Молчал 40 мин (14:03–14:43). Ничего делать не нужно.» — the mail worker, the profile («Не читался …»), a collection streak and the daily run («Не собирались …», «Не выполнялся …», told once, only after one that was alerted; they used to end in silence), the comment check. When the bot itself was not checking in between, it says the duration is a lower bound.
+- The ✅ after a 🔴 outage — the profile readable again, the mail worker back — rings like the fall did (§1).
+
 **Someone else's text**
 - Direction overrides, zero-width marks and control characters are stripped from everything quoted — `clean()` runs inside `defang()` and inside every screen value: a display name or a mail subject with U+202E can no longer show `evil.com` as `google.com`. An unknown sender's domain in an alert is defanged too.
 

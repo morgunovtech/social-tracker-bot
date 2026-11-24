@@ -1,4 +1,5 @@
 import dataclasses
+import re
 from datetime import timedelta
 
 import aiohttp
@@ -188,9 +189,27 @@ async def test_unreachable_worker_alerted_once_then_recovery(bot, mail_config, d
     assert len(bot.messages) == 1 and bot.messages[0].startswith("🔴 Почтовый воркер не отвечает")
     # 🔴: while the worker is silent a hijack sign reaches nobody — the alert rings.
     assert bot.silent == [False]
+    assert "Что делать:" in bot.messages[0] and "Тех.: HTTP 500 · 6 опросов подряд" in bot.messages[0]
+    since = utcnow() - timedelta(minutes=40)
+    await db.set_setting("mail_fail_since", since.isoformat())                    # the first failed poll
     worker["status"] = 200
     await _check(bot, mail_config, db)
-    assert bot.messages[-1] == "✅ Почтовый воркер снова отвечает"
+    # One message with how long it was silent; after a 🔴 silence the return rings too.
+    assert re.fullmatch(r"✅ Почтовый воркер снова отвечает\. Молчал 40 мин \(\d\d:\d\d–\d\d:\d\d\)\. "
+                        r"Ничего делать не нужно\.", bot.messages[-1]), bot.messages[-1]
+    assert bot.silent == [False, False]
+
+
+async def test_a_return_after_the_bot_itself_was_down_says_so(bot, mail_config, db, worker):
+    worker["status"] = 500
+    for _ in range(mail.UNREACHABLE_AFTER):
+        await _check(bot, mail_config, db)
+    now = utcnow()
+    await db.set_setting("mail_fail_since", (now - timedelta(hours=5)).isoformat())
+    await db.set_setting("mail_fail_last", (now - timedelta(hours=3)).isoformat())   # no polls for three hours
+    worker["status"] = 200
+    await _check(bot, mail_config, db)
+    assert "Молчал не меньше 2 ч" in bot.messages[-1] and "я не проверял" in bot.messages[-1]
 
 
 async def test_malformed_event_is_skipped(bot, mail_config, db, worker):

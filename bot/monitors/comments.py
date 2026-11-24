@@ -31,10 +31,10 @@ import anthropic
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.error import BadRequest, Forbidden, TelegramError
 
-from bot import callbacks, classifier, monitors, notifier
+from bot import callbacks, classifier, humanize, monitors, notifier
 from bot.classifier import REFUSED, Sample, Verdict
 from bot.config import Config
-from bot.db import Database, utcnow
+from bot.db import Database, parse_utc, utcnow
 from bot.i18n import t
 from bot.monitors import CRITICAL, WARNING, clean, defang
 from bot.notifier import Priority
@@ -56,6 +56,7 @@ STORED_TEXT_LEN = 1000
 # Consecutive classifier failures before the owner hears about it.
 API_FAIL_AFTER = 3
 API_FAIL_KEY = "comments_api_fails"
+API_FAIL_SINCE_KEY = "comments_api_fail_since"
 # Comments classified at once. Every message in the group is reviewed as a
 # task of its own, so a spam wave of two hundred messages used to be two
 # hundred parallel API calls with pictures; now three at a time, the rest wait.
@@ -293,21 +294,36 @@ def card(review: dict, channel_title: str = "", first_message: bool = False) -> 
 async def _api_failed(bot: Bot, config: Config, db: Database, error: Exception) -> None:
     fails = int(await db.get_setting(API_FAIL_KEY) or "0") + 1
     await db.set_setting(API_FAIL_KEY, str(fails))
+    if fails == 1:
+        await db.set_setting(API_FAIL_SINCE_KEY, utcnow().isoformat())
     if fails == API_FAIL_AFTER:
         await notifier.send(
             bot, config, db,
-            t("🟠 Комментарии: проверка не работает {n} раза подряд ({error}) — комментарии сейчас никто не смотрит. "
-              "Проверь ANTHROPIC_API_KEY и баланс API.").format(n=fails, error=type(error).__name__),
+            humanize.alert(
+                t("🟠 Комментарии: проверка не работает {n} раза подряд").format(n=fails), "comments_down",
+                type(error).__name__, config.comments_model,
+            ),
             Priority.NORMAL, actions=(callbacks.COMMENTS,), monitor=MONITOR_ID,
         )
 
 
 async def _api_recovered(bot: Bot, config: Config, db: Database) -> None:
+    """The check works again: after an alerted failure, one message with how
+    long it did not, from the first failed check of the series."""
     fails = int(await db.get_setting(API_FAIL_KEY) or "0")
     if fails:
         await db.set_setting(API_FAIL_KEY, "0")
     if fails >= API_FAIL_AFTER:
-        await notifier.send(bot, config, db, t("✅ Комментарии: проверка снова работает"), Priority.NORMAL)
+        raw = await db.get_setting(API_FAIL_SINCE_KEY)
+        try:
+            since = parse_utc(raw) if raw else None
+        except ValueError:
+            since = None
+        how_long = humanize.lasted(since, None, utcnow(), await notifier.owner_tz(db, config))
+        await notifier.send(
+            bot, config, db, humanize.recovery(t("✅ Комментарии: проверка снова работает"), how_long, "Не работала"),
+            Priority.NORMAL,
+        )
 
 
 async def over_daily_limit(bot: Bot, config: Config, db: Database) -> bool:
@@ -325,8 +341,10 @@ async def over_daily_limit(bot: Bot, config: Config, db: Database) -> bool:
         await db.set_setting(LIMIT_NOTIFIED_KEY, today)
         await notifier.send(
             bot, config, db,
-            t("🟠 Комментарии: дневной лимит проверок ({limit}) исчерпан — до конца суток (UTC) новые "
-              "комментарии не проверяю. Лимит задаёт COMMENTS_DAILY_LIMIT в .env.").format(limit=limit),
+            humanize.alert(
+                t("🟠 Комментарии: дневной лимит проверок ({limit}) исчерпан").format(limit=limit), "comments_limit",
+                f"COMMENTS_DAILY_LIMIT={limit}",
+            ),
             Priority.NORMAL, actions=(callbacks.COMMENTS,), monitor=MONITOR_ID,
         )
     return True

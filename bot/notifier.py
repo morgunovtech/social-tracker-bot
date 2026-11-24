@@ -20,14 +20,16 @@ which priority:
               the bot lost its rights); security emails of a critical kind
               («похоже на взлом»: a new sign-in, a changed or reset password,
               a changed email or 2FA); the mail worker silent for ~30 min; a
-              comment the group is blocked for, at ≥ 70 % confidence.
+              comment the group is blocked for, at ≥ 70 % confidence; and the
+              ✅ after a 🔴 outage — the profile readable again, the mail
+              worker back (BOT_PRINCIPLES §1: a recovery after a real fall rings).
     NORMAL    🛡 profile alerts with only 🟠 lines (a new title, description
-              or avatar, an admin removed) and ✅ recoveries; 🟠 security
+              or avatar, an admin removed); ✅ after a 🟠 one; 🟠 security
               emails (a login code, a generic alert), ℹ️ unrecognised mail
               and Gmail's forwarding confirmation; collection alerts —
               🟠 follower drop, 🟠 bot inflow, 🎯 milestone, 🟠 expired cookie,
-              rejected or missing token, 🟠 failure streak; the mail worker
-              back; 🟠 a deploy that failed; «🔄 Бот обновился».
+              rejected or missing token, 🟠 failure streak and its end;
+              🟠 a deploy that failed; «🔄 Бот обновился».
     DIGEST    the weekly report and its chart, the «без изменений» one-liner,
               the hygiene reminder, the monthly digest, the weekly backup,
               the weekly OSV / Dependabot notice.
@@ -127,8 +129,9 @@ async def set_quiet_hours(db: Database, raw: str | None) -> None:
     await db.set_setting(QUIET_HOURS_KEY, raw if raw else "off")
 
 
-async def _tz(db: Database, config: Config) -> ZoneInfo:
-    # The scheduler imports this module for sending; the zone is read at call time.
+async def owner_tz(db: Database, config: Config) -> ZoneInfo:
+    """The owner's zone, for the times an alert names. The scheduler imports
+    this module for sending, so the zone is read at call time."""
     from bot.scheduler import get_report_tz
 
     return await get_report_tz(db, config)
@@ -146,7 +149,7 @@ async def in_quiet_hours(db: Database, config: Config, now: datetime | None = No
     hours = await quiet_hours(db)
     if hours is None:
         return False
-    local = (now or utcnow()).astimezone(await _tz(db, config))
+    local = (now or utcnow()).astimezone(await owner_tz(db, config))
     return _within(hours, local.hour)
 
 
@@ -201,7 +204,7 @@ async def mute_until_local(db: Database, config: Config) -> str | None:
     if deadline is None:
         return None
     fmt = "%H:%M" if deadline - utcnow() < timedelta(hours=20) else "%d.%m %H:%M"
-    return deadline.astimezone(await _tz(db, config)).strftime(fmt)
+    return deadline.astimezone(await owner_tz(db, config)).strftime(fmt)
 
 
 async def silence_status(db: Database, config: Config) -> str | None:
@@ -389,7 +392,7 @@ async def _flush(bot: Bot, config: Config, db: Database) -> int:
     rows = await db.peek_notifications()
     if not rows:
         return 0
-    tz = await _tz(db, config)
+    tz = await owner_tz(db, config)
     header = t("🌙 Накопилось, пока было тихо:") + "\n\n"
     text, batch, specs, delivered = header, [], [], 0
 

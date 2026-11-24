@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from conftest import COOKIE, FakeBot
 
-from bot import handlers, i18n, monitors, notifier, reporter, scheduler, tofs_status, ui, watchdog
+from bot import handlers, humanize, i18n, monitors, notifier, reporter, scheduler, tofs_status, ui, watchdog
 from bot.config import Config
 from bot.db import utcnow
 from bot.i18n import plural, t
@@ -244,7 +244,45 @@ async def test_alerts(config, db):
         for line in profile._reachability(BY_ID["telegram"], fails, reachable)[0]:
             english_only(line)
     english_only(profile._snippet(""))
-    english_only(t(profile.ADVICE))
+    for platform in PLATFORMS:
+        changes = profile.diff(platform, old, new)
+        if changes:
+            english_only(profile.change_alert(changes))
+    now = utcnow()
+    english_only(profile._reachability(
+        BY_ID["telegram"], profile.UNREACHABLE_AFTER, True, now - timedelta(hours=26), now - timedelta(hours=20), now,
+        ZoneInfo("Europe/Moscow"),
+    )[0][0])
+    for key in humanize.EXPLANATIONS:
+        english_only(humanize.alert("x", key, "y"))
+    for minutes in (1, 59, 61, 120, 60 * 24 * 3 + 61):
+        english_only(humanize.fmt_duration(minutes))
+    # Recoveries with how long it lasted; the run's and a platform's streak ending.
+    await db.set_setting("run_fail_streak", "2")
+    await db.set_setting("run_fail_since", (now - timedelta(days=2)).isoformat())
+    await db.set_setting("fail_streak_telegram", "3")
+    await db.set_setting("fail_since_telegram", (now - timedelta(days=3)).isoformat())
+    back = CollectOutcome(report="", has_change=False, collected={"telegram": (1000, "api")})
+    for line in await collection.alert_lines(db, back, ZoneInfo("Europe/Moscow")):
+        english_only(line)
+    await db.set_setting("run_fail_last_date", "")
+    await db.set_setting("run_fail_streak", "1")
+    for line in await collection.run_failed(db):
+        english_only(line)
+    # The mail worker silent and back; the comment check down, back and over its limit.
+    bot = FakeBot()
+    for _ in range(mail.UNREACHABLE_AFTER):
+        await mail._track_reachability(bot, config, db, "HTTP 500")
+    await mail._track_reachability(bot, config, db, None)
+    for _ in range(comments.API_FAIL_AFTER):
+        await comments._api_failed(bot, config, db, ValueError("x"))
+    await comments._api_recovered(bot, config, db)
+    limited = dataclasses.replace(config, comments_daily_limit=1)
+    await db.add_review(-1001, 1, 5, "", "", "", "", "ok", 0, "")
+    assert await comments.over_daily_limit(bot, limited, db)
+    assert len(bot.messages) == 5
+    for text in bot.messages:
+        english_only(text)
 
     today = utcnow().date()
     for platform in PLATFORMS:
