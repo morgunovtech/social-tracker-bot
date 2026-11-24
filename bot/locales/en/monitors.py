@@ -335,7 +335,20 @@ STRINGS: dict[str, str] = {
     "Код подтверждения: {code} — введи его в Gmail: Настройки → Пересылка.": (
         "Confirmation code: {code} — enter it in Gmail: Settings → Forwarding."
     ),
-    "Кода в теме не нашёл: «{subject}»": 'No code found in the subject: "{subject}"',
+    (
+        "Подтверди по ссылке Gmail — откроется страница Google, где видно, с какого адреса на какой "
+        "идёт пересылка; там нажми «Подтвердить»: {url}"
+    ): (
+        "Confirm with Gmail's link — it opens Google's page that shows which address forwards to which; "
+        "press «Confirm» there: {url}"
+    ),
+    (
+        "Ни кода, ни ссылки подтверждения не нашёл: «{subject}». Запроси письмо ещё раз: Gmail → Настройки → "
+        "Пересылка и POP/IMAP → «Повторно отправить сообщение»."
+    ): (
+        'Found neither a code nor a confirmation link: "{subject}". Ask for the mail again: Gmail → Settings → '
+        "Forwarding and POP/IMAP → «Resend email»."
+    ),
     "Потом создай фильтр по отправителям уведомлений безопасности — см. mail-worker/README.md.": (
         "Then create a filter on the senders of security notifications — see mail-worker/README.md."
     ),

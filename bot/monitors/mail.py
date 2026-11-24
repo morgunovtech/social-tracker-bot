@@ -201,6 +201,9 @@ _BODY_KINDS = tuple(k for k in KINDS if k.id not in ("password_reset", "security
 _FORWARDED_FROM = re.compile(r"(?:^|\n)\s*(?:From|От|De|Von):[^\n]*?([\w.+-]+@[\w-]+(?:\.[\w-]+)+)", re.IGNORECASE)
 _FWD_PREFIX = re.compile(r"^\s*(?:(?:fwd?|пересл\.?)\s*:\s*)+", re.IGNORECASE)
 _CODE = re.compile(r"\(#(\d+)\)")
+# Gmail's own confirmation link since 2026: the confirmation mail has no code
+# any more, only this. Nothing else from a mail is ever relayed as a link.
+_GMAIL_CONFIRM = re.compile(r"https://mail\.google\.com/mail/vf-[A-Za-z0-9%_-]+(?=[\s<>\"')]|$)")
 
 
 @dataclass(frozen=True)
@@ -273,19 +276,31 @@ def _snippet(text: str) -> str:
 
 
 def _forwarding_notice(mail: Mail) -> str:
-    """Gmail sends a confirmation to a new forwarding address: relay its code.
+    """Gmail sends a confirmation to a new forwarding address: relay how to confirm.
 
-    Only the code, never the mail's link: the code is typed into Gmail's own
-    settings, so a forged "confirmation" can't turn the bot into a phishing relay.
+    The code, when the subject has one (the format before 2026). Otherwise
+    Gmail's confirmation link — and only a link on mail.google.com/mail/vf-:
+    it opens Google's own page, which names both addresses before anything is
+    confirmed, so a forged "confirmation" can't make the bot relay a link to
+    anywhere else. Any other link in the mail is never shown.
     """
     code = _CODE.search(mail.subject)
+    link = _GMAIL_CONFIRM.search(mail.text)
     lines = [t(FORWARDING_HEAD)]
     if code:
         lines.append(
             t("Код подтверждения: {code} — введи его в Gmail: Настройки → Пересылка.").format(code=code.group(1))
         )
+    elif link:
+        lines.append(t(
+            "Подтверди по ссылке Gmail — откроется страница Google, где видно, с какого адреса на какой "
+            "идёт пересылка; там нажми «Подтвердить»: {url}"
+        ).format(url=link.group(0)))
     else:
-        lines.append(t("Кода в теме не нашёл: «{subject}»").format(subject=_snippet(mail.subject)))
+        lines.append(t(
+            "Ни кода, ни ссылки подтверждения не нашёл: «{subject}». Запроси письмо ещё раз: Gmail → Настройки → "
+            "Пересылка и POP/IMAP → «Повторно отправить сообщение»."
+        ).format(subject=_snippet(mail.subject)))
     lines.append(t("Потом создай фильтр по отправителям уведомлений безопасности — см. mail-worker/README.md."))
     return "\n".join(lines)
 

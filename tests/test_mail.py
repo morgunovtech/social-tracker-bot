@@ -193,6 +193,36 @@ def test_gmail_forwarding_confirmation_is_relayed():
     assert "https://" not in text                         # a forged confirmation can't relay a link
 
 
+# The confirmation as Gmail sends it since 2026 (Russian account): no code, a link only.
+GMAIL_2026 = (
+    "Мы получили запрос на автоматическую пересылку писем с адреса\nme@gmail.com на вашу почту "
+    "sec-1@alerts.example.com.\n\nЧтобы разрешить автоматическую пересылку писем с me@gmail.com\nна ваш адрес, "
+    "перейдите по ссылке:\n\nhttps://mail.google.com/mail/vf-%5BANGjdJ_EI2D-sy6s%5D-3dSNm4LtNF\n\n"
+    "Если ссылка не работает, скопируйте и вставьте ее в новой вкладке браузера.\n"
+    "Чтобы отменить запрос, перейдите по ссылке: https://mail.google.com/mail/uf-%5BANGjdJ9s%5D-3dSNm4"
+)
+
+
+def test_gmail_2026_confirmation_relays_only_googles_vf_link():
+    text, kind, *_ = describe(_mail("forwarding-noreply@google.com",
+                                    "Подтверждение пересылки писем с me@gmail.com в Gmail", GMAIL_2026))
+    assert kind is None
+    assert "https://mail.google.com/mail/vf-%5BANGjdJ_EI2D-sy6s%5D-3dSNm4LtNF" in text
+    assert "/uf-" not in text and text.count("https://") == 1   # the «cancel» link is not relayed
+
+
+@pytest.mark.parametrize("link", [
+    "https://mail.google.com.evil.example/mail/vf-abc",
+    "https://evil.example/mail.google.com/mail/vf-abc",
+    "http://mail.google.com/mail/vf-abc",
+    "https://mail-settings.google.com/mail/vf-abc",
+    "https://mail.google.com/mail/u/0/#settings",
+])
+def test_no_other_link_is_relayed_as_a_confirmation(link):
+    text, *_ = describe(_mail("forwarding-noreply@google.com", "Подтверждение пересылки", f"перейдите: {link} ."))
+    assert "https://" not in text.replace("hxxps://", "") and "Ни кода, ни ссылки" in text
+
+
 # --- polling the worker ------------------------------------------------------
 
 @pytest.fixture
