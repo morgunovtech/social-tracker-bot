@@ -174,3 +174,14 @@ async def test_the_daily_job_runs_the_link_check(bot, config, db, monkeypatch):
     import inspect
 
     assert "links.run(bot, config, db)" in inspect.getsource(scheduler._scheduled_job)
+
+
+async def test_the_instagram_profile_link_is_followed_too(config, db):
+    import dataclasses
+
+    with_ig = dataclasses.replace(config, instagram_username="semyon")
+    await db.set_setting("profile_instagram", json.dumps({"biography": "о себе", "website": "https://gpass.morgunov.tech"}))
+    found = await links.links_in_profiles(db, with_ig)
+    assert [(f.url, f.platform, f.field) for f in found] == [
+        ("https://gpass.morgunov.tech", "Instagram", "ссылка в профиле"),
+    ]

@@ -22,6 +22,7 @@ The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists 
 - ℹ️ one note (a digest-priority message) for links that go through a redirect to another host (`morgunov.tech → s.morgunov.tech`, `www.` and the scheme aside) or land on a technical host (`*.pages.dev`, `*.workers.dev`). A consent page in front of a network's profile (`consent.youtube.com`) is not a redirect.
 - Each link's state is kept: nothing repeats while it stays the same; a link that opens again gets one ✅ with how long it did not. A site that refuses robots — 401, 403, 429, LinkedIn's 999, other 4xx — is «could not check» and changes nothing.
 - A description is someone else's text: only http(s) is followed, every hop's host must resolve to public addresses only (never the bot's own network or a cloud metadata address), at most 10 redirects, no page body is read, links are defanged in the messages.
+- Instagram's profile link (`website`, the link under the bio — a documented public field of the IG User node, the same permission as the bio) is read now: the profile monitor watches it like the bio — a new link there is 🔴 «похоже на взлом» — and the weekly check follows it. Its first reading only records the baseline.
 - A new monitor in `/modules`, «Ссылки в профилях», on by default where a profile is watched.
 
 **Fixed** (the code review of 2026-11-24)

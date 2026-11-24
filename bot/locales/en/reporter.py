@@ -163,6 +163,7 @@ STRINGS: dict[str, str] = {
     "аккаунт Instagram": "Instagram account",
     "имя профиля": "profile name",
     "описание профиля": "profile bio",
+    "ссылка в профиле": "profile link",
     "публикаций": "posts",
     "аккаунт LinkedIn": "LinkedIn account",
 }
