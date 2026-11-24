@@ -2,7 +2,9 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
-## Unreleased
+## 1.8.0 — 2026-11-24
+
+A weekly reputation report — how often the owner and their products are searched for on Google and Yandex, and how often AI assistants open the pages — connected from the chat with read-only keys; Cloudflare's security mail left to TofsDevOps, which reads the account's audit log; and the last two findings of the 2026-11-24 code review — comments written as a channel, and the update notice that survives a failed send.
 
 **The weekly reputation report** (the owner's `BOT_PRINCIPLES.md`, «Кто за что отвечает»: SocialBot answers «как растёт моя репутация?», TofsDevOps «могут ли меня найти и открыть?»)
 - Once a week, one message (`bot/reputation/`): how often the owner and their products were searched for on **Google** (Search Console API, `searchAnalytics.query` with `includingRegex` on the brand words, summed over every property the key sees) and **Yandex** (Webmaster API v4, the top 3 000 popular queries of each verified site, matched here), impressions and clicks with the top queries; how often **AI assistants** opened the pages (Cloudflare GraphQL `httpRequestsAdaptiveGroups`, Free plan: the requests of the user agents Cloudflare files under «AI Assistant» — ChatGPT-User, Claude-User, Perplexity-User, MistralAI-User, Meta-ExternalFetcher, DuckAssistBot — one agent and one day per query; the API has no «AI Answer retrievals» metric, so the report counts by user agent and says so); and the follower growth the bot already has.
