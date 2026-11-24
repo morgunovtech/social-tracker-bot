@@ -204,3 +204,6 @@ def test_losing_admin_access_is_a_reported_change():
     with_access = {"title": "Канал", "admin_access": "есть", "admins": "[]"}
     (line,) = profile.diff(telegram.Telegram(), with_access, {"title": "Канал", "admin_access": "нет"})
     assert line == "🟠 Telegram: доступ бота к списку админов — «есть» → «нет»"
+    # «есть» and «нет» are the bot's own words: keys, translated where they are shown.
+    ((stored, _),) = profile.changes(telegram.Telegram(), with_access, {"title": "Канал", "admin_access": "нет"})
+    assert stored["params"]["before"] == {"key": "есть"} and stored["params"]["after"] == {"key": "нет"}

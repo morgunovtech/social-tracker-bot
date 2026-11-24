@@ -6,7 +6,8 @@ count moves. The first look at a profile only stores the baseline.
 
 The changes of one check are one alert in the one shape (bot/humanize.py),
 the worst line first; «unreadable» is alerted once, and «readable again»
-says how long it was not, from the first failed check of the series.
+says how long it was not, from the first failed check of the series. Each
+change also goes to the security log, as its line before translation.
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ from bot.db import Database, parse_utc, utcnow
 from bot.i18n import plural, t
 from bot.monitors import CRITICAL, HIJACK, WARNING, defang
 from bot.notifier import Priority
-from bot.platforms.base import ADMINS, COUNT, IMAGE, TEXT, Context, Platform
+from bot.platforms.base import ADMINS, COUNT, IMAGE, STATE, TEXT, Context, Platform
 
 logger = logging.getLogger(__name__)
 
@@ -48,68 +49,72 @@ _UTC = ZoneInfo("UTC")
 _LINK = re.compile(r"(?:https?://|www\.|t\.me/)[^\s<>\"«»]+", re.IGNORECASE)
 
 
-def _snippet(text: str) -> str:
+def _quote(text: str) -> humanize.Phrase | str:
+    """A text field's value as an alert quotes it: someone's text, shortened
+    and defanged — or the bot's own «(пусто)», translated where it is shown."""
     text = " ".join(text.split())
     if not text:
-        return t("(пусто)")
+        return humanize.phrase("(пусто)")
     return defang(text if len(text) <= SNIPPET_LEN else text[: SNIPPET_LEN - 1] + "…")
 
 
-def _admin_lines(label: str, before: str, after: str) -> list[str]:
+def _admin_changes(label: str, before: str, after: str) -> list[humanize.Phrase]:
     old = {a["id"]: a for a in json.loads(before)}
     new = {a["id"]: a for a in json.loads(after)}
+    hijack = humanize.phrase(HIJACK)
     # A display name is other people's text: a domain in it must not be a link.
-    lines = [
-        t("🔴 {label}: {hijack} — новый админ {name}").format(label=label, hijack=t(HIJACK), name=defang(new[uid]["name"]))
+    found = [
+        humanize.phrase("🔴 {label}: {hijack} — новый админ {name}", label=label, hijack=hijack,
+                        name=defang(new[uid]["name"]))
         for uid in new.keys() - old.keys()
     ]
-    lines += [
-        t("🟠 {label}: админ удалён — {name}").format(label=label, name=defang(old[uid]["name"]))
+    found += [
+        humanize.phrase("🟠 {label}: админ удалён — {name}", label=label, name=defang(old[uid]["name"]))
         for uid in old.keys() - new.keys()
     ]
     owner_before = next((a for a in old.values() if a["status"] == "creator"), None)
     owner_after = next((a for a in new.values() if a["status"] == "creator"), None)
     if owner_before and owner_after and owner_before["id"] != owner_after["id"]:
-        lines.append(
-            t("🔴 {label}: {hijack} — сменился владелец: {before} → {after}").format(
-                label=label, hijack=t(HIJACK), before=defang(owner_before["name"]), after=defang(owner_after["name"])
-            )
+        found.append(
+            humanize.phrase("🔴 {label}: {hijack} — сменился владелец: {before} → {after}", label=label,
+                            hijack=hijack, before=defang(owner_before["name"]), after=defang(owner_after["name"]))
         )
-    return lines
+    return found
 
 
-def diff(platform: Platform, old: dict[str, str], new: dict[str, str]) -> list[str]:
-    """Alert lines for the watched fields that changed. A field missing on
-    either side (new to the connector, or not returned) is not a change."""
-    lines: list[str] = []
+def changes(platform: Platform, old: dict[str, str], new: dict[str, str]) -> list[tuple[humanize.Phrase, str]]:
+    """The watched fields that changed: (the line before translation — what
+    the security log keeps, bot/security_log.py —, what the alert adds under
+    it: the new links of a text field). A field missing on either side (new
+    to the connector, or not returned) is not a change."""
+    found: list[tuple[humanize.Phrase, str]] = []
     for name, (label, kind) in platform.profile_fields.items():
         before, after = old.get(name), new.get(name)
         if before is None or after is None or before == after:
             continue
+        field = humanize.phrase(label)
         if kind == TEXT:
             # A link that wasn't there before is the classic hijack payload.
             added = sorted(set(_LINK.findall(after)) - set(_LINK.findall(before)))
-            line = (
-                t("{icon} {platform}: {hijack} — {field}: «{before}» → «{after}»") if added
-                else t("{icon} {platform}: {field} — «{before}» → «{after}»")
-            ).format(
-                icon=CRITICAL if added else WARNING,
-                platform=platform.label,
-                hijack=t(HIJACK),
-                field=t(label),
-                before=_snippet(before),
-                after=_snippet(after),
+            quoted = {"platform": platform.label, "field": field, "before": _quote(before), "after": _quote(after)}
+            if not added:
+                found.append((humanize.phrase("{icon} {platform}: {field} — «{before}» → «{after}»",
+                                              icon=WARNING, **quoted), ""))
+                continue
+            more = t(" и ещё {n}").format(n=len(added) - MAX_LINKS) if len(added) > MAX_LINKS else ""
+            links = "\n    " + t("новые ссылки: {links}{more}").format(
+                links=defang(", ".join(added[:MAX_LINKS])), more=more
             )
-            if added:
-                more = t(" и ещё {n}").format(n=len(added) - MAX_LINKS) if len(added) > MAX_LINKS else ""
-                line += "\n    " + t("новые ссылки: {links}{more}").format(
-                    links=defang(", ".join(added[:MAX_LINKS])), more=more
-                )
-            lines.append(line)
+            found.append((humanize.phrase("{icon} {platform}: {hijack} — {field}: «{before}» → «{after}»",
+                                          icon=CRITICAL, hijack=humanize.phrase(HIJACK), **quoted), links))
+        elif kind == STATE:
+            found.append((humanize.phrase("{icon} {platform}: {field} — «{before}» → «{after}»", icon=WARNING,
+                                          platform=platform.label, field=field, before=humanize.phrase(before),
+                                          after=humanize.phrase(after)), ""))
         elif kind == IMAGE:
-            lines.append(t("🟠 {platform}: новая {field}").format(platform=platform.label, field=t(label)))
+            found.append((humanize.phrase("🟠 {platform}: новая {field}", platform=platform.label, field=field), ""))
         elif kind == ADMINS:
-            lines += _admin_lines(platform.label, before, after)
+            found += [(line, "") for line in _admin_changes(platform.label, before, after)]
         elif kind == COUNT:
             try:
                 was, now = int(before), int(after)
@@ -117,12 +122,16 @@ def diff(platform: Platform, old: dict[str, str], new: dict[str, str]) -> list[s
                 continue
             drop = was - now
             if drop >= COUNT_DROP_MIN_ABS and drop >= math.ceil(was * COUNT_DROP_MIN_PCT / 100):
-                lines.append(
-                    t("🔴 {platform}: {hijack} — {field}: было {was}, стало {now} (−{drop})").format(
-                        platform=platform.label, hijack=t(HIJACK), field=t(label), was=was, now=now, drop=drop
-                    )
-                )
-    return lines
+                found.append((humanize.phrase(
+                    "🔴 {platform}: {hijack} — {field}: было {was}, стало {now} (−{drop})", platform=platform.label,
+                    hijack=humanize.phrase(HIJACK), field=field, was=was, now=now, drop=drop,
+                ), ""))
+    return found
+
+
+def diff(platform: Platform, old: dict[str, str], new: dict[str, str]) -> list[str]:
+    """The alert lines for the watched fields that changed, in the chat language."""
+    return [humanize.render(line) + more for line, more in changes(platform, old, new)]
 
 
 def _reachability(
@@ -206,10 +215,11 @@ async def check(bot: Bot, config: Config, db: Database, session: aiohttp.ClientS
         )
         # «Unreadable» rings, and so does «readable again» after it (BOT_PRINCIPLES §1).
         priority = Priority.CRITICAL if parts else Priority.NORMAL
-        changes = diff(platform, baseline, current) if current is not None and baseline is not None else []
-        if changes:
-            parts.append(change_alert(changes))
-            if notifier.priority_for(changes) is Priority.CRITICAL:
+        found = changes(platform, baseline, current) if current is not None and baseline is not None else []
+        lines = [humanize.render(line) + more for line, more in found]
+        if lines:
+            parts.append(change_alert(lines))
+            if notifier.priority_for(lines) is Priority.CRITICAL:
                 priority = Priority.CRITICAL
         if parts:
             if not await _send(bot, config, db, "\n\n".join(parts), priority):
@@ -227,7 +237,9 @@ async def check(bot: Bot, config: Config, db: Database, session: aiohttp.ClientS
             merged = {**(baseline or {}), **current}
             if merged != baseline:
                 await db.set_setting(key, json.dumps(merged, ensure_ascii=False))
+        # The log keeps the line before translation: 🛡 Безопасность shows it in
+        # the chat language of the day it is read.
         stamp = utcnow().isoformat()
-        for i, line in enumerate(changes):
-            await db.add_event(f"profile:{platform.id}:{stamp}:{i}", platform.label, "profile", line)
+        for i, (line, _) in enumerate(found):
+            await db.add_event(f"profile:{platform.id}:{stamp}:{i}", platform.label, "profile", humanize.dump(line))
     return sent

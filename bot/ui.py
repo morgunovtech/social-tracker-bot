@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
-from bot import monitors, notifier, platforms, watchdog
+from bot import monitors, notifier, platforms, security_log, watchdog
 from bot.callbacks import (
     BACKUP,
     CHANNEL,
@@ -621,7 +621,7 @@ async def security(db: Database, config: Config, top: int = 5) -> Screen:
         lines += ["", t("<b>Последние события</b>")]
         for e in events:
             day = parse_utc(e["occurred_at"]).strftime("%d.%m")
-            lines.append(f"• {day} {esc((e['detail'].splitlines() or [''])[0])}")
+            lines.append(f"• {day} {esc(security_log.line(e['detail']))}")
     lines += ["", t("Нажми на аккаунт, чтобы отметить пункты. Пароли я не спрашиваю и не храню.")]
     rows.append([_button(t("💬 Комментарии канала"), COMMENTS)])
     rows.append(_home())

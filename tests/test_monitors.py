@@ -5,7 +5,7 @@ from datetime import timedelta
 
 import pytest
 
-from bot import monitors, notifier
+from bot import humanize, monitors, notifier, security_log
 from bot.db import utcnow
 from bot.monitors import hygiene, profile
 from bot.platforms import BY_ID
@@ -166,8 +166,14 @@ async def test_first_look_is_baseline_then_changes_are_alerted_once(bot, config,
     assert alert.startswith(f"{line}\n\nПрофиль изменился.") and "\n\nЧто делать:\n• " in alert
     assert alert.endswith("Тех.: проверка профиля раз в 30 мин") and bot.silent == [True]
     assert await profile.check(bot, config, db, None) == 0
+    # The log keeps the line before translation; the screen renders it (bot/security_log.py).
     (event,) = await db.recent_events()
-    assert event["kind"] == "profile" and event["detail"] == line
+    assert event["kind"] == "profile" and security_log.line(event["detail"]) == line
+    assert humanize.load(event["detail"]) == {
+        "key": "{icon} {platform}: {field} — «{before}» → «{after}»",
+        "params": {"icon": "🟠", "platform": "Telegram", "field": {"key": "название канала"},
+                   "before": "Мой канал", "after": "Hacked"},
+    }
 
 
 async def test_hijack_signs_ring_through_a_mute_while_changes_wait(bot, config, db, watch):

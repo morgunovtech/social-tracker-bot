@@ -6,7 +6,7 @@ import logging
 from telegram import Bot, User
 from telegram.error import BadRequest, Forbidden, TelegramError
 
-from bot.platforms.base import ADMINS, IMAGE, TEXT, Context, Platform, Snapshot
+from bot.platforms.base import ADMINS, IMAGE, STATE, TEXT, Context, Platform, Snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,8 @@ async def fetch_channel(bot: Bot, channel_id: str) -> dict[str, str] | None:
     admin list only by its admins: without that right Telegram answers
     "Member list is inaccessible". The list is then left out and admin_access
     says so — losing the access later (a hijacker demoting the bot) is a
-    change the profile monitor reports.
+    change the profile monitor reports. admin_access is «есть» or «нет»: the
+    bot's own words, Russian keys translated where they are shown.
     """
     try:
         chat = await bot.get_chat(chat_id=channel_id)
@@ -76,7 +77,7 @@ class Telegram(Platform):
         "username": ("@username канала", TEXT),
         "description": ("описание канала", TEXT),
         "photo": ("аватарка канала", IMAGE),
-        "admin_access": ("доступ бота к списку админов", TEXT),
+        "admin_access": ("доступ бота к списку админов", STATE),
         "admins": ("админы канала", ADMINS),
     }
 

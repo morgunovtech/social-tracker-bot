@@ -23,6 +23,7 @@ The tests never touch the network: Telegram is a fake bot, every API is a local 
 - Monitors live in `bot/monitors/`; every alert goes through a monitor the user can switch off in `/modules`.
 - Every menu screen is a function in `bot/ui.py` (text and buttons, no Telegram calls); `bot/handlers.py` routes to them.
 - User-facing text is Russian in the code and translated in `bot/locales/`: wrap new strings in `t()` and add the English entry (see `bot/i18n.py`).
+- Text the bot stores and shows later (the security log) is stored before translation — `humanize.phrase()` and `humanize.dump()` — and drawn with `humanize.render()`, so it reads in the chat language of the day it is shown.
 - Alerts are «silent when healthy»: one message when something breaks, one when it recovers, no repeats in between.
 
 ## Dependencies

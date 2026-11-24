@@ -45,7 +45,9 @@ CREATE TABLE IF NOT EXISTS settings (
 
 # Security log: profile changes and security emails. platform is a display
 # name ("Google" for mail about a Google account); uid dedups re-deliveries
-# and restores.
+# and restores; detail is the line before translation, a JSON phrase
+# (bot/humanize.py) — rows written by 1.5.0 and earlier hold finished
+# text, which bot/security_log.py reads too.
 _CREATE_EVENTS = """
 CREATE TABLE IF NOT EXISTS security_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
