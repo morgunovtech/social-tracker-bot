@@ -347,6 +347,8 @@ async def test_alerts(config, db):
         ("no-reply@accounts.google.com", "Security alert", "New sign-in on Windows"),
         ("security-noreply@linkedin.com", "Your password was changed", "You changed your password"),
         ("forwarding-noreply@google.com", "Gmail Forwarding Confirmation", "Confirmation code: 123456789"),
+        ("forwarding-noreply@google.com", "Gmail Forwarding Confirmation",
+         "To allow forwarding, follow the link: https://mail.google.com/mail/vf-%5BAbC%5D-3dSN"),
         ("someone@example.com", "Hello", "nothing alarming"),
     ]
     for i, (sender, subject, text) in enumerate(mails):
