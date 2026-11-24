@@ -2,7 +2,9 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
-## Unreleased
+## 1.8.2 — 2026-11-24
+
+Gmail's forwarding confirmation, which now comes as a link without a code, can be completed through the bot again.
 
 **Fixed**
 - Gmail's forwarding confirmation could not be completed through the bot: since 2026 the mail has no code — only a confirmation link — and the bot relayed codes only, saying «Кода в теме не нашёл». It now relays Gmail's own link, and only a `https://mail.google.com/mail/vf-…` one: it opens Google's page that names both addresses before anything is confirmed; the mail's «cancel» link and any other link are never shown, so a forged confirmation still can't make the bot relay a link to anywhere else. The old format (a code in the subject) is relayed as before. Neither found — the bot says so and how to ask Gmail to resend it.
