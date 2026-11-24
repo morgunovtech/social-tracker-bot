@@ -1,10 +1,11 @@
 # Dependabot opens one grouped PR per week with every Python update, plus
-# monthly PRs for the base image and the Actions. CI tests them; the
-# auto-merge workflow merges only patch/minor bumps of the Python libraries
-# once CI is green, and Railway redeploys from main. A version reaches a PR
-# no sooner than 7 days after its release (cooldown; security updates are
-# not delayed), a major one after 30. The bot then reports «🔄 Бот обновился» on its next
-# start, and lists the PRs that wait for a human in its Sunday check.
+# monthly PRs for the base image, the Actions and the mail-worker's npm
+# packages. CI tests them; the auto-merge workflow merges only patch/minor
+# bumps of the Python libraries once CI is green, and Railway redeploys from
+# main. A version reaches a PR no sooner than 7 days after its release
+# (cooldown; security updates are not delayed), a major one after 30. The bot
+# then reports «🔄 Бот обновился» on its next start, and lists the PRs that
+# wait for a human in its Sunday check.
 version: 2
 updates:
   - package-ecosystem: pip
