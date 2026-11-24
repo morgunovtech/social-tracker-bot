@@ -31,7 +31,7 @@ async def test_first_start_only_takes_the_snapshot(bot, config, db):
     assert await _start(bot, config, db) == []            # nothing moved
     snapshot = json.loads(await db.get_setting(SNAPSHOT_KEY))["items"]
     assert snapshot["schedule"]["value"] == {"dow": "sat", "time": "08:00", "tz": "UTC"}
-    assert snapshot["monitor:followers"] == {"value": True, "inputs": {"chat": None, "configured": True}}
+    assert snapshot["monitor:followers"] == {"value": True, "inputs": {"chat": None, "configured": True, "connected": True}}
 
 
 async def test_an_update_that_moved_the_schedule_says_so_once(bot, config, db):

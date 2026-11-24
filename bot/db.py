@@ -144,12 +144,17 @@ CREATE TABLE IF NOT EXISTS channel_posts (
 # Settings that must never leave the server (wiped from off-site backups):
 # the cookie, the token and the watchdog address — whoever has it can ping
 # in the bot's name.
-_SECRET_SETTINGS = ("linkedin_li_at", "instagram_token", "watchdog_url")
+_SECRET_SETTINGS = ("linkedin_li_at", "instagram_token", "watchdog_url",
+                    # the reputation report's read-only keys (bot/reputation/)
+                    "rep_google_key", "rep_yandex_token", "rep_cloudflare_token")
 # Each secret with the settings that describe it (when it was set, when it dies).
 _SECRET_KEYS: dict[str, tuple[str, ...]] = {
     "linkedin_li_at": ("linkedin_li_at", "linkedin_li_at_set_at"),
     "instagram_token": ("instagram_token", "instagram_token_set_at", "instagram_user_id", "instagram_username"),
     "watchdog_url": ("watchdog_url", "watchdog_last"),
+    "rep_google_key": ("rep_google_key",),
+    "rep_yandex_token": ("rep_yandex_token",),
+    "rep_cloudflare_token": ("rep_cloudflare_token",),
 }
 
 # Retention, applied once a day by the scheduler (prune). A join and a flagged

@@ -105,6 +105,9 @@ class Monitor:
     description: str
     requires: Callable[[Config], bool] = lambda config: True
     needs: str = ""  # what to configure while requires() is false
+    # A key the owner sends in the chat (🔌 Подключения → 🔎 Репутация), kept
+    # in this setting: the monitor is off until it is there.
+    secret: str = ""
 
 
 def _has_profiles(config: Config) -> bool:
@@ -155,6 +158,24 @@ MONITORS: tuple[Monitor, ...] = (
         needs="SECURITY_MAIL_URL и SECURITY_MAIL_TOKEN",
     ),
     Monitor(
+        "rep_google",
+        "Поиски в Google",
+        "раз в неделю: сколько раз тебя и твои продукты искали в Google — показы и клики по брендовым запросам",
+        secret="rep_google_key",
+    ),
+    Monitor(
+        "rep_yandex",
+        "Поиски в Яндексе",
+        "раз в неделю: брендовые запросы в Яндексе — показы и клики",
+        secret="rep_yandex_token",
+    ),
+    Monitor(
+        "rep_ai",
+        "ИИ-ассистенты",
+        "раз в неделю: сколько раз ChatGPT, Perplexity и другие открывали твои страницы по запросам людей",
+        secret="rep_cloudflare_token",
+    ),
+    Monitor(
         "channel",
         "Жизнь канала",
         "подписки и отписки, откуда пришли, посты и реакции — экран 📣 Канал и строка в отчёте",
@@ -183,8 +204,15 @@ async def is_switched_on(db: Database, monitor_id: str) -> bool:
     return await db.get_setting(switch_key(monitor_id)) != "off"
 
 
+async def is_connected(db: Database, monitor_id: str) -> bool:
+    """Its key, if it needs one from the chat, is there."""
+    secret = BY_ID[monitor_id].secret
+    return not secret or bool(await db.get_setting(secret))
+
+
 async def is_on(db: Database, config: Config, monitor_id: str) -> bool:
-    return BY_ID[monitor_id].requires(config) and await is_switched_on(db, monitor_id)
+    return (BY_ID[monitor_id].requires(config) and await is_connected(db, monitor_id)
+            and await is_switched_on(db, monitor_id))
 
 
 async def toggle(db: Database, monitor_id: str) -> bool:

@@ -33,6 +33,7 @@ CONNECTIONS = "conn"
 COMMENTS = "cm"
 CHANNEL = "ch"
 WATCHDOG = "wd"          # ⏱ Сторож: wd | wd:test | wd:off[:yes]
+REPUTATION = "rep"       # 🔎 Репутация: rep | rep:now
 # Settings screens an alert may open (open:<id>); inside the menu they are set:time, set:tz, set:when.
 OPEN_TIME = "rtime"      # 🕗 Время отчёта
 OPEN_TZ = "rtz"          # 🌍 Часовой пояс
@@ -55,8 +56,11 @@ LI_COOKIE = "li:cookie"
 IG_TOKEN = "ig:token"
 TZ_OTHER = "set:tz:other"
 WD_URL = "wd:url"
+# The reputation report's inputs: the brand words and one read-only key per source.
+REP_WORDS = "rep:words"
+REP_KEYS = {"rep_google": "rep:k:g", "rep_yandex": "rep:k:y", "rep_ai": "rep:k:c"}
 INPUT_CANCEL = "input:cancel"
-CONVERSATION_ENTRIES = frozenset({LI_ENTER, LI_COOKIE, IG_TOKEN, TZ_OTHER, WD_URL})
+CONVERSATION_ENTRIES = frozenset({LI_ENTER, LI_COOKIE, IG_TOKEN, TZ_OTHER, WD_URL, REP_WORDS, *REP_KEYS.values()})
 
 # The screens an alert or a report may open, with their labels (translated when built).
 SCREEN_LABELS = {
@@ -67,6 +71,7 @@ SCREEN_LABELS = {
     COMMENTS: "💬 Комментарии",
     CONNECTIONS: "🔌 Подключения",
     WATCHDOG: "⏱ Сторож",
+    REPUTATION: "🔎 Репутация",
     SETTINGS: "⚙️ Настройки",
     MONITORS: "🧩 Мониторинги",
     OPEN_TIME: "🕗 Время отчёта",

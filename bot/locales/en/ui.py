@@ -338,6 +338,46 @@ STRINGS: dict[str, str] = {
     "🔄 Обновить": "🔄 Refresh",
     "сегодня {time}": "today {time}",
     "📤 <b>Отправки</b>": "📤 <b>Deliveries</b>",
+    # 🔎 Репутация (bot/ui.py reputation_screen) and its inputs
+    "🔎 Репутация": "🔎 Reputation",
+    "<b>🔎 Репутация</b>": "<b>🔎 Reputation</b>",
+    (
+        "Раз в неделю — один отчёт: сколько раз тебя и твои продукты искали и сколько раз ИИ-ассистенты "
+        "открывали твои страницы, рядом — рост подписчиков. "
+        "Нечего сказать — молчу. Ключи — только на чтение; я их не показываю и в бэкап не кладу."
+    ): (
+        "Once a week, one report: how often you and your products were searched for and how often AI assistants "
+        "opened your pages, next to the follower growth. "
+        "Nothing to say — I stay silent. The keys are read-only; I never show them or put them in the backup."
+    ),
+    "🏷 Брендовые слова: {words}": "🏷 Brand words: {words}",
+    "{icon} Брендовые слова не заданы — без них поиски не считаются":
+        "{icon} No brand words yet — without them searches are not counted",
+    "🏷 Брендовые слова": "🏷 Brand words",
+    '🔑 Ключ сервисного аккаунта Google, только на чтение:\n1. console.cloud.google.com → новый проект → APIs & Services → включи «Google Search Console API».\n2. IAM & Admin → Service Accounts → Create; роли не нужны. Keys → Add key → JSON — скачается файл.\n3. В Search Console у каждого ресурса: Настройки → Пользователи и разрешения → Добавить пользователя → e-mail сервисного аккаунта (client_email в файле), разрешение «Ограниченный»; если ключ не увидит ресурс — «Полный».\nПришли файл или его текст одним сообщением — я проверю ключ и сразу удалю сообщение.':
+        "🔑 A Google service account key, read-only:\n1. console.cloud.google.com → a new project → APIs & Services → enable «Google Search Console API».\n2. IAM & Admin → Service Accounts → Create; no roles needed. Keys → Add key → JSON — a file is downloaded.\n3. In Search Console, for each property: Settings → Users and permissions → Add user → the service account's e-mail (client_email in the file), permission «Restricted»; if the key does not see the property — «Full».\nSend the file or its text in one message — I'll check the key and delete the message at once.",
+    '🔑 OAuth-токен Яндекс.Вебмастера, только на чтение:\n1. oauth.yandex.ru/client/new → «Веб-сервисы», Redirect URI https://oauth.yandex.ru/verification_code, доступ «Яндекс.Вебмастер: получение информации о сайтах» (webmaster:hostinfo).\n2. Открой https://oauth.yandex.ru/authorize?response_type=token&client_id=<ClientID приложения> и скопируй токен.\nТокен живёт полгода — когда истечёт, отчёт скажет. Пришли его одним сообщением — я проверю и сразу удалю.':
+        "🔑 A Yandex.Webmaster OAuth token, read-only:\n1. oauth.yandex.ru/client/new → «Web services», Redirect URI https://oauth.yandex.ru/verification_code, access «Yandex.Webmaster: getting site information» (webmaster:hostinfo).\n2. Open https://oauth.yandex.ru/authorize?response_type=token&client_id=<the app's ClientID> and copy the token.\nThe token lives six months — when it expires, the report says so. Send it in one message — I'll check it and delete it at once.",
+    '🔑 API-токен Cloudflare, только на чтение:\ndash.cloudflare.com → My Profile → API Tokens → Create Token → Custom token. Права: Zone → Zone → Read и Zone → Analytics → Read; Zone Resources — твои зоны.\nПришли токен одним сообщением — я проверю его пробным запросом и сразу удалю сообщение.':
+        "🔑 A Cloudflare API token, read-only:\ndash.cloudflare.com → My Profile → API Tokens → Create Token → Custom token. Permissions: Zone → Zone → Read and Zone → Analytics → Read; Zone Resources — your zones.\nSend the token in one message — I'll check it with a test query and delete the message at once.",
+    "Search Console — брендовые запросы": "Search Console — brand queries",
+    "Вебмастер — брендовые запросы": "Yandex.Webmaster — brand queries",
+    "Cloudflare — запросы ИИ-ассистентов (по user-agent: ChatGPT-User, Claude-User, Perplexity-User…)":
+        "Cloudflare — AI assistant requests (by user agent: ChatGPT-User, Claude-User, Perplexity-User…)",
+    "Последний отчёт: {when}": "Last report: {when}",
+    "Отчёта ещё не было.": "No report yet.",
+    "📨 Отчёт сейчас": "📨 Report now",
+    (
+        "🏷 Пришли через запятую, как тебя и твои продукты ищут: имя и фамилию (обоими алфавитами, если так ищут), "
+        "названия продуктов и сайтов — например: Семён Моргунов, Semyon Morgunov, FoundYou, Good Pass. "
+        "Регистр не важен; пробел внутри слова находит и слитное написание."
+    ): (
+        "🏷 Send, comma-separated, how people search for you and your products: your name (in both alphabets if "
+        "people search that way), the names of the products and sites — for example: Semyon Morgunov, FoundYou, "
+        "Good Pass. Case does not matter; a space inside a word also finds it written as one."
+    ),
+    "{icon} {label} — не подключено: 🔌 Подключения → 🔎 Репутация":
+        "{icon} {label} — not connected: 🔌 Connections → 🔎 Reputation",
     "🕒 Последний сбор: {when}": "🕒 Last collection: {when}",
     "🧭 Осталось настроить:": "🧭 Left to set up:",
     "часовой пояс — пока {tz}, выбери свой": "the time zone — {tz} for now, pick yours",

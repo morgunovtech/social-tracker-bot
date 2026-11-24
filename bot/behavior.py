@@ -113,7 +113,8 @@ async def current(db: Database, config: Config) -> dict[str, dict]:
     for m in monitors.MONITORS:
         items[f"monitor:{m.id}"] = {
             "value": await monitors.is_on(db, config, m.id),
-            "inputs": {"chat": await db.get_setting(monitors.switch_key(m.id)), "configured": m.requires(config)},
+            "inputs": {"chat": await db.get_setting(monitors.switch_key(m.id)), "configured": m.requires(config),
+                       "connected": await monitors.is_connected(db, m.id)},
         }
     for kind in mail.KINDS:
         items[f"mail:{kind.id}"] = {"value": kind.level, "inputs": {}}

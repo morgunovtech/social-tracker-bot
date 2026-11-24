@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
-from bot import monitors, notifier, platforms, security_log, tofs_status, watchdog
+from bot import monitors, notifier, platforms, reputation, security_log, tofs_status, watchdog
 from bot.callbacks import (
     BACKUP,
     CHANNEL,
@@ -39,6 +39,9 @@ from bot.callbacks import (
     MUTE,
     MUTE_OFF,
     NOW,
+    REP_KEYS,
+    REP_WORDS,
+    REPUTATION,
     RESTORE,
     SECURITY,
     SETTINGS,
@@ -448,7 +451,7 @@ async def connections(db: Database, config: Config) -> Screen:
         elif platform.id == "linkedin":
             rows.append([_button("💼 LinkedIn", LINKEDIN)])
     lines += ["", await watchdog_line(db, config)]
-    rows.append([_button(t("⏱ Сторож"), WATCHDOG)])
+    rows.append([_button(t("⏱ Сторож"), WATCHDOG), _button(t("🔎 Репутация"), REPUTATION)])
     lines += ["", t("Сети включаются в .env и перезапуском бота; токен Instagram, cookie LinkedIn и сторож — кнопками здесь.")]
     rows.append(_home())
     return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
@@ -508,6 +511,49 @@ async def watchdog_screen(db: Database, config: Config) -> Screen:
         rows.append([_button(t("🔄 Проверить снова"), f"{WATCHDOG}:test")])
     if where == "chat":
         rows.append([_button(t("⏏ Отключить"), f"{WATCHDOG}:off")])
+    rows.append(_back(CONNECTIONS, t("Подключения")))
+    return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
+
+
+# Where each source's numbers come from, as the 🔎 Репутация screen says it.
+_REP_FROM = {
+    "rep_google": "Search Console — брендовые запросы",
+    "rep_yandex": "Вебмастер — брендовые запросы",
+    "rep_ai": "Cloudflare — запросы ИИ-ассистентов (по user-agent: ChatGPT-User, Claude-User, Perplexity-User…)",
+}
+
+
+async def reputation_screen(db: Database, config: Config) -> Screen:
+    """🔎 Репутация: the weekly report's sources, the brand words, the keys."""
+    words = await reputation.words(db)
+    lines = [
+        t("<b>🔎 Репутация</b>"),
+        "",
+        t("Раз в неделю — один отчёт: сколько раз тебя и твои продукты искали и сколько раз ИИ-ассистенты "
+          "открывали твои страницы, рядом — рост подписчиков. "
+          "Нечего сказать — молчу. Ключи — только на чтение; я их не показываю и в бэкап не кладу."),
+        "",
+        t("🏷 Брендовые слова: {words}").format(words=esc(", ".join(words))) if words
+        else t("{icon} Брендовые слова не заданы — без них поиски не считаются").format(icon=monitors.WARNING),
+    ]
+    rows = [[_button(t("🏷 Брендовые слова"), REP_WORDS)]]
+    keys = []
+    for source in reputation.SOURCES:
+        m = monitors.BY_ID[source.monitor]
+        if not await monitors.is_connected(db, m.id):
+            icon = UNAVAILABLE
+        elif await monitors.is_switched_on(db, m.id):
+            icon = ON
+        else:
+            icon = OFF
+        lines.append(f"{icon} {esc(t(m.label))} — {esc(t(_REP_FROM[m.id]))}")
+        keys.append(_button(f"🔑 {t(source.label)}", REP_KEYS[m.id]))
+    rows += _rows(keys)
+    sent = await db.get_setting(reputation.SENT_KEY)
+    when = _local(sent, await get_report_tz(db, config))
+    lines += ["", t("Последний отчёт: {when}").format(when=esc(when)) if when else t("Отчёта ещё не было.")]
+    if any([await monitors.is_on(db, config, s.monitor) for s in reputation.SOURCES]):
+        rows.append([_button(t("📨 Отчёт сейчас"), f"{REPUTATION}:now")])
     rows.append(_back(CONNECTIONS, t("Подключения")))
     return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
 
@@ -939,6 +985,10 @@ async def monitors_screen(db: Database, config: Config) -> Screen:
                 t("{icon} {label} — нужно: {needs}").format(icon=UNAVAILABLE, label=esc(t(m.label)), needs=esc(t(m.needs)))
             )
             continue
+        if not await monitors.is_connected(db, m.id):
+            lines.append(t("{icon} {label} — не подключено: 🔌 Подключения → 🔎 Репутация").format(
+                icon=UNAVAILABLE, label=esc(t(m.label))))
+            continue
         on = await monitors.is_switched_on(db, m.id)
         lines.append(f"{_check(on)} {esc(t(m.label))} — {esc(t(m.description))}")
         rows.append([_button(f"{_check(on)} {t(m.label)}", f"{MONITORS}:{m.id}")])
@@ -1063,6 +1113,33 @@ async def linkedin_prompt(db: Database) -> Screen:
 
 # The text-input conversations (bot/handlers.py): what is asked for, by kind.
 INPUT_PROMPTS = {
+    "rep_words": (
+        "🏷 Пришли через запятую, как тебя и твои продукты ищут: имя и фамилию (обоими алфавитами, если так ищут), "
+        "названия продуктов и сайтов — например: Семён Моргунов, Semyon Morgunov, FoundYou, Good Pass. "
+        "Регистр не важен; пробел внутри слова находит и слитное написание."
+    ),
+    "rep_google": (
+        "🔑 Ключ сервисного аккаунта Google, только на чтение:\n"
+        "1. console.cloud.google.com → новый проект → APIs & Services → включи «Google Search Console API».\n"
+        "2. IAM & Admin → Service Accounts → Create; роли не нужны. Keys → Add key → JSON — скачается файл.\n"
+        "3. В Search Console у каждого ресурса: Настройки → Пользователи и разрешения → Добавить пользователя → "
+        "e-mail сервисного аккаунта (client_email в файле), разрешение «Ограниченный»; если ключ не увидит "
+        "ресурс — «Полный».\n"
+        "Пришли файл или его текст одним сообщением — я проверю ключ и сразу удалю сообщение."
+    ),
+    "rep_yandex": (
+        "🔑 OAuth-токен Яндекс.Вебмастера, только на чтение:\n"
+        "1. oauth.yandex.ru/client/new → «Веб-сервисы», Redirect URI https://oauth.yandex.ru/verification_code, "
+        "доступ «Яндекс.Вебмастер: получение информации о сайтах» (webmaster:hostinfo).\n"
+        "2. Открой https://oauth.yandex.ru/authorize?response_type=token&client_id=<ClientID приложения> и скопируй токен.\n"
+        "Токен живёт полгода — когда истечёт, отчёт скажет. Пришли его одним сообщением — я проверю и сразу удалю."
+    ),
+    "rep_ai": (
+        "🔑 API-токен Cloudflare, только на чтение:\n"
+        "dash.cloudflare.com → My Profile → API Tokens → Create Token → Custom token. Права: Zone → Zone → Read и "
+        "Zone → Analytics → Read; Zone Resources — твои зоны.\n"
+        "Пришли токен одним сообщением — я проверю его пробным запросом и сразу удалю сообщение."
+    ),
     "cookie": (
         "🔑 Пришли значение cookie li_at одним сообщением "
         "(linkedin.com → DevTools → Application → Cookies → li_at → Value). "

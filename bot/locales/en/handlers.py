@@ -174,6 +174,17 @@ STRINGS: dict[str, str] = {
     "✅ Сторож подключён и на связи ({who}). Дальше отмечаюсь после каждого ежедневного сбора.":
         "✅ The watchdog is connected and reachable ({who}). From now on I check in after every daily collection.",
     "✅ Сторож на связи": "✅ The watchdog is reachable",
+    "🟠 Удалить сообщение с ключом не получилось — удали его из чата вручную.":
+        "🟠 Could not delete the message with the key — delete it from the chat yourself.",
+    "⏳ Проверяю ключ…": "⏳ Checking the key…",
+    "❌ {source} не принял ключ: {reason}. Пришли его ещё раз или нажми «✖️ Отмена».":
+        "❌ {source} did not take the key: {reason}. Send it again or tap «✖️ Cancel».",
+    "✅ {source} подключён: {seen}": "✅ {source} is connected: {seen}",
+    "✅ Брендовые слова: {words}": "✅ Brand words: {words}",
+    "Брендовые слова убраны": "Brand words removed",
+    "⏳ Собираю отчёт…": "⏳ Building the report…",
+    "🔎 За неделю сказать нечего: подключённые источники ничего не нашли.":
+        "🔎 Nothing to say for the week: the connected sources found nothing.",
     "Сторож отключён": "The watchdog is disconnected",
     (
         "⏱ Ещё один шаг — сторож. Пока я работаю, о проблемах пишу сам; если остановлюсь — упадёт сервер, "

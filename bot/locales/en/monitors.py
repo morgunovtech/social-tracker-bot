@@ -21,6 +21,14 @@ STRINGS: dict[str, str] = {
     "цифры на сайт, строки в TofsDevOps, отметки сторожу: сутки не доходят — скажу, где и почему":
         "the counts to your site, the lines to TofsDevOps, the watchdog's marks: a day without one landing — I say where and why",
     "Ссылки в профилях": "Profile links",
+    "Поиски в Google": "Searches on Google",
+    "раз в неделю: сколько раз тебя и твои продукты искали в Google — показы и клики по брендовым запросам":
+        "weekly: how often you and your products were searched for on Google — impressions and clicks of brand queries",
+    "Поиски в Яндексе": "Searches on Yandex",
+    "раз в неделю: брендовые запросы в Яндексе — показы и клики": "weekly: brand queries on Yandex — impressions and clicks",
+    "ИИ-ассистенты": "AI assistants",
+    "раз в неделю: сколько раз ChatGPT, Perplexity и другие открывали твои страницы по запросам людей":
+        "weekly: how often ChatGPT, Perplexity and others opened your pages for people's questions",
     "раз в неделю — куда ведут ссылки в описаниях: не открывается, переадресация, технический адрес":
         "weekly — where the links in the descriptions lead: does not open, a redirect, a technical host",
     # bot/monitors/links.py

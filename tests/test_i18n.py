@@ -483,3 +483,46 @@ def test_infrastructure_mail_alerts():
         assert kind is not None
         english_only(text)
     english_only(t(monitors.BY_ID["mail"].description))
+
+
+async def test_reputation_report_and_screen(config, db, monkeypatch):
+    """bot/reputation/: the weekly report, its failure lines, the screen and the key prompts, in English."""
+    import dataclasses as dc
+
+    import aiohttp
+
+    from bot import reputation
+    from bot.reputation.base import Failure, Week
+
+    def week(total, clicks=0, by=None, where=None):
+        w = Week(total=total, clicks=clicks)
+        w.by.update(by or {})
+        w.where.update(where or {})
+        return w
+
+    class Source:
+        def __init__(self, result=None, error=None):
+            self.result, self.error = result, error
+
+        async def week(self, *args, **kwargs):
+            if self.error:
+                raise Failure(self.error)
+            return self.result
+
+    fakes = {"rep_google": Source(week(120, 8, {"good pass": 40})), "rep_yandex": Source(error="rejected:401"),
+             "rep_ai": Source(week(343, 0, {"ChatGPT-User": 200}, {"foundyou.morgunov.tech": 250}))}
+    patched = tuple(dc.replace(s, module=fakes[s.monitor]) for s in reputation.SOURCES)
+    monkeypatch.setattr(reputation, "SOURCES", patched)
+    for s in patched:
+        await db.set_setting(monitors.BY_ID[s.monitor].secret, "k")
+    await db.set_setting(reputation.WORDS_KEY, "foundyou, good pass")
+    await db.upsert("telegram", 1000)
+    async with aiohttp.ClientSession() as session:
+        text, _ = await reputation.build(db, config, session)
+    english_only(text)
+    for code in ("key", "no_sites", "no_words", "not_available", "rejected:403", "timeout"):
+        english_only(reputation.failure_line("Яндекс", code))
+    english_only(reputation.reason("no_sites", "bot@project.iam.gserviceaccount.com"))
+    screen_english(await ui.reputation_screen(db, config))
+    for kind in ("rep_words", "rep_google", "rep_yandex", "rep_ai"):
+        screen_english(ui.input_prompt(kind))
