@@ -28,7 +28,7 @@ from telegram.ext import (
 from bot import callbacks as cb
 from bot import monitors, notifier, ui, watchdog
 from bot.config import DOW_ORDER, Config, normalize_dow, normalize_tz
-from bot.db import Database, utcnow
+from bot.db import HELD_KEEP_DAYS, Database, utcnow
 from bot.i18n import t
 from bot.monitors import NO_PREVIEW, channel, comments, hygiene
 from bot.platforms import BY_ID, PLATFORM_IDS
@@ -1296,6 +1296,22 @@ async def _cb_open(press: _Press, context, args: list[str]) -> None:
     await context.bot.send_message(chat_id=config.admin_chat_id, text=screen.text, **_markup(screen))
 
 
+async def _cb_digest(press: _Press, context, args: list[str]) -> None:
+    """dg:<id> — «ℹ️ N» under a digest: that message whole, below the digest,
+    with its time and its own buttons; the digest stays as it is."""
+    config, db = _deps(context)
+    item = await notifier.held_item(db, config, int(args[0])) if args and args[0].isdigit() else None
+    if item is None:
+        await press.answer(
+            t("Полного текста уже нет: я храню его {days} дн. после сводки.").format(days=HELD_KEEP_DAYS)
+        )
+        return
+    text, markup = item
+    await context.bot.send_message(
+        chat_id=config.admin_chat_id, text=text, reply_markup=markup, link_preview_options=NO_PREVIEW
+    )
+
+
 async def _cb_mute(press: _Press, context, args: list[str]) -> None:
     """mute — the «🔕 Помолчать…» picker; mute:<1h|4h|8h|1d> | mute:off —
     under an alert: a toast, the alert stays; with :home — pressed on the
@@ -1363,6 +1379,7 @@ _ROUTES: dict[str, Route] = {
     cb.CONNECTIONS: _cb_connections,
     cb.WATCHDOG: _cb_watchdog,
     cb.OPEN: _cb_open,
+    cb.DIGEST: _cb_digest,
     cb.MUTE: _cb_mute,
     cb.BACKUP: _cb_backup,
     cb.RESTORE: _cb_restore,

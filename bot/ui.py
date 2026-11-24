@@ -48,7 +48,7 @@ from bot.callbacks import (
     WD_URL,
 )
 from bot.config import DOW_ORDER, Config
-from bot.db import Database, parse_utc, utcnow
+from bot.db import HELD_KEEP_DAYS, Database, parse_utc, utcnow
 from bot.i18n import language, plural, t
 from bot.monitors import channel, comments, hygiene
 from bot.platforms import BY_ID, PLATFORMS
@@ -822,6 +822,9 @@ async def when_to_write(db: Database, config: Config) -> Screen:
         "",
         t("🔕 Помолчать: {state}").format(state=t("до {until}").format(until=until) if until else t("сейчас не молчу")),
         t("На время: всё, кроме критичного, ждёт и приходит сводкой, когда тишина закончится. Команда: /mute 8h, снять — /unmute."),
+        "",
+        t("Сводка — строка на событие, 🔴 и 🟠 первыми, у каждого время; «ℹ️ N» под ней присылает пункт целиком. "
+          "Полные тексты храню {days} дн.").format(days=HELD_KEEP_DAYS),
         "",
         esc(notifier.what_rings_through()),
     ]

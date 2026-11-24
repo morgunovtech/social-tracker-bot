@@ -194,8 +194,16 @@ async def test_prune_drops_what_no_screen_reads(db):
                 "INSERT INTO channel_events (chat_id, kind, user_id, user_name, via, occurred_at) VALUES (1, 'join', ?, 'n', '', ?)",
                 (user_id, old(days)),
             )
-    assert await db.prune(now) == {"comment_reviews": 2, "channel_events": 1}
-    assert await db.prune(now) == {"comment_reviews": 0, "channel_events": 0}
+    with sqlite3.connect(db._db_path) as conn:                         # full texts behind a digest's «ℹ️ N»
+        for text, days in (("old digest", 8), ("fresh digest", 6)):
+            conn.execute(
+                "INSERT INTO pending_notifications (text, created_at, shown_at) VALUES (?, ?, ?)",
+                (text, old(days), old(days)),
+            )
+    await db.queue_notification("still waiting", created_at=old(30))     # waiting rows never expire
+    assert await db.prune(now) == {"comment_reviews": 2, "channel_events": 1, "pending_notifications": 1}
+    assert await db.prune(now) == {"comment_reviews": 0, "channel_events": 0, "pending_notifications": 0}
+    assert [r["text"] for r in await db.peek_notifications()] == ["still waiting"]
     assert {r["message_id"] for r in [await db.get_review_by_message(1, m) for m in (2, 4)] if r} == {2, 4}
     assert await db.get_review_by_message(1, 1) is None and await db.get_review_by_message(1, 3) is None
     assert [e["user_id"] for e in await db.channel_recent_events(10)] == [2]

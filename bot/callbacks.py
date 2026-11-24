@@ -41,6 +41,7 @@ MUTE_QUICK = f"{MUTE}:8h"
 MUTE_OFF = f"{MUTE}:off"
 BACKUP = "backup"        # the database file now, not on Sunday
 RESTORE = "restore"      # restore:yes | restore:no under a .db file sent without a caption
+DIGEST = "dg"            # dg:<id> — «ℹ️ N» under a digest: the held message in full, below it
 
 # Entry points of the text-input conversations (bot/handlers.py); a handler
 # that walks every button skips them, since the answer is the next message.
