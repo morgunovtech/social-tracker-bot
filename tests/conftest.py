@@ -20,6 +20,7 @@ os.environ.update({
     "REPORT_HOUR": "8",
     "REPORT_HOUR_UTC": "",
     "REPORT_TZ": "UTC",
+    "TIMEZONE": "",
     "REPORT_MINUTE": "0",
     "REPORT_DOW": "sat",
     "QUIET_IF_NO_CHANGE": "0",

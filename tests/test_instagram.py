@@ -173,8 +173,8 @@ async def test_profile_monitor_watches_instagram(graph, config, db):
         graph["user"]["media_count"] = 10
         assert await profile.check(bot, config, db, session) == 1
     alert = bot.messages[-1]
-    assert "🚨 Instagram: описание профиля" in alert and "hxxps://evil[.]example" in alert
-    assert "публикаций — было 56, стало 10" in alert
+    assert "🔴 Instagram: похоже на взлом — описание профиля" in alert and "hxxps://evil[.]example" in alert
+    assert "публикаций: было 56, стало 10" in alert
 
 
 # --- what the user sees ---------------------------------------------------------------
@@ -204,7 +204,7 @@ async def test_collection_alerts_once_until_a_token_works(db):
 async def test_connections_and_instagram_screen(config, db):
     screen = await ui.connections(db, config)
     assert "📸 Instagram" in [b.text for row in screen.keyboard.inline_keyboard for b in row]
-    assert "Instagram — @semyon · ⚠️ нужен токен" in screen.text
+    assert "Instagram — @semyon · 🟠 нужен токен" in screen.text
     screen = await ui.instagram(db, config)
     assert "Аккаунт: @semyon" in screen.text and "Токена нет" in screen.text
     await ig.store_token(db, TOKEN, USER_ID)

@@ -155,8 +155,8 @@ STRINGS: dict[str, str] = {
     "Последнее значение: пока нет": "Last value: none yet",
     "🟠 LinkedIn отклонил cookie: пришли новый через /setcookie или вводи число вручную.":
         "🟠 LinkedIn rejected the cookie: send a new one with /setcookie or enter the count by hand.",
-    "⚠️ Cookie установлен {age} {d} назад и скоро истечёт — пора обновить.":
-        "⚠️ The cookie was set {age} {d} ago and expires soon — time to renew it.",
+    "🟠 Cookie установлен {age} {d} назад и скоро истечёт — пора обновить.":
+        "🟠 The cookie was set {age} {d} ago and expires soon — time to renew it.",
     "✅ Число собирается само по cookie. Он установлен {age} {d} назад, "
     "напомню обновить через ~{left} {ld}.":
         "✅ The count is collected automatically via cookie. It was set {age} {d} ago; "
@@ -180,7 +180,7 @@ STRINGS: dict[str, str] = {
     # Instagram
     "Аккаунт: {account}": "Account: {account}",
     "Последнее значение: {count} — собрано {when}": "Last value: {count} — collected {when}",
-    "⚠️ Токена нет: без него число не собирается.": "⚠️ No token: without it the count is not collected.",
+    "🟠 Токена нет: без него число не собирается.": "🟠 No token: without it the count is not collected.",
     "🟠 Instagram отклонил токен: отозван или истёк — пришли новый через /igtoken.":
         "🟠 Instagram rejected the token: revoked or expired — send a new one with /igtoken.",
     "✅ Число собирается само по токену из переменных окружения.":
@@ -210,9 +210,9 @@ STRINGS: dict[str, str] = {
     "Отмена": "Cancel",
     "Это не похоже на число. Пришли только цифры, например 4520, или нажми «Отмена».":
         "That does not look like a number. Send digits only, e.g. 4520, or press \"Cancel\".",
-    "<b>⚠️ Проверь число</b>\n\n{count} сильно отличается от прошлого значения "
+    "<b>✏️ Проверь число</b>\n\n{count} сильно отличается от прошлого значения "
     "{prev}. Возможно, это опечатка.":
-        "<b>⚠️ Check the number</b>\n\n{count} differs a lot from the previous value "
+        "<b>✏️ Check the number</b>\n\n{count} differs a lot from the previous value "
         "{prev}. It may be a typo.",
     "Сохранить {count}": "Save {count}",
     "✏️ Ввести заново": "✏️ Enter again",
@@ -223,12 +223,28 @@ STRINGS: dict[str, str] = {
         "Every day I collect follower counts and watch over the accounts' security. "
         "While everything is fine, I stay quiet; I report a problem right away, and the summary comes on schedule.",
     "<b>Значки</b>": "<b>Icons</b>",
-    "✅ в порядке или включено · ⬜ выключено · ➖ не подключено": "✅ fine or on · ⬜ off · ➖ not connected",
-    "⚠️ нужно внимание · ❓ не отмечено": "⚠️ needs attention · ❓ not marked",
-    "🚨 похоже на взлом · 🔴 аккаунт недоступен — звонят сразу, даже ночью":
-        "🚨 looks like a break-in · 🔴 account unreachable — ring at once, even at night",
-    "🟠 изменение или сбой — тихо; ночью и в тишине ждёт сводки":
-        "🟠 change or failure — silent; at night and while muted it waits for the digest",
+    # The icon dictionary (bot/monitors/__init__.py, ICON_LEGEND)
+    "нужно действие сейчас": "act now",
+    "звонит сразу, даже ночью и в тишине": "rings at once, even at night and while muted",
+    "нужно действие, но не сегодня": "act, but not today",
+    "без звука; ночью и в тишине ждёт сводки": "silent; at night and while muted it waits for the digest",
+    "в порядке · снова работает · включено": "fine · works again · on",
+    "не смог проверить": "could not check",
+    "попробую ещё раз сам, тревогу не поднимаю": "I will try again myself, no alarm raised",
+    "жду первой проверки": "waiting for the first check",
+    "факт, который не проблема": "a fact, not a problem",
+    "пункт чек-листа без ответа": "a checklist item without an answer",
+    (
+        "🔴 у меня — это: похоже на взлом (новый админ или владелец, ссылка в описании, пропавшие видео "
+        "или публикации, новый вход, смена пароля, почты или 2FA), профиль не читается, почтовый воркер "
+        "молчит, комментарий, за который блокируют группу. 🟠 — истёкший cookie, отклонённый токен, сбои "
+        "сбора, падение подписчиков, смена названия или аватарки."
+    ): (
+        "🔴 here means: looks like a hijack (a new admin or owner, a link in the description, vanished videos "
+        "or posts, a new sign-in, a changed password, email or 2FA), an unreadable profile, a silent mail "
+        "worker, a comment the group gets blocked for. 🟠 — an expired cookie, a rejected token, collection "
+        "failures, a drop in followers, a new title or avatar."
+    ),
     "<b>Команды</b>": "<b>Commands</b>",
     "/start — главная": "/start — home",
     "/now — обновить данные": "/now — refresh data",
@@ -277,10 +293,10 @@ STRINGS: dict[str, str] = {
     "Снова писать обо всём: /unmute": "To hear about everything again: /unmute",
     "🔕 Тишина до {until}": "🔕 Muted until {until}",
     "🌙 Тихие часы до {end:02d}:00": "🌙 Quiet hours until {end:02d}:00",
-    "🚨 и 🔴 — похоже на взлом, новый вход, смена пароля, пропавший профиль — придут сразу, со звуком. "
-    "Остальное пришлю сводкой, когда тишина закончится.":
-        "🚨 and 🔴 — a likely break-in, a new sign-in, a changed password, a vanished profile — come at once, "
-        "with sound. Everything else comes as a digest when the silence ends.",
+    "🔴 — похоже на взлом, новый вход, смена пароля, пропавший профиль, замолчавший почтовый воркер, "
+    "опасный комментарий — придёт сразу, со звуком. Остальное пришлю сводкой, когда тишина закончится.":
+        "🔴 — a likely hijack, a new sign-in, a changed password, a vanished profile, a silent mail worker, "
+        "a dangerous comment — comes at once, with sound. Everything else comes as a digest when the silence ends.",
     "🌙 Накопилось, пока было тихо:": "🌙 Piled up while it was quiet:",
     "🌙 (продолжение)": "🌙 (continued)",
     "/modules — мониторинги": "/modules — monitors",
@@ -362,7 +378,7 @@ STRINGS: dict[str, str] = {
     "сегодня {time}": "today {time}",
     "🕒 Последний сбор: {when}": "🕒 Last collection: {when}",
     "🧭 Осталось настроить:": "🧭 Left to set up:",
-    "часовой пояс — пока отчёт по UTC": "the time zone — for now the report comes in UTC",
+    "часовой пояс — пока {tz}, выбери свой": "the time zone — {tz} for now, pick yours",
     "токен Instagram — без него число не собирается": "the Instagram token — no count without it",
     "LinkedIn — cookie для автосбора или первое число вручную":
         "LinkedIn — a cookie for automatic collection, or the first number by hand",
@@ -370,11 +386,11 @@ STRINGS: dict[str, str] = {
     "<b>🔌 Подключения</b>": "<b>🔌 Connections</b>",
     "Подключения": "Connections",
     "{icon} {label} — не подключено: {needs} в .env": "{icon} {label} — not connected: {needs} in .env",
-    "⚠️ нужен токен": "⚠️ a token is needed",
+    "🟠 нужен токен": "🟠 a token is needed",
     "🟠 токен отклонён": "🟠 the token was rejected",
     "🟠 cookie отклонён, число вручную": "🟠 the cookie was rejected, the number by hand",
     "✏️ число вручную": "✏️ the number by hand",
-    "⚠️ подтверди первое число": "⚠️ confirm the first number",
+    "🟠 подтверди первое число": "🟠 confirm the first number",
     "✅ собирается": "✅ collected",
     "⏳ первый сбор ещё не был": "⏳ no collection yet",
     "Сети включаются в .env и перезапуском бота; токен Instagram и cookie LinkedIn — кнопками здесь.":

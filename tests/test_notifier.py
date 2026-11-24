@@ -50,18 +50,19 @@ def test_quiet_hours_wrap_midnight():
 
 def test_priority_follows_the_icon():
     assert notifier.priority_for(["🟠 Telegram: −50", "🎯 LinkedIn перешагнул 1 000!"]) is Priority.NORMAL
-    assert notifier.priority_for(["🟠 Telegram: новая аватарка", "🚨 Telegram: новый админ — X"]) is Priority.CRITICAL
+    assert notifier.priority_for(["🟠 Telegram: новая аватарка", "🔴 Telegram: похоже на взлом — новый админ X"]) is Priority.CRITICAL
     assert notifier.priority_for("🛡 Профиль\n\n🔴 Telegram: профиль не читается") is Priority.CRITICAL
-    assert notifier.priority_for("the 🚨 is not at the start of a line") is Priority.NORMAL
+    assert notifier.priority_for("the 🔴 is not at the start of a line") is Priority.NORMAL
+    assert notifier.priority_for("⚠️ не смог проверить\nℹ️ факт") is Priority.NORMAL
 
 
 # --- what rings, what waits ----------------------------------------------------
 
 async def test_by_day_everything_is_delivered_and_only_critical_rings(bot, config, db):
-    await send(bot, config, db, "🚨 hijack", Priority.CRITICAL)
+    await send(bot, config, db, "🔴 hijack", Priority.CRITICAL)
     await send(bot, config, db, "🟠 change")
     await send(bot, config, db, "📊 report", Priority.DIGEST)
-    assert bot.messages == ["🚨 hijack", "🟠 change", "📊 report"]
+    assert bot.messages == ["🔴 hijack", "🟠 change", "📊 report"]
     assert bot.silent == [False, True, True]
     assert await db.peek_notifications() == []
 
@@ -71,9 +72,9 @@ async def test_quiet_hours_hold_normal_but_not_critical_or_digest(bot, config, d
     clock["now"] = NIGHT
     assert await notifier.in_quiet_hours(db, config)
     assert await send(bot, config, db, "🟠 change")                       # queued, still True
-    await send(bot, config, db, "🚨 hijack", Priority.CRITICAL)
+    await send(bot, config, db, "🔴 hijack", Priority.CRITICAL)
     await send(bot, config, db, "📊 report", Priority.DIGEST)
-    assert bot.messages == ["🚨 hijack", "📊 report"] and bot.silent == [False, True]
+    assert bot.messages == ["🔴 hijack", "📊 report"] and bot.silent == [False, True]
     assert [r["text"] for r in await db.peek_notifications()] == ["🟠 change"]
 
 
@@ -92,8 +93,8 @@ async def test_mute_holds_everything_but_critical(bot, config, db, clock):
     assert await notifier.mute_until_local(db, config) == "20:00"
     await send(bot, config, db, "🟠 change")
     await send(bot, config, db, "📊 report", Priority.DIGEST)
-    await send(bot, config, db, "🚨 hijack", Priority.CRITICAL)
-    assert bot.messages == ["🚨 hijack"] and bot.silent == [False]
+    await send(bot, config, db, "🔴 hijack", Priority.CRITICAL)
+    assert bot.messages == ["🔴 hijack"] and bot.silent == [False]
     assert [r["text"] for r in await db.peek_notifications()] == ["🟠 change", "📊 report"]
     # The mute runs out by itself.
     clock["now"] = DAY + timedelta(hours=9)

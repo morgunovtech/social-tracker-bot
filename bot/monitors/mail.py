@@ -21,7 +21,7 @@ from bot.callbacks import SECURITY
 from bot.config import Config
 from bot.db import Database, utcnow
 from bot.i18n import t
-from bot.monitors import defang, hygiene
+from bot.monitors import HIJACK, defang, hygiene, level_icon
 from bot.notifier import Priority
 
 logger = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ GMAIL_FORWARDING = "forwarding-noreply@google.com"
 @dataclass(frozen=True)
 class Kind:
     id: str
-    icon: str
+    level: str   # "critical" — a hijack sign, rings; "warning" — waits for the digest
     title: str
     advice: str
     words: tuple[str, ...]
@@ -70,42 +70,42 @@ class Kind:
 
 KINDS: tuple[Kind, ...] = (
     Kind(
-        "password_reset", "🚨", "запрошен сброс пароля",
+        "password_reset", "critical", "запрошен сброс пароля",
         "Если сброс запросил кто-то другой — значит, пробуют войти. Пароль цел, проверь, что 2FA включена.",
         ("password reset", "reset your password", "сброс пароля", "восстановление пароля"),
     ),
     Kind(
-        "password_changed", "🚨", "пароль изменён",
+        "password_changed", "critical", "пароль изменён",
         "Если это не ты — восстанавливай доступ немедленно и заверши все сеансы.",
         ("password changed", "password was changed", "password has been changed", "changed your password",
          "пароль изменен", "пароль был изменен", "изменили пароль"),
     ),
     Kind(
-        "email_changed", "🚨", "изменена почта аккаунта",
+        "email_changed", "critical", "изменена почта аккаунта",
         "Если это не ты — аккаунт уводят: восстанавливай доступ немедленно.",
         ("email address changed", "email was changed", "email address has been changed", "changed your email",
          "адрес электронной почты изменен", "изменен адрес электронной почты", "почта изменена"),
     ),
     Kind(
-        "2fa_changed", "🚨", "изменена двухфакторная защита",
+        "2fa_changed", "critical", "изменена двухфакторная защита",
         "Если это не ты — верни 2FA и смени пароль.",
         ("2-step verification", "two-step verification", "two-factor", "двухэтапн", "двухфакторн"),
     ),
     Kind(
-        "new_login", "🚨", "новый вход в аккаунт",
+        "new_login", "critical", "новый вход в аккаунт",
         "Если это не ты — смени пароль и заверши чужие сеансы.",
         ("new sign-in", "new login", "signed in", "logged in", "new device", "sign-in attempt",
          "login attempt", "новый вход", "выполнен вход", "вход в аккаунт", "новое устройство",
          "попытка входа"),
     ),
     Kind(
-        "login_code", "🟠", "пришёл код входа",
+        "login_code", "warning", "пришёл код входа",
         "Если код запрашивал не ты — кто-то знает твой пароль: смени его.",
         ("verification code", "login code", "security code", "confirmation code", "one-time code",
          "instagram code", "код подтверждения", "код для входа", "код безопасности", "одноразовый код"),
     ),
     Kind(
-        "security_alert", "🟠", "оповещение безопасности",
+        "security_alert", "warning", "оповещение безопасности",
         "Проверь недавнюю активность в аккаунте.",
         ("security alert", "suspicious", "unusual activity", "оповещение системы безопасности",
          "подозрительн", "необычн"),
@@ -158,7 +158,8 @@ def sender_of(mail: Mail) -> tuple[str, str | None]:
         for suffix, display, platform_id in SENDERS:
             if domain == suffix or domain.endswith("." + suffix):
                 return display, platform_id
-    return mail.sender.rsplit("@", 1)[-1].strip(" <>").lower() or "?", None
+    # An unknown sender is anyone's text: its domain must not be a link.
+    return defang(mail.sender.rsplit("@", 1)[-1].strip(" <>").lower()) or "?", None
 
 
 def kind_of(mail: Mail) -> Kind | None:
@@ -203,12 +204,14 @@ def describe(mail: Mail) -> tuple[str, Kind | None, str, str | None]:
     kind = kind_of(mail)
     subject = _snippet(mail.subject)
     if kind is None:
-        text = t("📨 Письмо без признаков тревоги: {network} — «{subject}»").format(network=network, subject=subject)
+        text = t("ℹ️ Письмо без признаков тревоги: {network} — «{subject}»").format(network=network, subject=subject)
         return text, None, network, platform_id
-    text = t("{icon} {network}: {title}\n«{subject}»\n{advice}").format(
-        icon=kind.icon, network=network, title=t(kind.title), subject=subject, advice=t(kind.advice)
-    )
-    if kind.icon == "🚨" and network in RECOVERY:
+    # A hijack sign says so in its headline; the icon alone is only «act now».
+    head = (
+        t("{icon} {network}: {hijack} — {title}") if kind.level == "critical" else t("{icon} {network}: {title}")
+    ).format(icon=level_icon(kind.level), network=network, hijack=t(HIJACK), title=t(kind.title))
+    text = t("{head}\n«{subject}»\n{advice}").format(head=head, subject=subject, advice=t(kind.advice))
+    if kind.level == "critical" and network in RECOVERY:
         text += "\n" + t("Восстановление доступа: {url}").format(url=RECOVERY[network])
     return text, kind, network, platform_id
 
@@ -255,12 +258,15 @@ async def _track_reachability(bot: Bot, config: Config, db: Database, reachable:
     fails += 1
     await db.set_setting("mail_fail_streak", str(fails))
     if fails == UNREACHABLE_AFTER:
+        # 🔴: while the worker is silent, a new sign-in or a changed password
+        # reaches nobody — the one thing this monitor is for.
         await notifier.send(
             bot, config, db,
             t(
-                "🟠 Почтовый воркер не отвечает ~30 мин — письма безопасности не доходят. "
+                "🔴 Почтовый воркер не отвечает ~30 мин — письма безопасности не доходят. "
                 "Проверь SECURITY_MAIL_URL, SECURITY_MAIL_TOKEN и деплой воркера."
             ),
+            Priority.CRITICAL,
             monitor="mail",
         )
 
@@ -292,9 +298,9 @@ async def check(bot: Bot, config: Config, db: Database, session: aiohttp.ClientS
         text, kind, network, platform_id = describe(mail)
         if kind is not None and kind.id == "password_changed" and platform_id:
             text += "\n" + t("✍️ Дата смены пароля отмечена в чек-листе /security.")
-        # A 🚨 kind (a new sign-in, a changed password) rings through quiet
+        # A critical kind (a new sign-in, a changed password) rings through quiet
         # hours and /mute; a login code or an unrecognised mail waits for the digest.
-        priority = Priority.CRITICAL if kind is not None and kind.icon == "🚨" else Priority.NORMAL
+        priority = Priority.CRITICAL if kind is not None and kind.level == "critical" else Priority.NORMAL
         try:
             await notifier.send(bot, config, db, text, priority, no_preview=True, actions=(SECURITY,), monitor="mail")
         except Exception:

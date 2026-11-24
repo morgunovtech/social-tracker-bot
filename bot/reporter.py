@@ -139,14 +139,14 @@ async def build_report(
 
     # Problems first: they need an action, the numbers don't.
     if errors.get("linkedin_cookie_expired"):
-        lines += ["", t("⚠️ LinkedIn cookie истёк — обнови через /setcookie")]
+        lines += ["", t("🟠 LinkedIn cookie истёк — обнови через /setcookie")]
     elif errors.get("linkedin_cookie_aging"):
         age = errors["linkedin_cookie_aging"]
-        lines += ["", t("⏰ LinkedIn cookie живёт уже {age} дн. — пора обновить: /setcookie").format(age=age)]
+        lines += ["", t("🟠 LinkedIn cookie живёт уже {age} дн. — пора обновить: /setcookie").format(age=age)]
     if errors.get("instagram_token_missing"):
-        lines += ["", t("⚠️ Instagram подключён, но токена нет — пришли его через /igtoken")]
+        lines += ["", t("🟠 Instagram подключён, но токена нет — пришли его через /igtoken")]
     elif errors.get("instagram_token_expired"):
-        lines += ["", t("⚠️ Instagram отклонил токен — пришли новый через /igtoken")]
+        lines += ["", t("🟠 Instagram отклонил токен — пришли новый через /igtoken")]
 
     total_current = 0
     total_yesterday: int | None = 0
@@ -261,11 +261,11 @@ async def build_report(
 
         if source == "manual":
             if age_days >= linkedin_stale_days:
-                block.append(t("⚠️ введено вручную {date} — пора обновить").format(date=date_str))
+                block.append(t("🟠 введено вручную {date} — пора обновить").format(date=date_str))
             else:
                 block.append(t("введено вручную {date}").format(date=date_str))
         elif age_days >= AUTO_STALE_DAYS:
-            block.append(t("⚠️ данные от {date} — свежие собрать не удаётся").format(date=date_str))
+            block.append(t("🟠 данные от {date} — свежие собрать не удаётся").format(date=date_str))
         elif errors.get(platform):
             block.append(t("⚠️ сегодня собрать не удалось"))
 

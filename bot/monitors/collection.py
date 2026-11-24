@@ -71,7 +71,7 @@ async def alert_lines(db: Database, outcome: CollectOutcome) -> list[str]:
             if outcome.errors.get("instagram_token_expired"):
                 lines.append(t("🟠 Instagram отклонил токен: истёк или отозван — пришли новый через /igtoken"))
             else:
-                lines.append(t("⚠️ Instagram подключён, но токена нет — пришли его через /igtoken"))
+                lines.append(t("🟠 Instagram подключён, но токена нет — пришли его через /igtoken"))
     elif "instagram" in outcome.collected:
         await db.set_setting("instagram_token_alerted", "0")
 

@@ -162,14 +162,17 @@ STRINGS: dict[str, str] = {
     "Открыть чек-лист: /security": "Open the checklist: /security",
     # bot/monitors/profile.py — profile integrity alerts
     "(пусто)": "(empty)",
-    "🚨 {label}: новый админ — {name}": "🚨 {label}: new admin — {name}",
+    "похоже на взлом": "looks like a hijack",
+    "🔴 {label}: {hijack} — новый админ {name}": "🔴 {label}: {hijack} — new admin {name}",
     "🟠 {label}: админ удалён — {name}": "🟠 {label}: admin removed — {name}",
-    "🚨 {label}: сменился владелец — {before} → {after}": "🚨 {label}: owner changed — {before} → {after}",
+    "🔴 {label}: {hijack} — сменился владелец: {before} → {after}": "🔴 {label}: {hijack} — owner changed: {before} → {after}",
+    "{icon} {platform}: {hijack} — {field}: «{before}» → «{after}»": '{icon} {platform}: {hijack} — {field}: "{before}" → "{after}"',
     "{icon} {platform}: {field} — «{before}» → «{after}»": '{icon} {platform}: {field} — "{before}" → "{after}"',
     " и ещё {n}": " and {n} more",
     "новые ссылки: {links}{more}": "new links: {links}{more}",
     "🟠 {platform}: новая {field}": "🟠 {platform}: new {field}",
-    "🚨 {platform}: {field} — было {was}, стало {now} (−{drop})": "🚨 {platform}: {field} — was {was}, now {now} (−{drop})",
+    "🔴 {platform}: {hijack} — {field}: было {was}, стало {now} (−{drop})":
+        "🔴 {platform}: {hijack} — {field}: was {was}, now {now} (−{drop})",
     "✅ {label}: профиль снова доступен": "✅ {label}: the profile is reachable again",
     (
         "🔴 {label}: профиль не читается {n} {checks} подряд — "
@@ -222,15 +225,17 @@ STRINGS: dict[str, str] = {
     "Потом создай фильтр по отправителям уведомлений безопасности — см. mail-worker/README.md.": (
         "Then create a filter on the senders of security notifications — see mail-worker/README.md."
     ),
-    "📨 Письмо без признаков тревоги: {network} — «{subject}»": '📨 Email with no signs of trouble: {network} — "{subject}"',
-    "{icon} {network}: {title}\n«{subject}»\n{advice}": '{icon} {network}: {title}\n"{subject}"\n{advice}',
+    "ℹ️ Письмо без признаков тревоги: {network} — «{subject}»": 'ℹ️ Email with no signs of trouble: {network} — "{subject}"',
+    "{icon} {network}: {hijack} — {title}": "{icon} {network}: {hijack} — {title}",
+    "{icon} {network}: {title}": "{icon} {network}: {title}",
+    "{head}\n«{subject}»\n{advice}": '{head}\n"{subject}"\n{advice}',
     "Восстановление доступа: {url}": "Recover access: {url}",
     "✅ Почтовый воркер снова отвечает": "✅ The mail worker is responding again",
     (
-        "🟠 Почтовый воркер не отвечает ~30 мин — письма безопасности не доходят. "
+        "🔴 Почтовый воркер не отвечает ~30 мин — письма безопасности не доходят. "
         "Проверь SECURITY_MAIL_URL, SECURITY_MAIL_TOKEN и деплой воркера."
     ): (
-        "🟠 The mail worker has not responded for ~30 min — security emails are not getting through. "
+        "🔴 The mail worker has not responded for ~30 min — security emails are not getting through. "
         "Check SECURITY_MAIL_URL, SECURITY_MAIL_TOKEN and the worker's deployment."
     ),
     "✍️ Дата смены пароля отмечена в чек-листе /security.": (
@@ -248,9 +253,6 @@ STRINGS: dict[str, str] = {
     ),
     "🟠 Instagram отклонил токен: истёк или отозван — пришли новый через /igtoken": (
         "🟠 Instagram rejected the token: expired or revoked — send a new one with /igtoken"
-    ),
-    "⚠️ Instagram подключён, но токена нет — пришли его через /igtoken": (
-        "⚠️ Instagram is connected but there is no token — send it with /igtoken"
     ),
     "🟠 {label}: не удаётся собрать данные {streak} дн. подряд": "🟠 {label}: data collection has failed {streak} days in a row",
     "🟠 LinkedIn: по cookie получено {count} — первое число подтверди командой /linkedin {raw}, "

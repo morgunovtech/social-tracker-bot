@@ -2,7 +2,8 @@
 
 Navigation is a tree rooted at the home screen. Every other screen has a
 «← <parent>» button, and a command opens the same screen as its button.
-Texts are Telegram HTML, so every dynamic value goes through esc().
+Texts are Telegram HTML, so every dynamic value goes through esc(), which
+also strips invisible direction and format characters (monitors.clean).
 
 Callback data is "<screen>[:<args>]". Menus sent by older versions stay in
 the chat, so the handlers send an id they no longer know to the home screen.
@@ -75,8 +76,9 @@ MINUTE_CHOICES = (0, 15, 30, 45)
 # «🔕 Помолчать» presets: the argument of /mute each button stands for.
 MUTE_CHOICES = ("1h", "4h", "8h", "1d")
 
-# One meaning per icon across the bot: on / chosen, off, unavailable.
-ON, OFF, UNAVAILABLE = "✅", "⬜", "➖"
+# One meaning per icon across the bot (the dictionary: bot/monitors/__init__.py):
+# on / chosen, off, not connected.
+ON, OFF, UNAVAILABLE = monitors.OK, monitors.OFF, monitors.NOT_CONNECTED
 
 # Russian names, translated with t() where they are shown (see bot/i18n.py).
 _DOW_SHORT = {"mon": "Пн", "tue": "Вт", "wed": "Ср", "thu": "Чт", "fri": "Пт", "sat": "Сб", "sun": "Вс"}
@@ -127,7 +129,7 @@ class Screen:
 
 
 def esc(value: object) -> str:
-    return html.escape(str(value), quote=False)
+    return html.escape(monitors.clean(value), quote=False)
 
 
 def _button(text: str, data: str) -> InlineKeyboardButton:
@@ -329,7 +331,8 @@ async def setup_todo(db: Database, config: Config) -> list[tuple[str, str]]:
     Instagram token, the first LinkedIn number. Empty once everything is set."""
     todo: list[tuple[str, str]] = []
     if await db.get_setting("report_tz") is None:
-        todo.append((f"{SETTINGS}:tz", t("часовой пояс — пока отчёт по UTC")))
+        tz = await get_report_tz(db, config)
+        todo.append((f"{SETTINGS}:tz", t("часовой пояс — пока {tz}, выбери свой").format(tz=tz_name(tz))))
     if BY_ID["instagram"].enabled(config) and not await ig.get_active_token(db, config):
         todo.append((CONNECTIONS, t("токен Instagram — без него число не собирается")))
     if BY_ID["linkedin"].enabled(config) and await db.get_latest("linkedin") is None:
@@ -390,7 +393,7 @@ async def connections(db: Database, config: Config) -> Screen:
         state = ""
         if platform.id == "instagram":
             if not await ig.get_active_token(db, config):
-                state = t("⚠️ нужен токен")
+                state = t("🟠 нужен токен")
             elif await db.get_setting("instagram_token_alerted") == "1":
                 state = t("🟠 токен отклонён")
         elif platform.id == "linkedin":
@@ -399,7 +402,7 @@ async def connections(db: Database, config: Config) -> Screen:
             elif not await get_active_cookie(db, config):
                 state = t("✏️ число вручную")
             elif latest is None:
-                state = t("⚠️ подтверди первое число")
+                state = t("🟠 подтверди первое число")
         if not state:
             state = t("✅ собирается") if latest is not None else t("⏳ первый сбор ещё не был")
         lines.append(f"{platform.label} — {target} · {state}")
@@ -481,9 +484,9 @@ async def table(db: Database, config: Config, platform_id: str = "all", days: in
 
 def _platform_state(ans: dict[str, str], points: int) -> tuple[str, str]:
     if not ans:
-        return "❓", t("не заполнено")
+        return monitors.UNMARKED, t("не заполнено")
     state = t("{points} из {max}").format(points=points, max=hygiene.MAX_SCORE)
-    return ("✅" if points == hygiene.MAX_SCORE else "⚠️"), state
+    return (monitors.OK if points == hygiene.MAX_SCORE else monitors.WARNING), state
 
 
 async def security(db: Database, config: Config, top: int = 5) -> Screen:
@@ -843,7 +846,7 @@ async def linkedin(db: Database, config: Config) -> Screen:
         lines.append(t("🟠 LinkedIn отклонил cookie: пришли новый через /setcookie или вводи число вручную."))
     elif age is not None and age >= COOKIE_AGING_DAYS:
         lines.append(
-            t("⚠️ Cookie установлен {age} {d} назад и скоро истечёт — пора обновить.").format(age=age, d=_days(age))
+            t("🟠 Cookie установлен {age} {d} назад и скоро истечёт — пора обновить.").format(age=age, d=_days(age))
         )
     elif age is not None:
         left = COOKIE_AGING_DAYS - age
@@ -896,7 +899,7 @@ async def instagram(db: Database, config: Config) -> Screen:
     token = await ig.get_active_token(db, config)
     age = await ig.get_token_age_days(db)
     if not token:
-        lines.append(t("⚠️ Токена нет: без него число не собирается."))
+        lines.append(t("🟠 Токена нет: без него число не собирается."))
     elif await db.get_setting("instagram_token_alerted") == "1":
         lines.append(t("🟠 Instagram отклонил токен: отозван или истёк — пришли новый через /igtoken."))
     elif age is None:
@@ -981,7 +984,7 @@ def linkedin_confirm(prev: int, count: int) -> Screen:
     """A number far from the last one is likely a typo: ask before it becomes the baseline."""
     return Screen(
         t(
-            "<b>⚠️ Проверь число</b>\n\n{count} сильно отличается от прошлого значения "
+            "<b>✏️ Проверь число</b>\n\n{count} сильно отличается от прошлого значения "
             "{prev}. Возможно, это опечатка."
         ).format(count=_fmt(count), prev=_fmt(prev)),
         InlineKeyboardMarkup([
@@ -995,6 +998,28 @@ def linkedin_confirm(prev: int, count: int) -> Screen:
 # ---------------------------------------------------------------------------
 # Help
 # ---------------------------------------------------------------------------
+
+# What is 🔴 for this bot (BOT_PRINCIPLES §1 leaves it to each bot): the
+# legend says it in as many words, the README too.
+CRITICAL_HERE = (
+    "🔴 у меня — это: похоже на взлом (новый админ или владелец, ссылка в описании, пропавшие видео "
+    "или публикации, новый вход, смена пароля, почты или 2FA), профиль не читается, почтовый воркер "
+    "молчит, комментарий, за который блокируют группу. 🟠 — истёкший cookie, отклонённый токен, сбои "
+    "сбора, падение подписчиков, смена названия или аватарки."
+)
+
+
+def icon_legend() -> list[str]:
+    """The icon dictionary as lines: icon — what it means — what I do with it."""
+    lines = []
+    for icon, meaning, does in monitors.ICON_LEGEND:
+        line = f"{icon} {t(meaning)}"
+        if does:
+            line += f" — {t(does)}"
+        lines.append(esc(line))
+    lines.append(esc(t(CRITICAL_HERE)))
+    return lines
+
 
 def help_screen() -> Screen:
     text = "\n".join([
@@ -1010,10 +1035,7 @@ def help_screen() -> Screen:
         t("Под тревогами и отчётами — кнопки туда, где разбираться; ⚙️ — выключить такие уведомления."),
         "",
         t("<b>Значки</b>"),
-        t("✅ в порядке или включено · ⬜ выключено · ➖ не подключено"),
-        t("⚠️ нужно внимание · ❓ не отмечено"),
-        t("🚨 похоже на взлом · 🔴 аккаунт недоступен — звонят сразу, даже ночью"),
-        t("🟠 изменение или сбой — тихо; ночью и в тишине ждёт сводки"),
+        *icon_legend(),
         "",
         t("<b>Команды</b>"),
         t("/start — главная"),

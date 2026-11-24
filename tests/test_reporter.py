@@ -99,9 +99,9 @@ async def test_report_marks_stale_data_of_any_source(db, insert):
     insert("youtube", 128, 0)
     insert("linkedin", 4800, 21, source="cookie")            # cookie died weeks ago
     text, _ = await build_report(db)
-    assert "⚠️ данные от" in _block(text, "Telegram")
+    assert "🟠 данные от" in _block(text, "Telegram")
     assert "данные от" not in _block(text, "YouTube")
-    assert "⚠️ данные от" in _block(text, "LinkedIn")
+    assert "🟠 данные от" in _block(text, "LinkedIn")
 
 
 async def test_report_manual_linkedin_markers(db, insert):
@@ -109,7 +109,7 @@ async def test_report_manual_linkedin_markers(db, insert):
     text, _ = await build_report(db, linkedin_stale_days=7)
     assert "\nвведено вручную " in _block(text, "LinkedIn")
     text, _ = await build_report(db, linkedin_stale_days=1)
-    assert "⚠️ введено вручную" in _block(text, "LinkedIn") and "пора обновить" in text
+    assert "🟠 введено вручную" in _block(text, "LinkedIn") and "пора обновить" in text
 
 
 async def test_report_flags_todays_failure_on_old_data(db, insert):

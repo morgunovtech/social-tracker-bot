@@ -669,7 +669,7 @@ async def _store_cookie(update: Update, context: ContextTypes.DEFAULT_TYPE, cook
         await update.message.delete()
     except Exception:
         deleted = False
-    note = "" if deleted else "\n" + t("⚠️ Удалить сообщение с cookie не получилось — удали его из чата вручную.")
+    note = "" if deleted else "\n" + t("🟠 Удалить сообщение с cookie не получилось — удали его из чата вручную.")
 
     if len(cookie) < 50:
         await chat.send_message(t("❌ Это не похоже на cookie: значение слишком короткое.") + note)
@@ -755,7 +755,7 @@ async def _store_token(update: Update, context: ContextTypes.DEFAULT_TYPE, token
         await update.message.delete()
     except Exception:
         deleted = False
-    note = "" if deleted else "\n" + t("⚠️ Удалить сообщение с токеном не получилось — удали его из чата вручную.")
+    note = "" if deleted else "\n" + t("🟠 Удалить сообщение с токеном не получилось — удали его из чата вручную.")
 
     if len(token) < 50:
         await chat.send_message(t("❌ Это не похоже на токен: значение слишком короткое.") + note)

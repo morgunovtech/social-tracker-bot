@@ -47,8 +47,8 @@ STRINGS: dict[str, str] = {
         "Send the cookie with the command: /setcookie <li_at value>\n\n"
         "Where to find it: linkedin.com → DevTools → Application → Cookies → li_at → Value. "
         "I will delete the message with the cookie right away.",
-    "⚠️ Удалить сообщение с cookie не получилось — удали его из чата вручную.":
-        "⚠️ Could not delete the message with the cookie — delete it from the chat yourself.",
+    "🟠 Удалить сообщение с cookie не получилось — удали его из чата вручную.":
+        "🟠 Could not delete the message with the cookie — delete it from the chat yourself.",
     "❌ Это не похоже на cookie: значение слишком короткое.":
         "❌ This does not look like a cookie: the value is too short.",
     "❌ Не задан LINKEDIN_PROFILE_URL — не на чем проверить cookie.":
@@ -79,8 +79,8 @@ STRINGS: dict[str, str] = {
         "Send the token with the command: /igtoken <token>\n\n"
         "Where to find it: developers.facebook.com → your app → Instagram API → "
         "\"API setup with Unified login\" → Generate token. I will delete the message with the token right away.",
-    "⚠️ Удалить сообщение с токеном не получилось — удали его из чата вручную.":
-        "⚠️ Could not delete the message with the token — delete it from the chat yourself.",
+    "🟠 Удалить сообщение с токеном не получилось — удали его из чата вручную.":
+        "🟠 Could not delete the message with the token — delete it from the chat yourself.",
     "❌ Это не похоже на токен: значение слишком короткое.":
         "❌ This does not look like a token: the value is too short.",
     "❌ Не задан INSTAGRAM_USERNAME — Instagram не подключён.":

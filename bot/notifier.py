@@ -10,22 +10,24 @@ else in the codebase reasons about them:
               the digest, so it goes through quiet hours)
 
 The icon in the first character of a line and the way the message arrives
-agree (priority_for): 🚨 and 🔴 ring, everything else is silent. Which
-message gets which priority:
+agree (priority_for): 🔴 rings, everything else is silent — the one icon
+dictionary is bot/monitors/__init__.py (LEVEL_ICONS). Which message gets
+which priority:
 
-    CRITICAL  🛡 profile alerts with a 🚨 line — a new admin or owner, a
-              link in the description, a drop in videos or posts — or a 🔴
-              one (the profile stopped being readable: deleted, hidden, or
-              the bot lost its rights); security emails of a 🚨 kind — a new
-              sign-in, a changed or reset password, a changed email or 2FA.
+    CRITICAL  🛡 profile alerts with a 🔴 line — «похоже на взлом»: a new
+              admin or owner, a link in the description, a drop in videos or
+              posts; or the profile stopped being readable (deleted, hidden,
+              the bot lost its rights); security emails of a critical kind
+              («похоже на взлом»: a new sign-in, a changed or reset password,
+              a changed email or 2FA); the mail worker silent for ~30 min; a
+              comment the group is blocked for, at ≥ 70 % confidence.
     NORMAL    🛡 profile alerts with only 🟠 lines (a new title, description
               or avatar, an admin removed) and ✅ recoveries; 🟠 security
-              emails (a login code, a generic alert), 📨 unrecognised mail
+              emails (a login code, a generic alert), ℹ️ unrecognised mail
               and Gmail's forwarding confirmation; collection alerts —
-              🟠 follower drop, 🟠 bot inflow, 🎯 milestone, 🟠 expired cookie
-              or rejected token, ⚠️ missing token, 🟠 failure streak; the
-              mail worker unreachable and back; 🟠 a deploy that failed;
-              «🔄 Бот обновился».
+              🟠 follower drop, 🟠 bot inflow, 🎯 milestone, 🟠 expired cookie,
+              rejected or missing token, 🟠 failure streak; the mail worker
+              back; 🟠 a deploy that failed; «🔄 Бот обновился».
     DIGEST    the weekly report and its chart, the «без изменений» one-liner,
               the hygiene reminder, the monthly digest, the weekly backup,
               the weekly OSV / Dependabot notice.
@@ -67,7 +69,7 @@ from bot.callbacks import actions_markup
 from bot.config import Config
 from bot.db import Database, parse_utc, utcnow
 from bot.i18n import t
-from bot.monitors import NO_PREVIEW
+from bot.monitors import CRITICAL, NO_PREVIEW
 
 logger = logging.getLogger(__name__)
 
@@ -88,10 +90,10 @@ class Priority(Enum):
 
 
 def priority_for(lines: list[str] | str) -> Priority:
-    """The delivery class of an alert by its icons: a 🚨 or 🔴 line rings."""
+    """The delivery class of an alert by its icons: a 🔴 line rings."""
     text = "\n".join(lines) if isinstance(lines, list) else lines
     for line in text.splitlines():
-        if line.startswith(("🚨", "🔴")):
+        if line.startswith(CRITICAL):
             return Priority.CRITICAL
     return Priority.NORMAL
 
@@ -217,8 +219,8 @@ async def silence_status(db: Database, config: Config) -> str | None:
 def what_rings_through() -> str:
     """What passes quiet hours and /mute — exactly what send() lets through."""
     return t(
-        "🚨 и 🔴 — похоже на взлом, новый вход, смена пароля, пропавший профиль — придут сразу, со звуком. "
-        "Остальное пришлю сводкой, когда тишина закончится."
+        "🔴 — похоже на взлом, новый вход, смена пароля, пропавший профиль, замолчавший почтовый воркер, "
+        "опасный комментарий — придёт сразу, со звуком. Остальное пришлю сводкой, когда тишина закончится."
     )
 
 
@@ -235,7 +237,7 @@ async def deferred(db: Database, config: Config, priority: Priority) -> bool:
 
 def _actions(priority: Priority, actions: Iterable[str], monitor: str | None) -> dict:
     """The action row as stored and built: the screens, whether «🔕» belongs
-    (anything but the digest), the monitor of a 🟠 message (a 🚨 one is not
+    (anything but the digest), the monitor of a 🟠 message (a 🔴 one is not
     offered a switch-off)."""
     return {
         "actions": list(actions),
