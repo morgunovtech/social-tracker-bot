@@ -7,8 +7,10 @@ until the bot fetches and acknowledges them. Classification lives here:
 the worker only stores sender, subject and the start of the text.
 
 The accounts are the social networks and the infrastructure that holds the
-products and the domain — GitHub, Cloudflare, Railway, Proton, Microsoft
-(Bing), Yandex. Every sender and every phrase below was taken from a real
+products and the domain — GitHub, Railway, Proton, Microsoft (Bing), Yandex.
+Cloudflare is not here on purpose: TofsDevOps reads its audit log through
+the API and tells new logins and new API tokens itself; a second alert from
+its mail would say everything twice (BOT_PRINCIPLES, «Кто за что отвечает»). Every sender and every phrase below was taken from a real
 mail or the service's own documentation, never guessed: a rule that matches
 nothing is silence that looks like safety.
 """
@@ -46,11 +48,10 @@ BODY_HEAD = 600
 # and the connector whose checklist a password change updates (None: an
 # account without a connector). A whole address comes before its domain:
 # Search Console and Bing Webmaster write from google.com and microsoft.com.
-# Seen in real mail (2026-11-24): noreply@github.com, noreply@notify.cloudflare.com,
+# Seen in real mail (2026-11-24): noreply@github.com,
 # hello@notify.railway.app, no-reply@verify.proton.me, no-reply@mail.proton.me,
 # account-security-noreply@accountprotection.microsoft.com, bingwb@microsoft.com,
-# noreply@id.yandex.ru, sc-noreply@google.com. From the services' own pages:
-# noreply@notify.cloudflare.com («all email notifications from Cloudflare»),
+# noreply@id.yandex.ru, sc-noreply@google.com. From the service's own pages:
 # devnull@webmaster.yandex.ru (Yandex.Webmaster's notifications).
 SENDERS: tuple[tuple[str, str, str | None], ...] = (
     ("sc-noreply@google.com", "Search Console", None),
@@ -65,7 +66,6 @@ SENDERS: tuple[tuple[str, str, str | None], ...] = (
     ("x.com", "X", None),
     ("twitter.com", "X", None),
     ("github.com", "GitHub", None),
-    ("cloudflare.com", "Cloudflare", None),
     ("railway.app", "Railway", None),
     ("proton.me", "Proton", None),
     ("microsoft.com", "Microsoft", None),
@@ -173,7 +173,6 @@ KINDS: tuple[Kind, ...] = (
          "login attempt", "новый вход", "выполнен вход", "вход в аккаунт", "новое устройство",
          "попытка входа",
          "review this sign in",                             # GitHub: «Please review this sign in»
-         "accessed from a new ip",                          # Cloudflare: «…has been accessed from a new IP address»
          "unusual sign-in", "действия при входе"),          # Microsoft: «Необычные действия при входе…»
     ),
     Kind(

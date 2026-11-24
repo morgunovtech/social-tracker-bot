@@ -87,8 +87,6 @@ def test_infrastructure_accounts(sender, subject, network, kind):
          "Search Console", "new_owner"),
         ("devnull@webmaster.yandex.ru", "Яндекс.Вебмастер", "Делегирование прав на управление сайтом",
          "Yandex Webmaster", "new_owner"),
-        ("noreply@notify.cloudflare.com", "Your Cloudflare account has been accessed from a new IP address", "",
-         "Cloudflare", "new_login"),
         ("noreply@github.com", "[GitHub] Your password has changed", "", "GitHub", "password_changed"),
         ("noreply@github.com", "[GitHub] Your password was reset", "", "GitHub", "password_changed"),
         ("noreply@github.com", "[GitHub] An email address was added to your account.", "", "GitHub",
@@ -133,7 +131,10 @@ def test_a_whole_address_wins_over_its_domain():
     assert sender_of(_mail("bingwb@microsoft.com", "x")) == ("Bing Webmaster", None)
     assert sender_of(_mail("sc-noreply@google.com", "x")) == ("Search Console", None)
     assert sender_of(_mail("no-reply@accounts.google.com", "x")) == ("Google", "youtube")
-    assert sender_of(_mail("noreply@notify.cloudflare.com", "x"))[0] == "Cloudflare"
+    # Cloudflare's own mail is TofsDevOps's (its audit log): not a sender here.
+    assert sender_of(_mail("noreply@notify.cloudflare.com", "x"))[1] is None
+    assert kind_of(_mail("noreply@notify.cloudflare.com",
+                         "Your Cloudflare account has been accessed from a new IP address")) is None
     assert sender_of(_mail("no-reply@verify.proton.me", "x"))[0] == "Proton"
 
 

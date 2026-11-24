@@ -108,10 +108,10 @@ STRINGS: dict[str, str] = {
     "Письма безопасности": "Security emails",
     (
         "новые входы, смена пароля, телефона и 2FA, новые ключи и токены, новый владелец сайта в поиске, коды входа — "
-        "из пересланных писем соцсетей, GitHub, Cloudflare, Microsoft, Яндекса"
+        "из пересланных писем соцсетей, GitHub, Microsoft, Яндекса"
     ): (
         "new sign-ins, password, phone and 2FA changes, new keys and tokens, a new owner of the site in search, login "
-        "codes — from forwarded emails of the networks, GitHub, Cloudflare, Microsoft, Yandex"
+        "codes — from forwarded emails of the networks, GitHub, Microsoft, Yandex"
     ),
     "SECURITY_MAIL_URL и SECURITY_MAIL_TOKEN": "SECURITY_MAIL_URL and SECURITY_MAIL_TOKEN",
     "Комментарии": "Comments",

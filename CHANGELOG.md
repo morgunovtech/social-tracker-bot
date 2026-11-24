@@ -2,6 +2,11 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## Unreleased
+
+**Changed**
+- Security mail from Cloudflare is not read any more (1.7.0 added it): new logins and new API tokens on the Cloudflare account are TofsDevOps's — it reads the account's audit log through the API (TofsDevOps 3.2.0), which is more reliable than mail, and a second alert from here would bring each one twice (the owner's `BOT_PRINCIPLES.md`, «Кто за что отвечает»). `noreply@notify.cloudflare.com` is gone from `SENDERS` and from the forwarding filter in `mail-worker/README.md`; a Cloudflare mail forwarded by hand is an «ℹ️ письмо без признаков тревоги».
+
 ## 1.7.0 — 2026-11-24
 
 The gaps found after the day's cleanup, closed: the bot now watches what it sends out by itself, tells once when an update moved how it behaves (and tells 1.5.0's silent move of the report to 04:00 Moscow), follows the links already in the profiles every week, and reads the security mail of the accounts that hold the products and the domain — GitHub, Cloudflare, Microsoft, Yandex, a new owner of the site in Search Console. Plus the fixes from the code review of 2026-11-24.
