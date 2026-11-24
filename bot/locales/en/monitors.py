@@ -106,8 +106,12 @@ STRINGS: dict[str, str] = {
     "Если check удалён — создать новый на healthchecks.io и прислать ссылку.":
         "If the check was deleted, create a new one on healthchecks.io and send its link.",
     "Письма безопасности": "Security emails",
-    "новые входы, смена пароля, коды входа — из пересланных писем": (
-        "new sign-ins, password changes, login codes — from forwarded emails"
+    (
+        "новые входы, смена пароля, телефона и 2FA, новые ключи и токены, новый владелец сайта в поиске, коды входа — "
+        "из пересланных писем соцсетей, GitHub, Cloudflare, Microsoft, Яндекса"
+    ): (
+        "new sign-ins, password, phone and 2FA changes, new keys and tokens, a new owner of the site in search, login "
+        "codes — from forwarded emails of the networks, GitHub, Cloudflare, Microsoft, Yandex"
     ),
     "SECURITY_MAIL_URL и SECURITY_MAIL_TOKEN": "SECURITY_MAIL_URL and SECURITY_MAIL_TOKEN",
     "Комментарии": "Comments",
@@ -274,6 +278,37 @@ STRINGS: dict[str, str] = {
         "If this wasn't you — the account is being taken over: recover access immediately."
     ),
     "изменена двухфакторная защита": "two-factor authentication changed",
+    "изменён телефон аккаунта": "the account's phone number changed",
+    "Сменили номер телефона, на который приходят коды входа и восстановления.":
+        "The phone number that gets the sign-in and recovery codes was changed.",
+    "ты сам — новый номер; если нет — угонщик забирает восстановление себе":
+        "you — a new number; if not, a hijacker is taking the recovery for themselves",
+    "Если это не ты — восстанавливай доступ немедленно: с чужим номером пароль сбросят без тебя.":
+        "If it wasn't you, recover access right away: with someone else's number the password is reset without you.",
+    "добавлен ключ, токен или приложение": "a key, token or app was added",
+    "у сайта новый владелец в поиске": "the site has a new owner in search",
+    (
+        "У сайта появился ещё один подтверждённый владелец в панели поисковика: он может убрать страницы из "
+        "поиска, поменять настройки и видеть статистику."
+    ): "The site has one more verified owner in a search engine's console: they can remove pages from search, change the settings and see the statistics.",
+    (
+        "ты сам — подтвердил сайт заново или другим способом, подключил сервис; если нет — у кого-то есть доступ "
+        "к DNS или файлам сайта"
+    ): "you — you verified the site again or another way, or connected a service; if not, someone has access to the site's DNS or files",
+    (
+        "Если это не ты — удали чужого владельца в настройках ресурса (Search Console: Настройки → Пользователи "
+        "и разрешения) и убери его код подтверждения — запись DNS или файл, иначе права вернутся."
+    ): "If it wasn't you, remove the stranger in the property's settings (Search Console: Settings → Users and permissions) and delete their verification token — the DNS record or the file — or the rights come back.",
+    (
+        "В аккаунт добавили новый способ входить без пароля: токен, ключ, пароль приложения или стороннее "
+        "приложение с доступом."
+    ): "A new way into the account without the password was added: a token, a key, an app password or a third-party app with access.",
+    (
+        "ты сам — для бота, деплоя или нового сервиса; если нет — угонщик закрепляется: такой ключ переживёт "
+        "смену пароля"
+    ): "you — for a bot, a deploy or a new service; if not, a hijacker is digging in: such a key survives a password change",
+    "Если это не ты — отзови ключ или приложение в настройках безопасности аккаунта, потом смени пароль.":
+        "If it wasn't you, revoke the key or the app in the account's security settings, then change the password.",
     "Если это не ты — верни 2FA и смени пароль.": "If this wasn't you — restore 2FA and change the password.",
     "новый вход в аккаунт": "new sign-in to the account",
     "Если это не ты — смени пароль и заверши чужие сеансы.": (

@@ -470,3 +470,17 @@ async def test_profile_link_messages(config, db, monkeypatch):
     assert await links.check(bot, config, db, None) == 1
     for text in bot.messages:
         english_only(text)
+
+
+def test_infrastructure_mail_alerts():
+    """The new mail kinds — a key, a phone, a new owner in search — whole, in English."""
+    for sender, subject in (
+        ("noreply@github.com", "[GitHub] A personal access token (classic) has been added to your account"),
+        ("noreply@id.yandex.ru", "The phone number linked to your Yandex account has been changed"),
+        ("sc-noreply@google.com", "New owner for https://s.morgunov.tech/"),
+        ("noreply@notify.cloudflare.com", "Your Cloudflare account has been accessed from a new IP address"),
+    ):
+        text, kind, *_ = mail.describe(mail.Mail(id="1", sender=sender, subject=subject, text=""))
+        assert kind is not None
+        english_only(text)
+    english_only(t(monitors.BY_ID["mail"].description))

@@ -43,6 +43,101 @@ def test_classification(sender, subject, text, network, kind):
     assert kind_of(m).id == kind
 
 
+# Subjects and senders exactly as they arrived in the owner's mailbox (2026-11-24).
+@pytest.mark.parametrize(
+    ("sender", "subject", "network", "kind"),
+    [
+        ("noreply@github.com", "[GitHub] Please review this sign in", "GitHub", "new_login"),
+        ("noreply@github.com", "[GitHub] Please verify your device", "GitHub", "login_code"),
+        ("noreply@github.com", "[GitHub] A personal access token (classic) has been added to your account",
+         "GitHub", "new_key"),
+        ("noreply@github.com", "[GitHub] A third-party OAuth application has been added to your account",
+         "GitHub", "new_key"),
+        ("noreply@github.com", "[GitHub] A third-party GitHub Application has been added to your account",
+         "GitHub", "new_key"),
+        ("noreply@github.com", "[GitHub] A passkey was removed from your account", "GitHub", "2fa_changed"),
+        ("account-security-noreply@accountprotection.microsoft.com",
+         "Необычные действия при входе в учетную запись Майкрософт", "Microsoft", "new_login"),
+        ("account-security-noreply@accountprotection.microsoft.com",
+         "Изменение пароля учетной записи Майкрософт", "Microsoft", "password_changed"),
+        ("account-security-noreply@accountprotection.microsoft.com",
+         "Код безопасности для учетной записи Майкрософт", "Microsoft", "login_code"),
+        ("account-security-noreply@accountprotection.microsoft.com",
+         "Оповещение о безопасности учетной записи Майкрософт", "Microsoft", "security_alert"),
+        ("noreply@id.yandex.ru", "The phone number linked to your Yandex account has been changed", "Yandex",
+         "phone_changed"),
+        ("noreply@id.yandex.ru", "Вы создали пароль для приложения в аккаунте min***", "Yandex", "new_key"),
+        ("noreply@id.yandex.ru", "Вы привязали аккаунт Mos.ru к аккаунту min***", "Yandex", "new_key"),
+    ],
+)
+def test_infrastructure_accounts(sender, subject, network, kind):
+    m = _mail(sender, subject)
+    assert sender_of(m) == (network, None)
+    assert kind_of(m).id == kind
+
+
+# Subjects from the services' own pages and published copies (sources in bot/monitors/mail.py).
+@pytest.mark.parametrize(
+    ("sender", "subject", "text", "network", "kind"),
+    [
+        ("sc-noreply@google.com", "New owner for https://s.morgunov.tech/", "", "Search Console", "new_owner"),
+        ("sc-noreply@google.com", "У сайта https://s.morgunov.tech/ появился новый владелец", "", "Search Console",
+         "new_owner"),
+        ("sc-noreply@google.com", "Search Console", "… has been added as an owner … Message ID: WNC-627102",
+         "Search Console", "new_owner"),
+        ("devnull@webmaster.yandex.ru", "Яндекс.Вебмастер", "Делегирование прав на управление сайтом",
+         "Yandex Webmaster", "new_owner"),
+        ("noreply@notify.cloudflare.com", "Your Cloudflare account has been accessed from a new IP address", "",
+         "Cloudflare", "new_login"),
+        ("noreply@github.com", "[GitHub] Your password has changed", "", "GitHub", "password_changed"),
+        ("noreply@github.com", "[GitHub] Your password was reset", "", "GitHub", "password_changed"),
+        ("noreply@github.com", "[GitHub] An email address was added to your account.", "", "GitHub",
+         "email_changed"),
+        ("noreply@github.com", "[GitHub] A new SSH authentication public key was added to your account", "",
+         "GitHub", "new_key"),
+        ("noreply@github.com", "[GitHub] Please download your two-factor recovery codes", "", "GitHub",
+         "2fa_changed"),
+    ],
+)
+def test_infrastructure_accounts_by_their_docs(sender, subject, text, network, kind):
+    m = _mail(sender, subject, text)
+    assert sender_of(m)[0] == network
+    assert kind_of(m).id == kind
+
+
+def test_a_new_owner_rings_as_a_hijack_sign():
+    text, kind, network, _ = describe(_mail("sc-noreply@google.com", "New owner for https://s.morgunov.tech/"))
+    assert text.startswith("🔴 Search Console: похоже на взлом — у сайта новый владелец в поиске")
+    assert "Пользователи и разрешения" in text and kind.level == "critical"
+
+
+
+
+@pytest.mark.parametrize(
+    ("sender", "subject"),
+    [
+        # Not a security event: no alert, an ℹ️ at most.
+        ("noreply@github.com", "[GitHub] Your personal access token (classic) has expired"),
+        ("noreply@github.com", "[GitHub] Your personal access token (classic) is about to expire"),
+        ("noreply@notify.cloudflare.com", "[Cloudflare]: Verify Email Routing address"),
+        ("hello@notify.railway.app", "All aboard! Welcome to Railway!"),
+        ("bingwb@microsoft.com", "Improve the search presence of s.morgunov.tech"),
+        ("noreply@id.yandex.ru", "Вы удалили карту 986060****5440 из аккаунта min***"),
+    ],
+)
+def test_routine_mail_of_those_accounts_raises_nothing(sender, subject):
+    assert kind_of(_mail(sender, subject)) is None
+
+
+def test_a_whole_address_wins_over_its_domain():
+    assert sender_of(_mail("bingwb@microsoft.com", "x")) == ("Bing Webmaster", None)
+    assert sender_of(_mail("sc-noreply@google.com", "x")) == ("Search Console", None)
+    assert sender_of(_mail("no-reply@accounts.google.com", "x")) == ("Google", "youtube")
+    assert sender_of(_mail("noreply@notify.cloudflare.com", "x"))[0] == "Cloudflare"
+    assert sender_of(_mail("no-reply@verify.proton.me", "x"))[0] == "Proton"
+
+
+
 def test_footer_advice_does_not_decide_the_kind():
     m = _mail(
         "no-reply@accounts.google.com", "Security alert",

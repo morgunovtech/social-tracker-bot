@@ -149,7 +149,8 @@ MONITORS: tuple[Monitor, ...] = (
     Monitor(
         "mail",
         "Письма безопасности",
-        "новые входы, смена пароля, коды входа — из пересланных писем",
+        "новые входы, смена пароля, телефона и 2FA, новые ключи и токены, новый владелец сайта в поиске, коды входа — "
+        "из пересланных писем соцсетей, GitHub, Cloudflare, Microsoft, Яндекса",
         requires=_has_mail,
         needs="SECURITY_MAIL_URL и SECURITY_MAIL_TOKEN",
     ),
