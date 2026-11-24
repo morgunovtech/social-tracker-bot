@@ -1,6 +1,6 @@
 # Social Tracker Bot
 
-> A self-hosted Telegram bot for your social accounts: followers on Telegram, YouTube, Instagram and LinkedIn, the life of your channel, and the accounts' security — hijack signs, security emails, comments that get a group blocked. It stays quiet while things are fine and speaks up the moment something breaks.
+> A self-hosted Telegram bot for your social accounts: followers on Telegram, YouTube, Instagram and LinkedIn, the life of your channel, and the accounts' security — hijack signs, security emails, comments that get a group blocked — plus a weekly report on how people and AI assistants find you. It stays quiet while things are fine and speaks up the moment something breaks.
 
 🇷🇺 [По-русски](README.ru.md) · [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/cL4hpn?referralCode=7hTMqE)
 
@@ -69,6 +69,7 @@ Everything else stays with you: follower history, the channel's joins, leaves, p
 5. **Security emails (optional).** Deploy the [mail-worker](mail-worker/README.md) → `SECURITY_MAIL_URL`, `SECURITY_MAIL_TOKEN`, and set up forwarding in your mailbox.
 6. **Comments of the channel (optional).** An API key from [console.anthropic.com](https://console.anthropic.com/) → `ANTHROPIC_API_KEY`; add the bot to the channel's discussion group as an **admin with the rights to delete messages and ban members** (the group is found through the channel; `COMMENTS_CHAT_ID` names one explicitly). The model is `claude-opus-5-5` unless `COMMENTS_MODEL` says otherwise; `COMMENTS_DAILY_LIMIT` (300 by default, 0 = none) caps the checks per day, so a spam wave cannot run up the bill — the bot says once when the day's limit is reached. Switch it off any time in `/modules`.
 7. **Watchdog (optional, recommended).** Who tells you when the bot itself stops? Create a free [healthchecks.io](https://healthchecks.io) check (period 1 day, grace 3 hours), then in the bot: 🔌 Connections → ⏱ Watchdog → «🔗 Send the link». The bot pings it at once and reads the answer — a deleted check answers «OK (not found)» with HTTP 200, and the bot says so — then keeps the address in its database and deletes your message; after every daily run it checks in. A TofsDevOps heartbeat address works too. `HEALTHCHECK_URL` in `.env` is the fallback; an address set in the chat wins. The bot offers this once, after its first collection.
+8. **Reputation report (optional).** 🔌 Connections → 🔎 Reputation: the brand words (your name and your products, the way people search for them), then a read-only key per source — a Google service account added to your Search Console property, a Yandex.Webmaster OAuth token, a Cloudflare API token with Zone Read and Analytics Read. Each «🔑» step says exactly where to get it and tests the key before keeping it; «📨 Report now» shows the week at once. Each source is a monitor in `/modules`.
 
 Every variable, with a comment on what it does, is in [`.env.example`](.env.example).
 
