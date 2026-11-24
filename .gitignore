@@ -23,5 +23,8 @@ data/
 .pytest_cache/
 .ruff_cache/
 
+# Claude Code worktrees and local agent state
+.claude/
+
 # Local state of `wrangler dev` (mail-worker); never commit it.
 .wrangler/
