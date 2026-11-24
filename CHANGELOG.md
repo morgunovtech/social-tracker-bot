@@ -2,7 +2,9 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
-## Unreleased
+## 1.7.0 — 2026-11-24
+
+The gaps found after the day's cleanup, closed: the bot now watches what it sends out by itself, tells once when an update moved how it behaves (and tells 1.5.0's silent move of the report to 04:00 Moscow), follows the links already in the profiles every week, and reads the security mail of the accounts that hold the products and the domain — GitHub, Cloudflare, Microsoft, Yandex, a new owner of the site in Search Console. Plus the fixes from the code review of 2026-11-24.
 
 **An update that changed how the bot behaves says so once** (the owner's `BOT_PRINCIPLES.md`, §6)
 - At every start the bot notes what it actually does — the report's days, time and zone, quiet hours, «Коротко без изменений», which checks are on, which security mails ring and the thresholds of its alerts — next to what the owner set for it: the chat settings and the `.env` values they are computed from (`bot/behavior.py`, kept in the setting `behavior_snapshot`; never a secret — a check's «configured» is a yes or no).
