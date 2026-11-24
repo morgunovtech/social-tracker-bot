@@ -11,15 +11,15 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import aiohttp
 from telegram import Bot
 
-from bot import notifier
+from bot import humanize, notifier
 from bot.callbacks import SECURITY
 from bot.config import Config
-from bot.db import Database, utcnow
+from bot.db import Database, parse_utc, utcnow
 from bot.i18n import t
 from bot.monitors import HIJACK, defang, hygiene, level_icon
 from bot.notifier import Priority
@@ -63,36 +63,48 @@ GMAIL_FORWARDING = "forwarding-noreply@google.com"
 class Kind:
     id: str
     level: str   # "critical" — a hijack sign, rings; "warning" — waits for the digest
-    title: str
-    advice: str
+    title: str   # what happened, for the headline
+    meaning: str
+    cause: str   # what it usually is
+    advice: str  # what to do
     words: tuple[str, ...]
 
 
 KINDS: tuple[Kind, ...] = (
     Kind(
         "password_reset", "critical", "запрошен сброс пароля",
+        "Кто-то попросил сбросить пароль аккаунта.",
+        "ты сам; если нет — кто-то знает твою почту или логин и пробует войти",
         "Если сброс запросил кто-то другой — значит, пробуют войти. Пароль цел, проверь, что 2FA включена.",
         ("password reset", "reset your password", "сброс пароля", "восстановление пароля"),
     ),
     Kind(
         "password_changed", "critical", "пароль изменён",
+        "Пароль аккаунта сменили.",
+        "ты сам; если нет — аккаунт уже уводят",
         "Если это не ты — восстанавливай доступ немедленно и заверши все сеансы.",
         ("password changed", "password was changed", "password has been changed", "changed your password",
          "пароль изменен", "пароль был изменен", "изменили пароль"),
     ),
     Kind(
         "email_changed", "critical", "изменена почта аккаунта",
+        "Сменили почту, на которую приходят входы и сброс пароля.",
+        "ты сам; если нет — это главный шаг угона: дальше пароль сбросят на чужую почту",
         "Если это не ты — аккаунт уводят: восстанавливай доступ немедленно.",
         ("email address changed", "email was changed", "email address has been changed", "changed your email",
          "адрес электронной почты изменен", "изменен адрес электронной почты", "почта изменена"),
     ),
     Kind(
         "2fa_changed", "critical", "изменена двухфакторная защита",
+        "Двухфакторную защиту выключили или сменили.",
+        "ты сам; если нет — угонщик убирает второй ключ",
         "Если это не ты — верни 2FA и смени пароль.",
         ("2-step verification", "two-step verification", "two-factor", "двухэтапн", "двухфакторн"),
     ),
     Kind(
         "new_login", "critical", "новый вход в аккаунт",
+        "В аккаунт вошли с нового устройства или из нового места.",
+        "ты сам — новый телефон, браузер или VPN",
         "Если это не ты — смени пароль и заверши чужие сеансы.",
         ("new sign-in", "new login", "signed in", "logged in", "new device", "sign-in attempt",
          "login attempt", "новый вход", "выполнен вход", "вход в аккаунт", "новое устройство",
@@ -100,12 +112,16 @@ KINDS: tuple[Kind, ...] = (
     ),
     Kind(
         "login_code", "warning", "пришёл код входа",
+        "Сервис прислал код для входа.",
+        "ты сам входишь; если нет — кто-то знает пароль и упёрся в код",
         "Если код запрашивал не ты — кто-то знает твой пароль: смени его.",
         ("verification code", "login code", "security code", "confirmation code", "one-time code",
          "instagram code", "код подтверждения", "код для входа", "код безопасности", "одноразовый код"),
     ),
     Kind(
         "security_alert", "warning", "оповещение безопасности",
+        "Сервис заметил в аккаунте что-то необычное.",
+        "новый вход, смена настроек или подозрительная активность",
         "Проверь недавнюю активность в аккаунте.",
         ("security alert", "suspicious", "unusual activity", "оповещение системы безопасности",
          "подозрительн", "необычн"),
@@ -196,8 +212,14 @@ def _forwarding_notice(mail: Mail) -> str:
     return "\n".join(lines)
 
 
+def _sender_domain(mail: Mail) -> str:
+    return defang(mail.sender.rsplit("@", 1)[-1].strip(" <>").lower()) or "?"
+
+
 def describe(mail: Mail) -> tuple[str, Kind | None, str, str | None]:
-    """(alert text, kind, network, connector id) for one mail."""
+    """(alert text, kind, network, connector id) for one mail: the headline
+    and the quoted subject, what it means, what it usually is, what to do
+    (with the network's recovery page for a hijack sign), the sender last."""
     if mail.sender.lower() == GMAIL_FORWARDING:
         return _forwarding_notice(mail), None, "Gmail", None
     network, platform_id = sender_of(mail)
@@ -210,13 +232,19 @@ def describe(mail: Mail) -> tuple[str, Kind | None, str, str | None]:
     head = (
         t("{icon} {network}: {hijack} — {title}") if kind.level == "critical" else t("{icon} {network}: {title}")
     ).format(icon=level_icon(kind.level), network=network, hijack=t(HIJACK), title=t(kind.title))
-    text = t("{head}\n«{subject}»\n{advice}").format(head=head, subject=subject, advice=t(kind.advice))
+    steps = [kind.advice]
     if kind.level == "critical" and network in RECOVERY:
-        text += "\n" + t("Восстановление доступа: {url}").format(url=RECOVERY[network])
+        steps.append(t("Восстановление доступа: {url}").format(url=RECOVERY[network]))
+    text = humanize.alert(
+        [head, t("«{subject}»").format(subject=subject)],
+        humanize.Explanation(kind.meaning, kind.cause, tuple(steps)),
+        t("письмо от {domain}").format(domain=_sender_domain(mail)),
+    )
     return text, kind, network, platform_id
 
 
-async def _fetch(session: aiohttp.ClientSession, config: Config) -> list[dict] | None:
+async def _fetch(session: aiohttp.ClientSession, config: Config) -> tuple[list[dict] | None, str]:
+    """(events, '') — or (None, why not, for the technical line)."""
     try:
         async with session.get(
             f"{config.security_mail_url}/events",
@@ -225,11 +253,11 @@ async def _fetch(session: aiohttp.ClientSession, config: Config) -> list[dict] |
         ) as resp:
             if resp.status != 200:
                 logger.warning("Mail worker returned HTTP %s", resp.status)
-                return None
-            return (await resp.json())["events"]
-    except Exception:
+                return None, f"HTTP {resp.status}"
+            return (await resp.json())["events"], ""
+    except Exception as e:
         logger.warning("Mail worker poll failed", exc_info=True)
-        return None
+        return None, type(e).__name__
 
 
 async def _ack(session: aiohttp.ClientSession, config: Config, ids: list[str]) -> None:
@@ -247,14 +275,36 @@ async def _ack(session: aiohttp.ClientSession, config: Config, ids: list[str]) -
         logger.warning("Mail worker ack failed", exc_info=True)
 
 
-async def _track_reachability(bot: Bot, config: Config, db: Database, reachable: bool) -> None:
+def _when(raw: str | None) -> datetime | None:
+    try:
+        return parse_utc(raw) if raw else None
+    except ValueError:
+        return None
+
+
+async def _track_reachability(bot: Bot, config: Config, db: Database, error: str | None) -> None:
+    """error — None when the worker answered. The silence is alerted once, at
+    the UNREACHABLE_AFTER-th failed poll; the answer after it says how long
+    the worker was silent, from the first failed poll of the series."""
     fails = int(await db.get_setting("mail_fail_streak") or "0")
-    if reachable:
+    now = utcnow()
+    if error is None:
         if fails:
             await db.set_setting("mail_fail_streak", "0")
         if fails >= UNREACHABLE_AFTER:
-            await notifier.send(bot, config, db, t("✅ Почтовый воркер снова отвечает"), monitor="mail")
+            how_long = humanize.lasted(
+                _when(await db.get_setting("mail_fail_since")), _when(await db.get_setting("mail_fail_last")),
+                now, await notifier.owner_tz(db, config), POLL_INTERVAL,
+            )
+            # After a 🔴 silence the return rings too (BOT_PRINCIPLES §1).
+            await notifier.send(
+                bot, config, db, humanize.recovery(t("✅ Почтовый воркер снова отвечает"), how_long, "Молчал"),
+                Priority.CRITICAL, monitor="mail",
+            )
         return
+    if fails == 0:
+        await db.set_setting("mail_fail_since", now.isoformat())
+    await db.set_setting("mail_fail_last", now.isoformat())
     fails += 1
     await db.set_setting("mail_fail_streak", str(fails))
     if fails == UNREACHABLE_AFTER:
@@ -262,9 +312,9 @@ async def _track_reachability(bot: Bot, config: Config, db: Database, reachable:
         # reaches nobody — the one thing this monitor is for.
         await notifier.send(
             bot, config, db,
-            t(
-                "🔴 Почтовый воркер не отвечает ~30 мин — письма безопасности не доходят. "
-                "Проверь SECURITY_MAIL_URL, SECURITY_MAIL_TOKEN и деплой воркера."
+            humanize.alert(
+                t("🔴 Почтовый воркер не отвечает ~30 мин — письма безопасности не доходят"), "mail_silent",
+                error, t("{n} опросов подряд, раз в 5 мин").format(n=fails),
             ),
             Priority.CRITICAL,
             monitor="mail",
@@ -278,8 +328,8 @@ async def check(bot: Bot, config: Config, db: Database, session: aiohttp.ClientS
     retried on the next poll; the security log's uid keeps a mail whose ack
     was lost from being alerted twice.
     """
-    events = await _fetch(session, config)
-    await _track_reachability(bot, config, db, events is not None)
+    events, error = await _fetch(session, config)
+    await _track_reachability(bot, config, db, None if events is not None else error or "?")
     if not events:
         return 0
 

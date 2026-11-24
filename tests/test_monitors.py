@@ -1,5 +1,6 @@
 import dataclasses
 import json
+import re
 from datetime import timedelta
 
 import pytest
@@ -160,7 +161,10 @@ async def test_first_look_is_baseline_then_changes_are_alerted_once(bot, config,
     assert await profile.check(bot, config, db, None) == 0
     assert await profile.check(bot, config, db, None) == 1
     line = "🟠 Telegram: название канала — «Мой канал» → «Hacked»"
-    assert bot.messages[0].startswith(f"🛡 Профиль\n\n{line}") and profile.ADVICE in bot.messages[0]
+    # The one shape: headline, what it means and usually is, what to do, the technical line last.
+    alert = bot.messages[0]
+    assert alert.startswith(f"{line}\n\nПрофиль изменился.") and "\n\nЧто делать:\n• " in alert
+    assert alert.endswith("Тех.: проверка профиля раз в 30 мин") and bot.silent == [True]
     assert await profile.check(bot, config, db, None) == 0
     (event,) = await db.recent_events()
     assert event["kind"] == "profile" and event["detail"] == line
@@ -208,11 +212,26 @@ async def test_unreachable_profile_alerted_once_and_recovery(bot, config, db, wa
     await profile.check(bot, config, db, None)
     sent = [await profile.check(bot, config, db, None) for _ in range(profile.UNREACHABLE_AFTER + 1)]
     assert sent == [0] * (profile.UNREACHABLE_AFTER - 1) + [1, 0]
-    assert "🔴 Telegram: профиль не читается" in bot.messages[0]
-    # Not a change of the profile: no «if it wasn't you, change the password».
-    assert profile.ADVICE not in bot.messages[0]
+    assert bot.messages[0].startswith("🔴 Telegram: профиль не читается") and "Я не вижу профиль" in bot.messages[0]
+    assert "сменить пароль" not in bot.messages[0]                   # not a change of the profile
     assert await profile.check(bot, config, db, None) == 1
-    assert "✅ Telegram: профиль снова доступен" in bot.messages[1]
+    # One message with how long it was unreadable, from the first failed check; it rings like the fall.
+    assert re.fullmatch(r"✅ Telegram: профиль снова доступен\. Не читался \d+ мин \(\d\d:\d\d–\d\d:\d\d\)\. "
+                        r"Ничего делать не нужно\.", bot.messages[1]), bot.messages[1]
+    assert bot.silent == [False, False]
+
+
+async def test_hijack_signs_come_first_in_one_alert(bot, config, db, watch):
+    hijacked = {**CHANNEL, "title": "Giveaway", "admins": _admins(
+        (1, "Owner (@owner)", "creator"), (99, "Bot", "administrator"), (7, "Thief", "administrator"),
+    )}
+    watch += [CHANNEL, hijacked]
+    await profile.check(bot, config, db, None)
+    assert await profile.check(bot, config, db, None) == 1
+    head, rest = bot.messages[0].split("\n", 1)
+    assert head == "🔴 Telegram: похоже на взлом — новый админ Thief"
+    assert rest.startswith("🟠 Telegram: название канала") and "Так выглядит угон" in rest
+    assert bot.silent == [False]
 
 
 # --- hygiene -----------------------------------------------------------------

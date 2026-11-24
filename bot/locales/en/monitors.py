@@ -62,17 +62,7 @@ STRINGS: dict[str, str] = {
         "No threat to the group, but unwanted. Delete or ban with a button."
     ),
     "✅ Отмечено: ложная тревога — учту в статистике": "✅ Marked: false alarm — counted in the statistics",
-    "🟠 Комментарии: проверка не работает {n} раза подряд ({error}) — комментарии сейчас никто не смотрит. "
-    "Проверь ANTHROPIC_API_KEY и баланс API.": (
-        "🟠 Comments: the check has failed {n} times in a row ({error}) — nobody is looking at the comments right now. "
-        "Check ANTHROPIC_API_KEY and the API balance."
-    ),
     "✅ Комментарии: проверка снова работает": "✅ Comments: the check works again",
-    "🟠 Комментарии: дневной лимит проверок ({limit}) исчерпан — до конца суток (UTC) новые "
-    "комментарии не проверяю. Лимит задаёт COMMENTS_DAILY_LIMIT в .env.": (
-        "🟠 Comments: the daily limit of checks ({limit}) is reached — no new comment is checked until "
-        "the end of the day (UTC). COMMENTS_DAILY_LIMIT in .env sets the limit."
-    ),
     "Нет прав: сделай бота админом группы с правом удалять сообщения и блокировать участников.": (
         "No rights: make the bot a group admin with the rights to delete messages and ban members."
     ),
@@ -181,14 +171,6 @@ STRINGS: dict[str, str] = {
         "🔴 {label}: the profile could not be read {n} {checks} in a row — "
         "was the channel deleted or hidden, or did the bot lose its rights?"
     ),
-    "🛡 Профиль": "🛡 Profile",
-    (
-        "Если это сделал не ты — смени пароль, заверши чужие сеансы и проверь список админов. "
-        "Если ты — всё в порядке."
-    ): (
-        "If this wasn't you — change the password, terminate other sessions and check the admin list. "
-        "If it was you — all is well."
-    ),
     # bot/monitors/mail.py — security emails
     "запрошен сброс пароля": "password reset requested",
     "Если сброс запросил кто-то другой — значит, пробуют войти. Пароль цел, проверь, что 2FA включена.": (
@@ -228,16 +210,8 @@ STRINGS: dict[str, str] = {
     "ℹ️ Письмо без признаков тревоги: {network} — «{subject}»": 'ℹ️ Email with no signs of trouble: {network} — "{subject}"',
     "{icon} {network}: {hijack} — {title}": "{icon} {network}: {hijack} — {title}",
     "{icon} {network}: {title}": "{icon} {network}: {title}",
-    "{head}\n«{subject}»\n{advice}": '{head}\n"{subject}"\n{advice}',
     "Восстановление доступа: {url}": "Recover access: {url}",
     "✅ Почтовый воркер снова отвечает": "✅ The mail worker is responding again",
-    (
-        "🔴 Почтовый воркер не отвечает ~30 мин — письма безопасности не доходят. "
-        "Проверь SECURITY_MAIL_URL, SECURITY_MAIL_TOKEN и деплой воркера."
-    ): (
-        "🔴 The mail worker has not responded for ~30 min — security emails are not getting through. "
-        "Check SECURITY_MAIL_URL, SECURITY_MAIL_TOKEN and the worker's deployment."
-    ),
     "✍️ Дата смены пароля отмечена в чек-листе /security.": (
         "✍️ The password change date has been recorded in the /security checklist."
     ),
@@ -259,9 +233,6 @@ STRINGS: dict[str, str] = {
     "дальше буду собирать сам": (
         "🟠 LinkedIn: the cookie read {count} — confirm the first number with /linkedin {raw}, "
         "I collect it myself from then on"
-    ),
-    "🟠 Ежедневный сбор не выполнился {streak} дн. подряд — подробности в логах бота": (
-        "🟠 The daily collection has failed {streak} days in a row — the details are in the bot's logs"
     ),
     # bot/monitors/channel.py — life of the channel
     "Жизнь канала": "Life of the channel",
@@ -287,6 +258,155 @@ STRINGS: dict[str, str] = {
     "<b>Больше всего реакций</b> · {days} дней": "<b>Most reactions</b> · {days} days",
     "пост": "post",
     "<b>Последние</b>": "<b>Latest</b>",
+    # The one alert shape (bot/humanize.py)
+    "{meaning} Обычно это {cause}.": "{meaning} Usually it is {cause}.",
+    "Что делать:": "What to do:",
+    "Тех.: {details}": "Tech: {details}",
+    "{m} мин": "{m} min",
+    "{h} ч {m} мин": "{h} h {m} min",
+    "{h} ч": "{h} h",
+    "{d} дн. {h} ч": "{d} d {h} h",
+    "{d} дн.": "{d} d",
+    "не меньше {span}; когда именно наладилось — не знаю: с {from_} до {to} я не проверял":
+        "at least {span}; when exactly it came back I do not know: I did not check from {from_} to {to}",
+    "{verb} {how_long}.": "{verb} {how_long}.",
+    "Ничего делать не нужно.": "Nothing to do.",
+    "Не работал": "Was down for",
+    "Не работала": "Was down for",
+    "Не читался": "Was unreadable for",
+    "Молчал": "Was silent for",
+    "Не собирались": "Not collected for",
+    "Не выполнялся": "Did not run for",
+    "Подписчиков стало заметно меньше за сутки — больше, чем обычные отписки.":
+        "Noticeably fewer followers within a day — more than the usual unfollows.",
+    "отписки после поста или рекламы, чистка удалённых аккаунтов самой сетью, реже — уход ботов после накрутки":
+        "unfollows after a post or an ad, the network clearing out deleted accounts, less often bots leaving after fake growth",
+    "Посмотреть 📈 Динамику: разовое это падение или тренд.": "Look at 📈 Trends: a one-off drop or a trend.",
+    "Сравнить с последними постами — после чего ушли.": "Compare with the latest posts — what they left after.",
+    "Подписчиков пришло во много раз больше обычного.": "Many times more followers came than usual.",
+    "репост в большом канале или удачный пост; реже — нагнанные боты: накрутку, которой ты не заказывал, "
+    "сеть может наказать":
+        "a repost in a big channel or a lucky post; less often bots pumped in: the network may punish fake growth "
+        "you never ordered",
+    "Если был репост или реклама — всё в порядке.": "If there was a repost or an ad — all is well.",
+    "Если нет — посмотреть, через какую ссылку пришли (📣 Канал) и похожи ли имена на ботов.":
+        "If not — see which link they came through (📣 Channel) and whether the names look like bots.",
+    "Числа за эти дни не записаны: не было ни отчёта, ни проверок, которые идут вместе со сбором.":
+        "No numbers were recorded for these days: no report, and none of the checks that run with the collection.",
+    "сбой базы или диска на сервере, ошибка в новой версии бота, нет сети у сервера":
+        "a database or disk failure on the server, a bug in a new version of the bot, no network on the server",
+    "Посмотреть логи бота (на Railway — Deployments → View logs).": "Look at the bot's logs (on Railway — Deployments → View logs).",
+    "Если бот недавно обновлялся — откатить деплой и написать в issues.":
+        "If the bot was updated recently — roll the deploy back and open an issue.",
+    "Автосбор LinkedIn работает, но первое число нужно сверить: на странице профиля есть и счётчики других "
+    "профилей.":
+        "Automatic LinkedIn collection works, but the first number needs checking: the profile page carries other "
+        "profiles' counters too.",
+    "так всегда бывает с первым числом по cookie": "how it always goes with the first number read by cookie",
+    "Открыть свой профиль LinkedIn и сверить число подписчиков.": "Open your LinkedIn profile and compare the follower count.",
+    "Совпадает — подтвердить командой из заголовка; нет — ввести верное: /linkedin <число>.":
+        "It matches — confirm with the command in the headline; it does not — enter the right one: /linkedin <count>.",
+    "Число LinkedIn больше не собирается само — в отчёте останется последнее.":
+        "The LinkedIn number is no longer collected by itself — the report keeps the last one.",
+    "cookie живёт около года, а выход из LinkedIn в браузере или смена пароля обрывает его раньше":
+        "a cookie lives about a year, and signing out of LinkedIn in the browser or changing the password ends it sooner",
+    "Войти на linkedin.com и скопировать cookie li_at (DevTools → Application → Cookies).":
+        "Sign in to linkedin.com and copy the li_at cookie (DevTools → Application → Cookies).",
+    "Прислать его: 🔌 Подключения → 💼 LinkedIn → «🔑 Прислать cookie» или /setcookie. "
+    "Или вводить число вручную.":
+        "Send it: 🔌 Connections → 💼 LinkedIn → \"🔑 Send the cookie\" or /setcookie. Or enter the number by hand.",
+    "Число Instagram и проверка профиля остановились.": "The Instagram number and the profile check have stopped.",
+    "Meta отозвала токен: сменили пароль, удалили приложение или тестировщика; реже — сбой у Meta":
+        "Meta revoked the token: the password was changed, the app or the tester removed; less often a failure at Meta",
+    "developers.facebook.com → приложение → API setup with Unified login → Generate token.":
+        "developers.facebook.com → the app → API setup with Unified login → Generate token.",
+    "Прислать его: 🔌 Подключения → 📸 Instagram → «🔑 Прислать токен» или /igtoken.":
+        "Send it: 🔌 Connections → 📸 Instagram → \"🔑 Send the token\" or /igtoken.",
+    "Instagram подключён в .env, но число не собирается: токена нет.":
+        "Instagram is connected in .env, but the number is not collected: there is no token.",
+    "токен ещё не присылали или он не пережил восстановление из бэкапа — бэкап делается без секретов":
+        "the token was never sent, or it did not survive a restore from a backup — backups are made without secrets",
+    "В отчёте — последнее собранное число, свежих нет.": "The report has the last collected number, nothing fresh.",
+    "сеть отвечает ошибкой или поменяла страницу или API; у YouTube — кончилась квота ключа или ключ отключён":
+        "the network answers with an error or changed its page or API; for YouTube — the key's quota ran out or the key is disabled",
+    "Открыть 🔌 Подключения — там видно, чего ждёт сеть.": "Open 🔌 Connections — it shows what the network waits for.",
+    "Не прошло само за пару дней — посмотреть логи бота.": "Not gone by itself in a couple of days — look at the bot's logs.",
+    "Так выглядит угон: новый хозяин меняет админов и ссылки, удаляет видео. Если это сделал ты — всё в порядке.":
+        "This is what a hijack looks like: a new owner changes the admins and the links, deletes videos. "
+        "If it was you — all is well.",
+    "ты сам или другой админ; угон — после фишинговой ссылки, утёкшего пароля или чужого сеанса":
+        "you or another admin; a hijack — after a phishing link, a leaked password or someone else's session",
+    "Если это не ты — сменить пароль и завершить чужие сеансы.": "If it was not you — change the password and end other sessions.",
+    "Проверить список админов и убрать лишних; включить 2FA (🛡 Безопасность).":
+        "Check the list of admins and remove strangers; turn on 2FA (🛡 Security).",
+    "Профиль изменился. С такой правки начинается и обычное обновление, и угон.":
+        "The profile changed. An ordinary update and a hijack both start with an edit like this.",
+    "ты сам или другой админ": "you or another admin",
+    "Если это ты — ничего делать не нужно.": "If it was you — nothing to do.",
+    "Если нет — сменить пароль, завершить чужие сеансы и проверить админов.":
+        "If not — change the password, end other sessions and check the admins.",
+    "Я не вижу профиль — ни числа, ни его изменений. Угонщик первым делом убирает чужих админов, и меня тоже.":
+        "I cannot see the profile — neither the number nor its changes. A hijacker removes other admins first, me included.",
+    "канал удалили, скрыли или сделали приватным, бота убрали из админов или отключили ключ; реже — сбой сети":
+        "the channel was deleted, hidden or made private, the bot removed from the admins or the key disabled; "
+        "less often a network failure",
+    "Открыть канал: на месте ли он и его админы.": "Open the channel: is it there, and are its admins.",
+    "Если бота убрали из админов — вернуть его (особые права не нужны).":
+        "If the bot was removed from the admins — add it back (no special rights needed).",
+    "Пока воркер молчит, о новом входе или смене пароля я не узнаю.":
+        "While the worker is silent, I will not hear about a new sign-in or a changed password.",
+    "сменился SECURITY_MAIL_TOKEN, воркер удалён или не задеплоен, сбой Cloudflare":
+        "SECURITY_MAIL_TOKEN changed, the worker was deleted or not deployed, a Cloudflare failure",
+    "Проверить SECURITY_MAIL_URL и SECURITY_MAIL_TOKEN — у бота и у воркера они одни.":
+        "Check SECURITY_MAIL_URL and SECURITY_MAIL_TOKEN — the bot and the worker share them.",
+    "Задеплоить воркер заново: cd mail-worker && npx wrangler deploy.":
+        "Deploy the worker again: cd mail-worker && npx wrangler deploy.",
+    "Новые комментарии сейчас никто не смотрит — опасный я пропущу.":
+        "Nobody is looking at new comments right now — I will miss a dangerous one.",
+    "кончился баланс API, ключ отозван, или сбой у Anthropic": "the API balance ran out, the key was revoked, or a failure at Anthropic",
+    "Проверить баланс и ключ на console.anthropic.com.": "Check the balance and the key on console.anthropic.com.",
+    "Если всё в порядке — подождать: я напишу, когда проверка снова заработает.":
+        "If all is well — wait: I will write when the check works again.",
+    "До конца суток (UTC) новые комментарии не проверяю.": "Until the end of the day (UTC) I do not check new comments.",
+    "волна спама или очень живое обсуждение": "a spam wave or a very lively discussion",
+    "Посмотреть группу обсуждения: нет ли волны спама.": "Look at the discussion group: is there a spam wave.",
+    "Поднять лимит — COMMENTS_DAILY_LIMIT в .env (0 — без лимита).": "Raise the limit — COMMENTS_DAILY_LIMIT in .env (0 — no limit).",
+    # The monitors' own lines in that shape
+    "порог — {abs} подписчиков или {pct}% за день": "threshold — {abs} followers or {pct}% a day",
+    "порог — в {factor} раз больше обычного дневного прироста и не меньше {abs}":
+        "threshold — {factor} times the usual daily gain and at least {abs}",
+    "🟠 Ежедневный сбор не выполнился {streak} дн. подряд": "🟠 The daily collection has not run {streak} days in a row",
+    "сбор падает целиком; повтор через час, подробности в логах": "the whole collection fails; retried in an hour, details in the logs",
+    "✅ Ежедневный сбор снова выполняется": "✅ The daily collection runs again",
+    "LinkedIn отправил на вход вместо профиля": "LinkedIn sent the sign-in page instead of the profile",
+    "Graph API: ошибка авторизации": "Graph API: authorization error",
+    "раз в день и два повтора через час; подробности в логах": "once a day and two retries an hour apart; details in the logs",
+    "✅ {label}: данные снова собираются": "✅ {label}: data is collected again",
+    "проверка профиля раз в {minutes} мин": "the profile is checked every {minutes} min",
+    "Кто-то попросил сбросить пароль аккаунта.": "Someone asked to reset the account's password.",
+    "ты сам; если нет — кто-то знает твою почту или логин и пробует войти":
+        "you; if not — someone knows your email or login and tries to get in",
+    "Пароль аккаунта сменили.": "The account's password was changed.",
+    "ты сам; если нет — аккаунт уже уводят": "you; if not — the account is being taken over",
+    "Сменили почту, на которую приходят входы и сброс пароля.": "The email for sign-ins and password resets was changed.",
+    "ты сам; если нет — это главный шаг угона: дальше пароль сбросят на чужую почту":
+        "you; if not — it is the main step of a hijack: next the password is reset to someone else's email",
+    "Двухфакторную защиту выключили или сменили.": "Two-factor protection was turned off or changed.",
+    "ты сам; если нет — угонщик убирает второй ключ": "you; if not — a hijacker removes the second key",
+    "В аккаунт вошли с нового устройства или из нового места.": "Someone signed in from a new device or a new place.",
+    "ты сам — новый телефон, браузер или VPN": "you — a new phone, browser or VPN",
+    "Сервис прислал код для входа.": "The service sent a sign-in code.",
+    "ты сам входишь; если нет — кто-то знает пароль и упёрся в код":
+        "you signing in; if not — someone knows the password and hit the code",
+    "Сервис заметил в аккаунте что-то необычное.": "The service noticed something unusual in the account.",
+    "новый вход, смена настроек или подозрительная активность": "a new sign-in, changed settings or suspicious activity",
+    "письмо от {domain}": "email from {domain}",
+    "🔴 Почтовый воркер не отвечает ~30 мин — письма безопасности не доходят":
+        "🔴 The mail worker has not responded for ~30 min — security emails are not getting through",
+    "{n} опросов подряд, раз в 5 мин": "{n} polls in a row, every 5 min",
+    "🟠 Комментарии: проверка не работает {n} раза подряд": "🟠 Comments: the check has failed {n} times in a row",
+    "🟠 Комментарии: дневной лимит проверок ({limit}) исчерпан": "🟠 Comments: the daily check limit ({limit}) is used up",
+    "«{subject}»": '"{subject}"',
 }
 
 PLURALS: dict[str, tuple[str, str]] = {

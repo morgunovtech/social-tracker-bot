@@ -3,6 +3,10 @@
 A hijacked account is usually renamed, gets a scam link in its description,
 a new admin or loses its videos within minutes, long before the follower
 count moves. The first look at a profile only stores the baseline.
+
+The changes of one check are one alert in the one shape (bot/humanize.py),
+the worst line first; «unreadable» is alerted once, and «readable again»
+says how long it was not, from the first failed check of the series.
 """
 
 from __future__ import annotations
@@ -11,17 +15,19 @@ import json
 import logging
 import math
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import aiohttp
 from telegram import Bot
 
-from bot import notifier, platforms
+from bot import humanize, notifier, platforms
 from bot.callbacks import SECURITY
 from bot.config import Config
-from bot.db import Database, utcnow
+from bot.db import Database, parse_utc, utcnow
 from bot.i18n import plural, t
 from bot.monitors import CRITICAL, HIJACK, WARNING, defang
+from bot.notifier import Priority
 from bot.platforms.base import ADMINS, COUNT, IMAGE, TEXT, Context, Platform
 
 logger = logging.getLogger(__name__)
@@ -37,11 +43,7 @@ SNIPPET_LEN = 120
 # 4096-character limit: the send would fail and the alert be lost.
 MAX_LINKS = 5
 MESSAGE_LIMIT = 4000
-
-ADVICE = (
-    "Если это сделал не ты — смени пароль, заверши чужие сеансы и проверь список админов. "
-    "Если ты — всё в порядке."
-)
+_UTC = ZoneInfo("UTC")
 
 _LINK = re.compile(r"(?:https?://|www\.|t\.me/)[^\s<>\"«»]+", re.IGNORECASE)
 
@@ -123,36 +125,54 @@ def diff(platform: Platform, old: dict[str, str], new: dict[str, str]) -> list[s
     return lines
 
 
-def _reachability(platform: Platform, fails: int, reachable: bool) -> tuple[list[str], int]:
-    """(alert lines, new count of consecutive failed fetches)."""
+def _reachability(
+    platform: Platform, fails: int, reachable: bool,
+    since: datetime | None = None, last: datetime | None = None, now: datetime | None = None,
+    tz: ZoneInfo = _UTC,
+) -> tuple[list[str], int]:
+    """(messages, new count of consecutive failed fetches). since and last —
+    the first and the latest failed check of the series, for how long the
+    profile was unreadable once it is back; tz — the owner's zone."""
     if reachable:
         if fails >= UNREACHABLE_AFTER:
-            return [t("✅ {label}: профиль снова доступен").format(label=platform.label)], 0
+            head = t("✅ {label}: профиль снова доступен").format(label=platform.label)
+            how_long = humanize.lasted(since, last, now or utcnow(), tz, CHECK_INTERVAL)
+            return [humanize.recovery(head, how_long, "Не читался")], 0
         return [], 0
     fails += 1
     if fails == UNREACHABLE_AFTER:
-        return [
-            t(
-                "🔴 {label}: профиль не читается {n} {checks} подряд — "
-                "канал удалён или скрыт, или у бота отобрали права?"
-            ).format(label=platform.label, n=fails, checks=plural(fails, "проверку", "проверки", "проверок"))
-        ], fails
+        head = t(
+            "🔴 {label}: профиль не читается {n} {checks} подряд — "
+            "канал удалён или скрыт, или у бота отобрали права?"
+        ).format(label=platform.label, n=fails, checks=plural(fails, "проверку", "проверки", "проверок"))
+        return [humanize.alert(head, "profile_unreachable", _every())], fails
     return [], fails
 
 
-async def _send(bot: Bot, config: Config, db: Database, lines: list[str], changed: bool) -> bool:
-    """changed: some lines are changes of the profile — they get the advice;
-    «unreadable» and «readable again» alone do not."""
-    text = t("🛡 Профиль") + "\n\n" + "\n".join(lines)
-    if changed:
-        text += f"\n\n{t(ADVICE)}"
+def _every() -> str:
+    return t("проверка профиля раз в {minutes} мин").format(minutes=int(CHECK_INTERVAL.total_seconds() // 60))
+
+
+def change_alert(changes: list[str]) -> str:
+    """The changes of one check as one alert: the hijack signs (🔴) first."""
+    ordered = sorted(changes, key=lambda line: not line.startswith(CRITICAL))
+    key = "profile_hijack" if ordered[0].startswith(CRITICAL) else "profile_change"
+    return humanize.alert(ordered, key, _every())
+
+
+def _when(raw: str | None) -> datetime | None:
+    try:
+        return parse_utc(raw) if raw else None
+    except ValueError:
+        return None
+
+
+async def _send(bot: Bot, config: Config, db: Database, text: str, priority: Priority) -> bool:
     if len(text) > MESSAGE_LIMIT:
         text = text[: MESSAGE_LIMIT - 1] + "…"
     try:
         # A 🔴 line rings through quiet hours and /mute; 🟠 changes wait for the digest.
-        await notifier.send(
-            bot, config, db, text, notifier.priority_for(lines), no_preview=True, actions=(SECURITY,), monitor="profile"
-        )
+        await notifier.send(bot, config, db, text, priority, no_preview=True, actions=(SECURITY,), monitor="profile")
         return True
     except Exception:
         logger.exception("Profile alert send failed — will retry on the next check")
@@ -168,23 +188,38 @@ async def check(bot: Bot, config: Config, db: Database, session: aiohttp.ClientS
     the next check finds the same change and retries.
     """
     sent = 0
+    tz = await notifier.owner_tz(db, config)
     for platform in platforms.enabled(config):
         if not platform.profile_fields:
             continue
         current = await platform.fetch_profile(Context(bot, session, config, db))
         fail_key, key = f"profile_fail_{platform.id}", f"profile_{platform.id}"
+        since_key, last_key = f"profile_fail_since_{platform.id}", f"profile_fail_last_{platform.id}"
         fails = int(await db.get_setting(fail_key) or "0")
         stored = await db.get_setting(key)
         baseline = json.loads(stored) if stored is not None else None
+        now = utcnow()
 
-        lines, new_fails = _reachability(platform, fails, current is not None)
+        parts, new_fails = _reachability(
+            platform, fails, current is not None,
+            _when(await db.get_setting(since_key)), _when(await db.get_setting(last_key)), now, tz,
+        )
+        # «Unreadable» rings, and so does «readable again» after it (BOT_PRINCIPLES §1).
+        priority = Priority.CRITICAL if parts else Priority.NORMAL
         changes = diff(platform, baseline, current) if current is not None and baseline is not None else []
-        lines += changes
-        if lines:
-            if not await _send(bot, config, db, lines, changed=bool(changes)):
+        if changes:
+            parts.append(change_alert(changes))
+            if notifier.priority_for(changes) is Priority.CRITICAL:
+                priority = Priority.CRITICAL
+        if parts:
+            if not await _send(bot, config, db, "\n\n".join(parts), priority):
                 continue
             sent += 1
 
+        if current is None:
+            if fails == 0:
+                await db.set_setting(since_key, now.isoformat())
+            await db.set_setting(last_key, now.isoformat())
         if new_fails != fails:
             await db.set_setting(fail_key, str(new_fails))
         if current is not None:

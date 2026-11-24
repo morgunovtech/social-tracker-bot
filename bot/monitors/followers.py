@@ -11,6 +11,7 @@ import itertools
 import statistics
 from typing import TYPE_CHECKING
 
+from bot import humanize
 from bot.db import Database
 from bot.i18n import t
 from bot.platforms import LABELS
@@ -52,19 +53,27 @@ async def is_spike(db: Database, platform: str, prev: int, gain: int) -> bool:
 
 
 def alert_lines(outcome: CollectOutcome) -> list[str]:
-    lines: list[str] = []
+    """The messages of one collection: a drop or a spike is an alert of its
+    own in the one shape (bot/humanize.py); a milestone is a fact — one line."""
+    alerts: list[str] = []
     for platform, (prev, new) in outcome.drops.items():
-        lines.append(
-            t("🟠 {label}: −{drop} подписчиков за день ({prev} → {new})").format(
-                label=LABELS[platform], drop=_fmt(prev - new), prev=_fmt(prev), new=_fmt(new)
-            )
+        head = t("🟠 {label}: −{drop} подписчиков за день ({prev} → {new})").format(
+            label=LABELS[platform], drop=_fmt(prev - new), prev=_fmt(prev), new=_fmt(new)
         )
+        alerts.append(humanize.alert(
+            head, "follower_drop",
+            t("порог — {abs} подписчиков или {pct}% за день").format(abs=DROP_ALERT_MIN_ABS, pct=f"{DROP_ALERT_MIN_PCT:g}"),
+        ))
     for platform, (prev, new) in outcome.spikes.items():
-        lines.append(
-            t(
-                "🟠 {label}: +{gain} за день ({prev} → {new}) — аномально резкий рост, возможен наплыв ботов"
-            ).format(label=LABELS[platform], gain=_fmt(new - prev), prev=_fmt(prev), new=_fmt(new))
-        )
+        head = t(
+            "🟠 {label}: +{gain} за день ({prev} → {new}) — аномально резкий рост, возможен наплыв ботов"
+        ).format(label=LABELS[platform], gain=_fmt(new - prev), prev=_fmt(prev), new=_fmt(new))
+        alerts.append(humanize.alert(
+            head, "follower_spike",
+            t("порог — в {factor} раз больше обычного дневного прироста и не меньше {abs}").format(
+                factor=SPIKE_ALERT_FACTOR, abs=SPIKE_ALERT_MIN_ABS
+            ),
+        ))
     for platform, milestone in outcome.milestones:
-        lines.append(t("🎯 {label} перешагнул {milestone}!").format(label=LABELS[platform], milestone=_fmt(milestone)))
-    return lines
+        alerts.append(t("🎯 {label} перешагнул {milestone}!").format(label=LABELS[platform], milestone=_fmt(milestone)))
+    return alerts

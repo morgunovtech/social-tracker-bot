@@ -194,14 +194,15 @@ async def _push_subscribers(
 
 
 async def _alert_parts(db: Database, config: Config, outcome: CollectOutcome) -> tuple[list[str], list[str]]:
-    """(collection health lines, follower lines) of the monitors that are switched on.
+    """(collection health alerts, follower alerts) of the monitors that are
+    switched on — each a message of its own.
 
     Drops and milestones are naturally deduped (the stored value moves past
     them); collection health keeps its dedup state in settings.
     """
     # Collection health keeps its streaks current even while switched off,
     # so switching it back on doesn't alert on a stale streak.
-    collection_lines = await collection.alert_lines(db, outcome)
+    collection_lines = await collection.alert_lines(db, outcome, await get_report_tz(db, config))
     if not await monitors.is_on(db, config, "collection"):
         collection_lines = []
     follower_lines = followers.alert_lines(outcome) if await monitors.is_on(db, config, "followers") else []
@@ -209,7 +210,7 @@ async def _alert_parts(db: Database, config: Config, outcome: CollectOutcome) ->
 
 
 async def _build_alerts(db: Database, config: Config, outcome: CollectOutcome) -> list[str]:
-    """Proactive alert lines of the monitors that are switched on."""
+    """Proactive alerts of the monitors that are switched on, one message each."""
     collection_lines, follower_lines = await _alert_parts(db, config, outcome)
     return collection_lines + follower_lines
 
@@ -227,19 +228,14 @@ async def send_alerts(bot: Bot, config: Config, db: Database, outcome: CollectOu
     """
     try:
         collection_lines, follower_lines = await _alert_parts(db, config, outcome)
-        alerts = collection_lines + follower_lines
-        if alerts:
-            # One monitor's lines alone get its switch-off button; a mixed message gets none.
-            monitor = (
-                "followers" if follower_lines and not collection_lines
-                else "collection" if collection_lines and not follower_lines
-                else None
-            )
-            await notifier.send(
-                bot, config, db, "\n".join(alerts), notifier.priority_for(alerts),
-                actions=(DYNAMICS,) if follower_lines else (CONNECTIONS,), monitor=monitor,
-            )
-            logger.info("Sent %d proactive alert(s)", len(alerts))
+        # One message per problem (BOT_PRINCIPLES §3), each with the screen it
+        # leads to and its own monitor's «⚙️ Не присылать такие».
+        batch = [(text, "collection", CONNECTIONS) for text in collection_lines]
+        batch += [(text, "followers", DYNAMICS) for text in follower_lines]
+        for text, monitor, screen in batch:
+            await notifier.send(bot, config, db, text, notifier.priority_for(text), actions=(screen,), monitor=monitor)
+        if batch:
+            logger.info("Sent %d proactive alert(s)", len(batch))
     except Exception:
         logger.exception("Alert send failed")
     try:

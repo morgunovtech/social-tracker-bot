@@ -183,15 +183,16 @@ Every message to you goes through one door (`bot/notifier.py`) with three priori
 
 | | Rings | Examples |
 |---|---|---|
-| **Critical** — 🔴 | yes, through quiet hours and `/mute` | looks like a hijack: a new admin or owner, a link in the description, a drop in videos or posts, a new sign-in, a changed or reset password, a changed email or 2FA; a profile that stopped being readable; the mail worker silent for ~30 min; a comment the group gets blocked for, at ≥ 70 % confidence |
-| **Normal** — 🟠 ✅ ℹ️ 🎯 | no; waits during quiet hours and a mute | a changed title, description or avatar, an admin removed; a login code, an unrecognised mail (ℹ️); a drop in followers, a bot influx, a milestone; an expired cookie, a rejected or missing token, a failure streak; a spam comment or a low-confidence card, the comment check down or back; a recovery (✅); a failed deploy; «🔄 The bot has been updated» |
+| **Critical** — 🔴 | yes, through quiet hours and `/mute` | looks like a hijack: a new admin or owner, a link in the description, a drop in videos or posts, a new sign-in, a changed or reset password, a changed email or 2FA; a profile that stopped being readable; the mail worker silent for ~30 min; a comment the group gets blocked for, at ≥ 70 % confidence; the ✅ after an unreadable profile or a silent mail worker |
+| **Normal** — 🟠 ✅ ℹ️ 🎯 | no; waits during quiet hours and a mute | a changed title, description or avatar, an admin removed; a login code, an unrecognised mail (ℹ️); a drop in followers, a bot influx, a milestone; an expired cookie, a rejected or missing token, a failure streak; a spam comment or a low-confidence card, the comment check down or back; the ✅ after any of these; a failed deploy; «🔄 The bot has been updated» |
 | **Digest** — 📊 | no; waits only during a mute | the weekly report and its chart, the monthly digest, the hygiene reminder, the backup, the Sunday vulnerabilities notice |
 
 - **Quiet hours** are off by default: ⚙️ Settings → 🔔 When to write, presets 23:00–08:00 and 00:00–09:00 in your time zone. The weekly report is a digest itself, so it still comes at its time.
 - **`/mute 8h`** (or «🔕 Mute…» on the home screen, or «🔕 Quiet for 8 h» under any alert) pauses everything but the critical; `/unmute` or the «🔔 Unmute» button on the home screen lifts it. The home screen says «🔕 Muted until 08:00» while it lasts.
 - Under every alert and report: buttons to the screen where to look into it; under a 🟠 one, «⚙️ Stop sending these» switches that monitor off. In a digest the items share one row.
 - When the silence ends, what was held arrives as **one numbered digest** with the time of each item; a message with buttons or one too long for the digest comes on its own. Replies to your own taps and commands are not notifications and never wait.
-- «Silent when healthy» stays: nothing repeats until it changes, and a recovery is told once.
+- **Every alert has one shape**, the same as TofsDevOps's (`bot/humanize.py`): the headline (icon · what · what happened), what it means and what it usually is, what to do in two or three steps, the technical line last. One message per problem, each with its own «⚙️ Stop sending these».
+- «Silent when healthy» stays: nothing repeats until it changes, and a recovery is told once, with how long it lasted from the first failed check: «✅ The mail worker is responding again. Was silent for 40 min (14:03–14:43). Nothing to do.» When the bot itself was down in between, it says the duration is a lower bound.
 
 ### Icons
 

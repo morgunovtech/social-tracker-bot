@@ -176,8 +176,10 @@ async def test_send_alerts(bot, config, db):
         drops={"telegram": (1000, 950)}, spikes={"youtube": (126, 226)}, milestones=[("linkedin", 1000)],
     )
     await send_alerts(bot, config, db, outcome)
-    text = bot.messages[0]
-    assert "−50" in text and "наплыв ботов" in text and "LinkedIn перешагнул 1 000" in text
+    drop, spike, milestone = bot.messages                             # one message per problem
+    assert drop.startswith("🟠 Telegram: −50 подписчиков за день") and "Что делать:" in drop
+    assert "наплыв ботов" in spike and "Тех.: порог — в 5 раз больше" in spike
+    assert milestone == "🎯 LinkedIn перешагнул 1 000!"                     # a fact: one line
 
 
 # --- the daily job -----------------------------------------------------------
@@ -281,14 +283,15 @@ async def test_a_collect_that_raises_is_retried_and_counted_by_day(bot, config, 
 
     await db.set_setting(collection.RUN_FAIL_DATE_KEY, (utcnow().date() - timedelta(days=1)).isoformat())
     await _scheduled_job(bot, config, db, job_scheduler)
-    assert bot.messages == ["🟠 Ежедневный сбор не выполнился 2 дн. подряд — подробности в логах бота"]
+    assert len(bot.messages) == 1 and bot.messages[0].startswith("🟠 Ежедневный сбор не выполнился 2 дн. подряд\n\n")
 
     bot.messages.clear()
     await _scheduled_job(bot, config, db, job_scheduler, attempt=2)    # a retry does not count twice
     assert bot.messages == [] and await db.get_setting(collection.RUN_FAIL_STREAK_KEY) == "2"
     working = CollectOutcome(report="", has_change=False, collected={"telegram": (1000, "api")})
-    await _build_alerts(db, config, working)
+    (back,) = await _build_alerts(db, config, working)
     assert await db.get_setting(collection.RUN_FAIL_STREAK_KEY) == "0"
+    assert back.startswith("✅ Ежедневный сбор снова выполняется. Не выполнялся ") and back.endswith("Ничего делать не нужно.")
 
 
 async def test_the_daily_run_prunes_old_rows(bot, config, db, fake_collect, job_scheduler):

@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
+import re
 from types import SimpleNamespace
 
 import anthropic
@@ -311,8 +312,12 @@ async def test_api_failures_are_reported_once_and_the_recovery_once(group_bot, c
     for i in range(5):
         await comments.review(group_bot, config, db, watch, message("x", message_id=i))
     assert len(group_bot.messages) == 2
-    assert group_bot.messages[0].startswith("🟠 Комментарии: проверка не работает 3 раза подряд (APIConnectionError)")
-    assert group_bot.messages[1] == "✅ Комментарии: проверка снова работает"
+    alert, back = group_bot.messages
+    assert alert.startswith("🟠 Комментарии: проверка не работает 3 раза подряд\n\n")
+    assert "Что делать:" in alert and alert.endswith("Тех.: APIConnectionError · claude-opus-5-5")
+    # The recovery says how long the check was down, from its first failure.
+    assert re.fullmatch(r"✅ Комментарии: проверка снова работает\. Не работала 1 мин \(\d\d:\d\d–\d\d:\d\d\)\. "
+                        r"Ничего делать не нужно\.", back), back
     assert (await db.review_stats())["checked"] == 1                                   # a failure is not a verdict
 
 
