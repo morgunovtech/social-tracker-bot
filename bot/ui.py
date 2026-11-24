@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
-from bot import monitors, notifier, platforms, security_log, watchdog
+from bot import monitors, notifier, platforms, security_log, tofs_status, watchdog
 from bot.callbacks import (
     BACKUP,
     CHANNEL,
@@ -50,7 +50,7 @@ from bot.callbacks import (
 from bot.config import DOW_ORDER, Config
 from bot.db import HELD_KEEP_DAYS, Database, parse_utc, utcnow
 from bot.i18n import language, plural, t
-from bot.monitors import channel, comments, hygiene
+from bot.monitors import channel, comments, hygiene, outgoing
 from bot.platforms import BY_ID, PLATFORMS
 from bot.platforms import instagram as ig
 from bot.platforms.base import Platform
@@ -781,6 +781,7 @@ async def settings(db: Database, config: Config) -> Screen:
         t("Когда включено, неделя без изменений — это одна строка вместо отчёта."),
         "",
         t("🔔 Когда писать: {when}").format(when=esc(await _when_summary(db, config))),
+        *await _outgoing_lines(db, config),
         "",
         t("<i>Версия: {build}Python {python}</i>").format(build=build, python=py_platform.python_version()),
     ])
@@ -793,6 +794,19 @@ async def settings(db: Database, config: Config) -> Screen:
         _home(),
     ]
     return Screen(text, InlineKeyboardMarkup(rows))
+
+
+async def _outgoing_lines(db: Database, config: Config) -> list[str]:
+    """📤 What the bot sends out by itself and when it last landed (BOT_PRINCIPLES §4)."""
+    lines = []
+    if config.site_ingest_url and config.site_ingest_token:
+        lines.append(await outgoing.line(db, config, outgoing.SITE, outgoing.host(config.site_ingest_url)))
+    address = await watchdog.url(db, config)
+    if address and tofs_status.is_tofs_url(address):
+        lines.append(await outgoing.line(db, config, outgoing.TOFS))
+    elif address:
+        lines.append(await outgoing.line(db, config, outgoing.WATCHDOG, watchdog.name(address)))
+    return ["", t("📤 <b>Отправки</b>"), *(esc(line) for line in lines)] if lines else []
 
 
 async def _when_summary(db: Database, config: Config) -> str:

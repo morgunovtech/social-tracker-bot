@@ -29,7 +29,9 @@ which priority:
               and Gmail's forwarding confirmation; collection alerts —
               🟠 follower drop, 🟠 bot inflow, 🎯 milestone, 🟠 expired cookie,
               rejected or missing token, 🟠 failure streak and its end;
-              🟠 a deploy that failed; «🔄 Бот обновился».
+              🟠 a deploy that failed; 🟠 a day of outgoing deliveries that
+              did not land (the site, TofsDevOps, the watchdog) and its ✅;
+              «🔄 Бот обновился» and «ℹ️ После обновления я работаю иначе».
     DIGEST    the weekly report and its chart, the «без изменений» one-liner,
               the hygiene reminder, the monthly digest, the weekly backup,
               the weekly OSV / Dependabot notice.

@@ -21,7 +21,7 @@ from bot.chart import render_chart
 from bot.config import DOW_ORDER, Config, normalize_tz
 from bot.db import Database, parse_utc, utcnow
 from bot.i18n import t
-from bot.monitors import channel, collection, followers, hygiene, mail, profile
+from bot.monitors import channel, collection, followers, hygiene, mail, outgoing, profile
 from bot.notifier import Priority
 from bot.platforms import BY_ID, LABELS, PLATFORM_IDS
 from bot.platforms.base import Context
@@ -123,7 +123,7 @@ async def collect_and_report(bot: Bot, config: Config, db: Database) -> CollectO
                 outcome.errors[platform.id] = True
 
         # Push finalized counts to the website (reuses the open session).
-        await _push_subscribers(session, config, db)
+        await _push_subscribers(session, config, db, bot)
 
     outcome.report, outcome.has_change = await build_stats(db, config, outcome.errors)
     return outcome
@@ -153,14 +153,16 @@ async def build_stats(
 
 
 async def _push_subscribers(
-    session: aiohttp.ClientSession, config: Config, db: Database
+    session: aiohttp.ClientSession, config: Config, db: Database, bot: Bot | None = None,
 ) -> None:
     """Push finalized subscriber counts to the website's ingest endpoint.
 
-    Fire-and-forget: any failure is logged, never raised, so the report flow is
-    unaffected. Reads the authoritative latest count per platform from the DB,
-    so a transient collection miss on one platform still pushes the last good
-    numbers. Skips entirely until every enabled platform has data.
+    Never raises, so the report flow is unaffected; every attempt goes to the
+    outgoing monitor, which says so after a day without one that landed
+    (bot/monitors/outgoing.py). Reads the authoritative latest count per
+    platform from the DB, so a transient collection miss on one platform
+    still pushes the last good numbers. Skips entirely until every enabled
+    platform has data — a skip is not a failure.
     """
     if not config.site_ingest_url or not config.site_ingest_token:
         return
@@ -177,6 +179,7 @@ async def _push_subscribers(
         return
 
     payload = {**counts, "updatedAt": utcnow().isoformat().replace("+00:00", "Z")}
+    error: str | None = None
     try:
         async with session.post(
             config.site_ingest_url,
@@ -189,8 +192,14 @@ async def _push_subscribers(
             else:
                 body = (await resp.text())[:200]
                 logger.warning("Site push failed: HTTP %s — %s", resp.status, body)
+                error = f"rejected:{resp.status}"
+    except Exception as e:
+        logger.warning("Site push errored: %s", type(e).__name__)
+        error = outgoing.error_code(e)
+    try:
+        await outgoing.record(bot, config, db, outgoing.SITE, error, outgoing.host(config.site_ingest_url))
     except Exception:
-        logger.exception("Site push errored")
+        logger.exception("Site push bookkeeping failed")
 
 
 async def _alert_parts(db: Database, config: Config, outcome: CollectOutcome) -> tuple[list[str], list[str]]:
@@ -327,9 +336,15 @@ async def _ping_healthcheck(config: Config, db: Database | None = None, bot=None
         return
     if db is not None and tofs_status.is_tofs_url(address):
         payload = await tofs_status.build(db, config, errors, _bot_username(bot))
-        error = None if await tofs_status.send(address, payload, mark=True) else "tofs"
+        delivery = await tofs_status.send(address, payload, mark=True)
+        error = None if delivery.landed else "tofs"
+        # The lines are what TofsDevOps shows: a day of refused lines is told
+        # even while the plain mark still lands.
+        await outgoing.record(bot, config, db, outgoing.TOFS, delivery.lines_error)
     else:
         error = await watchdog.probe(address)
+        if db is not None:
+            await outgoing.record(bot, config, db, outgoing.WATCHDOG, error, watchdog.name(address))
     if error is None:
         logger.info("Watchdog ping: %s took the mark", watchdog.name(address))
     else:
@@ -491,7 +506,8 @@ async def _profile_job(bot: Bot, config: Config, db: Database) -> None:
     address = await watchdog.url(db, config)
     if tofs_status.is_tofs_url(address):
         payload = await tofs_status.build(db, config, None, _bot_username(bot))
-        await tofs_status.send(address, payload, mark=False)
+        delivery = await tofs_status.send(address, payload, mark=False)
+        await outgoing.record(bot, config, db, outgoing.TOFS, delivery.lines_error)
 
 
 async def _mail_job(bot: Bot, config: Config, db: Database) -> None:

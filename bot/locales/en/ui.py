@@ -337,6 +337,7 @@ STRINGS: dict[str, str] = {
     # the reply keyboard, the home screen, 🔌 Подключения
     "🔄 Обновить": "🔄 Refresh",
     "сегодня {time}": "today {time}",
+    "📤 <b>Отправки</b>": "📤 <b>Deliveries</b>",
     "🕒 Последний сбор: {when}": "🕒 Last collection: {when}",
     "🧭 Осталось настроить:": "🧭 Left to set up:",
     "часовой пояс — пока {tz}, выбери свой": "the time zone — {tz} for now, pick yours",
