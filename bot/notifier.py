@@ -19,7 +19,8 @@ which priority:
               posts; or the profile stopped being readable (deleted, hidden,
               the bot lost its rights); security emails of a critical kind
               («похоже на взлом»: a new sign-in, a changed or reset password,
-              a changed email or 2FA); the mail worker silent for ~30 min; a
+              a changed email, phone or 2FA, a new token, key or app, a new
+              owner of the site in Search Console); the mail worker silent for ~30 min; a
               comment the group is blocked for, at ≥ 70 % confidence; and the
               ✅ after a 🔴 outage — the profile readable again, the mail
               worker back (BOT_PRINCIPLES §1: a recovery after a real fall rings).
@@ -29,10 +30,12 @@ which priority:
               and Gmail's forwarding confirmation; collection alerts —
               🟠 follower drop, 🟠 bot inflow, 🎯 milestone, 🟠 expired cookie,
               rejected or missing token, 🟠 failure streak and its end;
-              🟠 a deploy that failed; 🟠 a day of outgoing deliveries that
+              🟠 a deploy that failed; 🟠 a profile link that does not open
+              and its ✅; 🟠 a day of outgoing deliveries that
               did not land (the site, TofsDevOps, the watchdog) and its ✅;
               «🔄 Бот обновился» and «ℹ️ После обновления я работаю иначе».
     DIGEST    the weekly report and its chart, the «без изменений» one-liner,
+              ℹ️ profile links that go through a redirect or a technical host,
               the hygiene reminder, the monthly digest, the weekly backup,
               the weekly OSV / Dependabot notice.
 

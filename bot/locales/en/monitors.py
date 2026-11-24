@@ -20,6 +20,38 @@ STRINGS: dict[str, str] = {
     "Отправки наружу": "Outgoing deliveries",
     "цифры на сайт, строки в TofsDevOps, отметки сторожу: сутки не доходят — скажу, где и почему":
         "the counts to your site, the lines to TofsDevOps, the watchdog's marks: a day without one landing — I say where and why",
+    "Ссылки в профилях": "Profile links",
+    "раз в неделю — куда ведут ссылки в описаниях: не открывается, переадресация, технический адрес":
+        "weekly — where the links in the descriptions lead: does not open, a redirect, a technical host",
+    # bot/monitors/links.py
+    "адрес {host} не находится": "the address {host} does not resolve",
+    "сертификат сайта не принимается": "the site's certificate is not accepted",
+    "защищённое соединение не устанавливается": "a secure connection cannot be set up",
+    "сайт не принимает соединение": "the site refuses the connection",
+    "сайт не ответил за 15 с": "the site did not answer in 15 s",
+    "страница не найдена ({status})": "page not found ({status})",
+    "сайт отвечает ошибкой {status}": "the site answers with error {status}",
+    "переадресаций больше {n}": "more than {n} redirects",
+    "{platform}, {field}": "{platform}, {field}",
+    "🟠 {where}: ссылка не открывается — {why}": "🟠 {where}: a link does not open — {why}",
+    "проверка ссылок раз в неделю": "links are checked weekly",
+    "✅ {where}: ссылка снова открывается — {link}": "✅ {where}: the link opens again — {link}",
+    "Не открывалась": "Did not open for",
+    "• {where}: {link} → {final} — ведёт через переадресацию, лучше поставить конечный адрес":
+        "• {where}: {link} → {final} — goes through a redirect; the final address is better",
+    (
+        "• {where}: {link} — ведёт на технический адрес {final}; если у сайта есть свой домен, "
+        "лучше он"
+    ): "• {where}: {link} — lands on the technical host {final}; if the site has a domain of its own, that one is better",
+    "ℹ️ Ссылки в профилях — можно лучше:": "ℹ️ Profile links — could be better:",
+    "Поправить можно в самом профиле; я проверю снова через неделю.":
+        "Fix them in the profile itself; I'll check again in a week.",
+    "Кто нажмёт эту ссылку в профиле, попадёт на ошибку, а не к тебе.":
+        "Whoever taps this link in the profile gets an error instead of you.",
+    "страницу удалили или переименовали, домен переехал или истёк, сайт лежит":
+        "the page was deleted or renamed, the domain moved or expired, the site is down",
+    "Открыть ссылку самому: может, сайт лежит прямо сейчас.": "Open the link yourself: the site may be down right now.",
+    "Если адрес сменился — поправить описание в профиле.": "If the address changed, fix the description in the profile.",
     # bot/monitors/outgoing.py
     "Цифры на сайт": "Counts to the site",
     "Строки в TofsDevOps": "Lines to TofsDevOps",
@@ -74,8 +106,12 @@ STRINGS: dict[str, str] = {
     "Если check удалён — создать новый на healthchecks.io и прислать ссылку.":
         "If the check was deleted, create a new one on healthchecks.io and send its link.",
     "Письма безопасности": "Security emails",
-    "новые входы, смена пароля, коды входа — из пересланных писем": (
-        "new sign-ins, password changes, login codes — from forwarded emails"
+    (
+        "новые входы, смена пароля, телефона и 2FA, новые ключи и токены, новый владелец сайта в поиске, коды входа — "
+        "из пересланных писем соцсетей, GitHub, Cloudflare, Microsoft, Яндекса"
+    ): (
+        "new sign-ins, password, phone and 2FA changes, new keys and tokens, a new owner of the site in search, login "
+        "codes — from forwarded emails of the networks, GitHub, Cloudflare, Microsoft, Yandex"
     ),
     "SECURITY_MAIL_URL и SECURITY_MAIL_TOKEN": "SECURITY_MAIL_URL and SECURITY_MAIL_TOKEN",
     "Комментарии": "Comments",
@@ -242,6 +278,37 @@ STRINGS: dict[str, str] = {
         "If this wasn't you — the account is being taken over: recover access immediately."
     ),
     "изменена двухфакторная защита": "two-factor authentication changed",
+    "изменён телефон аккаунта": "the account's phone number changed",
+    "Сменили номер телефона, на который приходят коды входа и восстановления.":
+        "The phone number that gets the sign-in and recovery codes was changed.",
+    "ты сам — новый номер; если нет — угонщик забирает восстановление себе":
+        "you — a new number; if not, a hijacker is taking the recovery for themselves",
+    "Если это не ты — восстанавливай доступ немедленно: с чужим номером пароль сбросят без тебя.":
+        "If it wasn't you, recover access right away: with someone else's number the password is reset without you.",
+    "добавлен ключ, токен или приложение": "a key, token or app was added",
+    "у сайта новый владелец в поиске": "the site has a new owner in search",
+    (
+        "У сайта появился ещё один подтверждённый владелец в панели поисковика: он может убрать страницы из "
+        "поиска, поменять настройки и видеть статистику."
+    ): "The site has one more verified owner in a search engine's console: they can remove pages from search, change the settings and see the statistics.",
+    (
+        "ты сам — подтвердил сайт заново или другим способом, подключил сервис; если нет — у кого-то есть доступ "
+        "к DNS или файлам сайта"
+    ): "you — you verified the site again or another way, or connected a service; if not, someone has access to the site's DNS or files",
+    (
+        "Если это не ты — удали чужого владельца в настройках ресурса (Search Console: Настройки → Пользователи "
+        "и разрешения) и убери его код подтверждения — запись DNS или файл, иначе права вернутся."
+    ): "If it wasn't you, remove the stranger in the property's settings (Search Console: Settings → Users and permissions) and delete their verification token — the DNS record or the file — or the rights come back.",
+    (
+        "В аккаунт добавили новый способ входить без пароля: токен, ключ, пароль приложения или стороннее "
+        "приложение с доступом."
+    ): "A new way into the account without the password was added: a token, a key, an app password or a third-party app with access.",
+    (
+        "ты сам — для бота, деплоя или нового сервиса; если нет — угонщик закрепляется: такой ключ переживёт "
+        "смену пароля"
+    ): "you — for a bot, a deploy or a new service; if not, a hijacker is digging in: such a key survives a password change",
+    "Если это не ты — отзови ключ или приложение в настройках безопасности аккаунта, потом смени пароль.":
+        "If it wasn't you, revoke the key or the app in the account's security settings, then change the password.",
     "Если это не ты — верни 2FA и смени пароль.": "If this wasn't you — restore 2FA and change the password.",
     "новый вход в аккаунт": "new sign-in to the account",
     "Если это не ты — смени пароль и заверши чужие сеансы.": (

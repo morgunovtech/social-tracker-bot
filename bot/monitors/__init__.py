@@ -133,6 +133,13 @@ MONITORS: tuple[Monitor, ...] = (
         requires=_has_profiles,
         needs="Telegram-канал, YouTube или Instagram",
     ),
+    Monitor(
+        "links",
+        "Ссылки в профилях",
+        "раз в неделю — куда ведут ссылки в описаниях: не открывается, переадресация, технический адрес",
+        requires=_has_profiles,
+        needs="Telegram-канал, YouTube или Instagram",
+    ),
     Monitor("hygiene", "Чек-лист безопасности", "2FA и пароли: балл в отчёте, напоминание раз в месяц"),
     Monitor(
         "outgoing",
@@ -142,7 +149,8 @@ MONITORS: tuple[Monitor, ...] = (
     Monitor(
         "mail",
         "Письма безопасности",
-        "новые входы, смена пароля, коды входа — из пересланных писем",
+        "новые входы, смена пароля, телефона и 2FA, новые ключи и токены, новый владелец сайта в поиске, коды входа — "
+        "из пересланных писем соцсетей, GitHub, Cloudflare, Microsoft, Яндекса",
         requires=_has_mail,
         needs="SECURITY_MAIL_URL и SECURITY_MAIL_TOKEN",
     ),

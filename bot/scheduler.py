@@ -21,7 +21,7 @@ from bot.chart import render_chart
 from bot.config import DOW_ORDER, Config, normalize_tz
 from bot.db import Database, parse_utc, utcnow
 from bot.i18n import t
-from bot.monitors import channel, collection, followers, hygiene, mail, outgoing, profile
+from bot.monitors import channel, collection, followers, hygiene, links, mail, outgoing, profile
 from bot.notifier import Priority
 from bot.platforms import BY_ID, LABELS, PLATFORM_IDS
 from bot.platforms.base import Context
@@ -487,6 +487,16 @@ async def _scheduled_job(
             logger.exception("Dependency watch failed")
 
     await _ping_healthcheck(config, db, bot, outcome.errors)
+
+    # Weekly, counted from the last check (the first one with the first run):
+    # where the links in the profile descriptions lead. After the mark, so a
+    # slow site never delays it.
+    try:
+        sent = await links.run(bot, config, db)
+        if sent:
+            logger.info("Sent %d profile link message(s)", sent)
+    except Exception:
+        logger.exception("Profile link check failed")
 
 
 async def _profile_job(bot: Bot, config: Config, db: Database) -> None:
