@@ -159,13 +159,15 @@ MONITORS: tuple[Monitor, ...] = (
 BY_ID: dict[str, Monitor] = {m.id: m for m in MONITORS}
 
 
-def _key(monitor_id: str) -> str:
+def switch_key(monitor_id: str) -> str:
+    """The setting that keeps the user's switch: «off», «on» or absent (on)."""
     return f"monitor_{monitor_id}"
+
 
 
 async def is_switched_on(db: Database, monitor_id: str) -> bool:
     """The user's switch alone, regardless of configuration."""
-    return await db.get_setting(_key(monitor_id)) != "off"
+    return await db.get_setting(switch_key(monitor_id)) != "off"
 
 
 async def is_on(db: Database, config: Config, monitor_id: str) -> bool:
@@ -180,4 +182,4 @@ async def toggle(db: Database, monitor_id: str) -> bool:
 
 
 async def set_switch(db: Database, monitor_id: str, on: bool) -> None:
-    await db.set_setting(_key(monitor_id), "on" if on else "off")
+    await db.set_setting(switch_key(monitor_id), "on" if on else "off")

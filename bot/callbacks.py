@@ -33,6 +33,10 @@ CONNECTIONS = "conn"
 COMMENTS = "cm"
 CHANNEL = "ch"
 WATCHDOG = "wd"          # ⏱ Сторож: wd | wd:test | wd:off[:yes]
+# Settings screens an alert may open (open:<id>); inside the menu they are set:time, set:tz, set:when.
+OPEN_TIME = "rtime"      # 🕗 Время отчёта
+OPEN_TZ = "rtz"          # 🌍 Часовой пояс
+OPEN_WHEN = "when"       # 🔔 Когда писать
 
 # Actions.
 OPEN = "open"            # open:<screen> — the screen as a new message; the alert it sits on stays
@@ -63,6 +67,11 @@ SCREEN_LABELS = {
     COMMENTS: "💬 Комментарии",
     CONNECTIONS: "🔌 Подключения",
     WATCHDOG: "⏱ Сторож",
+    SETTINGS: "⚙️ Настройки",
+    MONITORS: "🧩 Мониторинги",
+    OPEN_TIME: "🕗 Время отчёта",
+    OPEN_TZ: "🌍 Часовой пояс",
+    OPEN_WHEN: "🔔 Когда писать",
 }
 
 
