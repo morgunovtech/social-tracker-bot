@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import timedelta
 
 import aiohttp
@@ -127,23 +128,40 @@ async def build(db: Database, config: Config, errors: dict | None = None, bot_us
     return payload
 
 
-async def send(url: str, payload: dict, mark: bool) -> bool:
+@dataclass(frozen=True)
+class Delivery:
+    """What reached TofsDevOps: the mark (when one was sent) and the lines.
+    lines_error — None when the lines landed, else why not as a code
+    ('rejected:400', 'timeout', …) for bot/monitors/outgoing.py."""
+
+    landed: bool
+    lines_error: str | None = None
+
+    def __bool__(self) -> bool:
+        return self.landed
+
+
+async def send(url: str, payload: dict, mark: bool) -> Delivery:
     """POST the lines. A status TofsDevOps refuses (400 — a format change on
     either side) must not cost the mark: then the plain GET goes out, so a
-    format bug shows up in the logs, not as «the bot is dead»."""
+    format bug does not read as «the bot is dead» — and the refused lines
+    are told by the outgoing monitor after a day, not only logged."""
+    from bot.monitors.outgoing import error_code
+
     body = {**payload, "heartbeat": mark}
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 if resp.status < 300:
                     logger.info("Status sent to TofsDevOps (mark=%s)", mark)
-                    return True
+                    return Delivery(True)
                 reason = (await resp.text())[:200]
                 logger.warning("TofsDevOps refused the status: HTTP %s %s", resp.status, reason)
+                refused = f"rejected:{resp.status}"
                 if resp.status == 403 or not mark:
-                    return False
+                    return Delivery(False, refused)
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                return resp.status < 300
-    except Exception:
-        logger.warning("Status to TofsDevOps failed", exc_info=True)
-        return False
+                return Delivery(resp.status < 300, refused)
+    except Exception as e:
+        logger.warning("Status to TofsDevOps failed: %s", type(e).__name__)
+        return Delivery(False, error_code(e))

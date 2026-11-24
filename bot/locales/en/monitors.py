@@ -17,6 +17,62 @@ STRINGS: dict[str, str] = {
     "Telegram-канал, YouTube или Instagram": "a Telegram channel, YouTube or Instagram",
     "Чек-лист безопасности": "Security checklist",
     "2FA и пароли: балл в отчёте, напоминание раз в месяц": "2FA and passwords: a score in the report, a monthly reminder",
+    "Отправки наружу": "Outgoing deliveries",
+    "цифры на сайт, строки в TofsDevOps, отметки сторожу: сутки не доходят — скажу, где и почему":
+        "the counts to your site, the lines to TofsDevOps, the watchdog's marks: a day without one landing — I say where and why",
+    # bot/monitors/outgoing.py
+    "Цифры на сайт": "Counts to the site",
+    "Строки в TofsDevOps": "Lines to TofsDevOps",
+    "Отметки сторожу": "Marks to the watchdog",
+    "🟠 {where} не принимает цифры подписчиков уже {how_long}: {reason}":
+        "🟠 {where} has not accepted the follower counts for {how_long}: {reason}",
+    "✅ {where} снова принимает цифры подписчиков": "✅ {where} accepts the follower counts again",
+    "🟠 TofsDevOps не принимает строки состояния уже {how_long}: {reason}":
+        "🟠 TofsDevOps has not accepted the status lines for {how_long}: {reason}",
+    "✅ TofsDevOps снова принимает строки состояния": "✅ TofsDevOps accepts the status lines again",
+    "🟠 Сторож {where} не принимает отметки уже {how_long}: {reason}":
+        "🟠 The watchdog {where} has not accepted the marks for {how_long}: {reason}",
+    "✅ Сторож {where} снова принимает отметки": "✅ The watchdog {where} accepts the marks again",
+    "Не принимал": "Did not accept them for",
+    "последняя удачная {when}": "the last one that landed {when}",
+    "удачных ещё не было": "none has landed yet",
+    ", последняя удачная {when}": ", the last one that landed {when}",
+    "{icon} {what}: не доходят с {since} — {reason}{last}": "{icon} {what}: not landing since {since} — {reason}{last}",
+    "{icon} {what}: последняя удачная {when}": "{icon} {what}: the last one landed {when}",
+    "{icon} {what}: ещё не отправлялись": "{icon} {what}: not sent yet",
+    "На сайте застыли последние принятые цифры — посетители видят старое число.":
+        "The site shows the last counts it accepted — visitors see an old number.",
+    (
+        "сменился SOCIALBOT_INGEST_TOKEN у бота или секрет у сайта, переехал адрес приёма, сайт лежит или не "
+        "задеплоился"
+    ): "SOCIALBOT_INGEST_TOKEN changed on the bot or the secret on the site, the ingest address moved, the site is down or was not deployed",
+    (
+        "Сверить SOCIALBOT_INGEST_TOKEN у бота и секрет сайта — они должны совпадать; новый секрет сайт на "
+        "Cloudflare Pages подхватывает только после нового деплоя (Retry deployment)."
+    ): (
+        "Compare SOCIALBOT_INGEST_TOKEN on the bot with the site's secret — they must match; a site on Cloudflare "
+        "Pages picks up a new secret only after a new deploy (Retry deployment)."
+    ),
+    "Проверить SITE_INGEST_URL: после переезда домена адрес приёма мог смениться.":
+        "Check SITE_INGEST_URL: after a domain move the ingest address may have changed.",
+    "На главном экране TofsDevOps застыли строки по сетям: он показывает прошлое состояние.":
+        "The network lines on TofsDevOps's main screen are frozen: it shows a past state.",
+    "TofsDevOps обновился и не принимает формат, адрес heartbeat удалён или сменился, TofsDevOps не работает":
+        "TofsDevOps was updated and rejects the format, the heartbeat address was deleted or changed, TofsDevOps is down",
+    "Открыть ⏱ Сторож и нажать «🔄 Проверить снова».": "Open ⏱ Watchdog and tap «🔄 Check again».",
+    "Если heartbeat в TofsDevOps удалён — создать новый и прислать ссылку здесь.":
+        "If the heartbeat was deleted in TofsDevOps, create a new one and send its link here.",
+    (
+        "Сторож не слышит меня: скоро он напишет, что я пропал, хотя я работаю, — а если check удалён, не напишет "
+        "ничего, когда я правда остановлюсь."
+    ): (
+        "The watchdog does not hear me: soon it will write that I am gone although I work — and if the check was "
+        "deleted, it will write nothing when I really stop."
+    ),
+    "check удалён или поставлен на паузу, ссылка скопирована не целиком, сбой у сервиса сторожа":
+        "the check was deleted or paused, the link was copied incompletely, the watchdog service has a failure",
+    "Если check удалён — создать новый на healthchecks.io и прислать ссылку.":
+        "If the check was deleted, create a new one on healthchecks.io and send its link.",
     "Письма безопасности": "Security emails",
     "новые входы, смена пароля, коды входа — из пересланных писем": (
         "new sign-ins, password changes, login codes — from forwarded emails"
