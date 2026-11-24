@@ -126,6 +126,8 @@ STRINGS: dict[str, str] = {
         "🔍 {source}: {shows} {shows_word}, {clicks} {clicks_word} on brand queries{change}",
     "🤖 ИИ-ассистенты открывали твои страницы {n} {times}{change}": "🤖 AI assistants opened your pages {n} {times}{change}",
     "чаще всего — {host}": "most often — {host}",
+    "подсчёт запросов по user-agent ИИ-ассистентов в Cloudflare, не «AI Answer retrievals» из его панели":
+        "a count of requests by AI-assistant user agents in Cloudflare, not the «AI Answer retrievals» of its dashboard",
     "👥 Подписчики: {total}, {delta} за неделю": "👥 Followers: {total}, {delta} this week",
     "это не тот ключ или он не читается": "it is not the right key, or it cannot be read",
     "у ключа нет доступа ни к одному сайту": "the key has access to no site",

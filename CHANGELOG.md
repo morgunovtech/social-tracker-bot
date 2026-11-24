@@ -2,6 +2,12 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## Unreleased
+
+**Changed**
+- The report's AI-assistant line says what it counts, every week, under the numbers: «подсчёт запросов по user-agent ИИ-ассистентов в Cloudflare, не «AI Answer retrievals» из его панели». The dashboard's metric is not in the API; the screen and the README said so, the report itself did not.
+- Bing's links to the sites are not coming to this bot (the owner's decision): Bing has no read-only API key, and its full-access key lives in TofsDevOps only. The README says so.
+
 ## 1.8.0 — 2026-11-24
 
 A weekly reputation report — how often the owner and their products are searched for on Google and Yandex, and how often AI assistants open the pages — connected from the chat with read-only keys; Cloudflare's security mail left to TofsDevOps, which reads the account's audit log; and the last two findings of the 2026-11-24 code review — comments written as a channel, and the update notice that survives a failed send.
@@ -11,7 +17,7 @@ A weekly reputation report — how often the owner and their products are search
 - Each week against the one before; both whole, ending three days ago (Search Console fills a day in two or three). Numbers, not adjectives: «120 показов, 8 кликов (+30 %)». Nothing found anywhere — no message. A source that fails (a rejected key, a plan that refuses the data, no brand words) is a «⚠️ … не смог получить данные — …» line in the report.
 - **Connected from the chat**: 🔌 Подключения → 🔎 Репутация — the brand words (one step), one «🔑» per source with a live test call before the key is kept (the Search Console key may also be sent as its `.json` file), «📨 Отчёт сейчас». Every key is the bot's own and read-only: a Google service account with the `webmasters.readonly` scope added as a Restricted user, a Yandex OAuth app with `webmaster:hostinfo`, a Cloudflare token with Zone Read and Analytics Read. The message with a key is deleted at once; the keys never reach a screen, a log line or the Sunday backup.
 - Three new monitors in `/modules` — «Поиски в Google», «Поиски в Яндексе», «ИИ-ассистенты» — off until their key is sent (`Monitor.secret`), shown as «➖ не подключено» meanwhile. `bot/behavior.py` counts a key sent in the chat as the owner's change, so connecting a source is not told back as an update.
-- Not here on purpose: the sites' clicks and impressions as a whole, indexing, robots, sitemaps and canonical copies — TofsDevOps's, as signs of breakage. Bing's links to the sites: waits for the owner's choice of key (Bing has no read-only API key).
+- Not here on purpose: the sites' clicks and impressions as a whole, indexing, robots, sitemaps and canonical copies — TofsDevOps's, as signs of breakage. Bing's links to the sites: not in this bot — the owner's decision; Bing has no read-only API key, and its full-access key lives in TofsDevOps only.
 - New dependency: `cryptography` 50.0.2, for the RS256 signature of the service account's token (no Google SDK).
 
 **Changed**

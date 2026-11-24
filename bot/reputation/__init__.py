@@ -8,6 +8,7 @@ the bot already knows — and nothing when there is nothing to say.
     🔍 Google: 120 показов, 8 кликов по брендовым запросам (+30 %) · «good pass» 40, «foundyou» 30
     🔍 Яндекс: 15 показов, 2 клика · «foundyou» 10
     🤖 ИИ-ассистенты открывали страницы 343 раза (+351 %) · ChatGPT-User 200, Perplexity-User 100
+       подсчёт запросов по user-agent ИИ-ассистентов в Cloudflare, не «AI Answer retrievals» из его панели
     👥 Подписчики: 16 860, +120 за неделю
 
 Each source is a monitor of its own (bot/monitors/__init__.py: rep_google,
@@ -115,6 +116,9 @@ def search_line(label: str, now: Week, before: Week | None) -> str:
 
 
 def ai_line(now: Week, before: Week | None) -> str:
+    """Said for what it is: requests by the user agents Cloudflare files under
+    «AI Assistant», not the dashboard's «AI Answer retrievals», which the API
+    does not give."""
     head = t("🤖 ИИ-ассистенты открывали твои страницы {n} {times}{change}").format(
         n=_fmt(now.total), times=plural(now.total, "раз", "раза", "раз"),
         change=_pct(now.total, before.total if before else None),
@@ -122,7 +126,8 @@ def ai_line(now: Week, before: Week | None) -> str:
     parts = [_plain(now.top())] if now.by else []
     if now.where:
         parts.append(t("чаще всего — {host}").format(host=now.top(1, "where")[0][0]))
-    return head + "".join(f" · {p}" for p in parts)
+    note = t("подсчёт запросов по user-agent ИИ-ассистентов в Cloudflare, не «AI Answer retrievals» из его панели")
+    return head + "".join(f" · {p}" for p in parts) + f"\n   {note}"
 
 
 

@@ -176,7 +176,8 @@ async def test_the_report_says_what_the_sources_saw(bot, config, db, sources, in
     assert text.splitlines()[0] == "🔎 <b>Репутация за неделю</b> · 15.11–21.11"
     assert "🔍 Google: 120 показов, 8 кликов по брендовым запросам (+30 %) · «good pass» 40, «foundyou» 30" in text
     assert "🤖 ИИ-ассистенты открывали твои страницы 343 раза (+351 %) · ChatGPT-User 200, Perplexity-User 100 · " \
-           "чаще всего — foundyou.morgunov.tech" in text
+           "чаще всего — foundyou.morgunov.tech\n   подсчёт запросов по user-agent ИИ-ассистентов в Cloudflare, " \
+           "не «AI Answer retrievals» из его панели" in text
     assert "👥 Подписчики: 1 120, +120 за неделю" in text
     assert "Яндекс" not in text                                            # not connected: not mentioned
     assert keep == {}
