@@ -188,7 +188,7 @@ async def test_screen_and_report_line(config, db, monkeypatch):
     monkeypatch.setattr(channel, "utcnow", lambda: NOW + timedelta(hours=2))
     empty = await ui.channel_screen(db, config)
     assert empty.text.startswith("<b>📣 Канал @test_channel</b>") and "Пока пусто" in empty.text
-    assert buttons(empty.keyboard) == {"mod:channel:ch": "✅ Жизнь канала", "home": "← Главная"}
+    assert buttons(empty.keyboard) == {"mod:channel:ch": "✅ Жизнь канала", "home": "🏠 Главная"}
     assert await channel.report_line(db, config) is None
 
     await fill(config, db)

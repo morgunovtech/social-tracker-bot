@@ -35,8 +35,8 @@ which priority:
 Replies to the owner's own actions (a tap, a command, the error notice after
 one) are not notifications: they answer right away, whatever the hour.
 
-Files (the chart, the backup) are sent silently and never deferred: a digest
-cannot hold them. The scheduler skips the chart while the report itself is
+Files (the chart, the backup) and the note that brings a new reply keyboard
+are sent silently and never deferred: a digest cannot hold them. The scheduler skips the chart while the report itself is
 held; the «🖼 График» button has it any time.
 
 send() returns True when the message was delivered or queued and lets a
@@ -63,7 +63,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from zoneinfo import ZoneInfo
 
-from telegram import Bot, InlineKeyboardMarkup
+from telegram import Bot, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
 from bot.callbacks import actions_markup
 from bot.config import Config
@@ -299,6 +299,14 @@ async def send_photo(
         chat_id=config.admin_chat_id, photo=photo, caption=caption,
         disable_notification=priority is not Priority.CRITICAL,
     )
+
+
+async def send_keyboard(bot: Bot, config: Config, db: Database, text: str, keyboard: ReplyKeyboardMarkup) -> None:
+    """A message that brings the reply keyboard (Telegram shows a new one only
+    with a message): silent and never deferred — a digest cannot carry it."""
+    if config.admin_chat_id is None:
+        return
+    await bot.send_message(chat_id=config.admin_chat_id, text=text, reply_markup=keyboard, disable_notification=True)
 
 
 async def send_document(

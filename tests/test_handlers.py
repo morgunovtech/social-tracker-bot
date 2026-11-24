@@ -145,10 +145,16 @@ async def test_every_button_answers_once_and_leads_back(make_update, make_contex
         for text, markup in zip(query.edits, query.markups, strict=True):
             assert_telegram_html(text)
             targets = buttons(markup)
-            if markup is not None and data not in (ui.HOME, ui.NOW):
-                assert any(label.startswith("← ") for label in targets.values()), f"{data}: no way back"
+            # The home screen and what returns to it (…:home) are the root of the tree.
+            if markup is not None and data not in (ui.HOME, ui.NOW) and not data.endswith(f":{ui.HOME}"):
+                assert any(label.startswith("← ") or label == "🏠 Главная" for label in targets.values()), (
+                    f"{data}: no way back"
+                )
             queue.extend(targets)
-    assert {ui.DYNAMICS, ui.TABLE, ui.SECURITY, "sec:ask:youtube:pwd", "set:hour:9", ui.MONITORS, ui.HELP} <= seen
+    assert {ui.DYNAMICS, ui.TABLE, ui.SECURITY, "sec:ask:youtube:pwd", "set:hour:9", ui.MONITORS, "mute"} <= seen
+    for data in (cb.ABOUT, cb.ICONS, cb.HELP):                                  # the inline twins of the bottom buttons
+        query = await press(make_update, make_context, data)
+        assert query.edits[0].startswith(("<b>📖", "<b>❓")) and buttons(query.markups[0]) == {"home": "🏠 Главная"}
 
 
 async def test_home_is_the_report_with_the_next_run(make_update, make_context, insert):
@@ -158,7 +164,7 @@ async def test_home_is_the_report_with_the_next_run(make_update, make_context, i
     text = update.message.replies[0]
     assert text.startswith("<b>📊 Подписчики") and f"Telegram — 1{NBSP}000" in text
     assert "⏭ Следующий отчёт:" in text and "UTC" in text
-    assert {"now", "dyn", "sec", "set", "help"} <= set(buttons(update.message.markups[0]))
+    assert {"now", "dyn", "sec", "set", "mute"} <= set(buttons(update.message.markups[0]))
 
 
 async def test_start_greets_and_sets_the_menu_button(make_update, make_context):
@@ -166,14 +172,15 @@ async def test_start_greets_and_sets_the_menu_button(make_update, make_context):
     await handlers.cmd_start(update, make_context())
     greeting, home = update.message.replies
     assert "Пока всё в порядке, я молчу" in greeting
-    assert update.message.markups[0].keyboard[0][0].text == ui.MENU_BUTTON_TEXT
+    assert [b.text for b in update.message.markups[0].keyboard[0]] == ["🏠 Главная", "📖 Что я умею", "❓ Значки"]
+    assert "📖 Что я умею" in greeting
     assert home.startswith("<b>📊 Подписчики")
 
 
 def test_menu_button_of_older_versions_still_works():
-    for label in (ui.MENU_BUTTON_TEXT, *ui.LEGACY_MENU_BUTTON_TEXTS):
-        assert handlers._MENU_BUTTON.pattern.match(label)
-    assert not handlers._MENU_BUTTON.pattern.match("Меню")
+    for label in (ui.HOME_BUTTON_TEXT, *ui.LEGACY_HOME_BUTTON_TEXTS, "🏠 Menu"):
+        assert handlers._HOME_BUTTON.pattern.match(label)
+    assert not handlers._HOME_BUTTON.pattern.match("Меню")
 
 
 async def test_buttons_of_the_old_menu_open_the_new_one(make_update, make_context, insert):
@@ -185,18 +192,19 @@ async def test_buttons_of_the_old_menu_open_the_new_one(make_update, make_contex
     assert "📋 Все платформы · 7 дн." in query.edits[0]
 
     query = await press(make_update, make_context, "quiet:toggle")  # gone: home, with a word why
-    assert query.answers[0]["text"] == "Это меню устарело — вот актуальное"
+    assert query.answers[0]["text"] == "Кнопка устарела — вот главная. Она всегда под полем ввода: «🏠 Главная»"
     assert query.edits[0].startswith("<b>📊 Подписчики")
 
 
 async def test_unknown_text_and_commands_get_a_hint(make_update, make_context):
     update = make_update(text="привет")
     await handlers.on_unknown_text(update, make_context())
-    assert "/help" in update.message.replies[0] and update.message.markups[0].keyboard
+    assert update.message.replies[0] == "Не понял. Всё — кнопками под полем ввода: 🏠 Главная, 📖 Что я умею, ❓ Значки."
+    assert update.message.markups[0].keyboard
 
     update = make_update(text="/foo")
     await handlers.on_unknown_command(update, make_context())
-    assert update.message.replies == ["Такой команды нет. Все команды — в /help."]
+    assert update.message.replies == ["Такой команды нет. Все команды — в «📖 Что я умею» под полем ввода."]
 
 
 # --- followers ---------------------------------------------------------------

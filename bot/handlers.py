@@ -88,9 +88,10 @@ ALLOWED_UPDATES = (
 
 class _ReplyButton(filters.MessageFilter):
     """A button of the persistent reply keyboard, by its text: the current
-    label, its English translation and, for the menu, the labels of older
-    versions — a user who switched BOT_LANG still has the old keyboard on
-    screen. The set is built per message, after the language is set."""
+    label, its English translation and the labels of older versions — a user
+    who switched BOT_LANG, or has not had a message since the update, still
+    has the old keyboard on screen. The set is built per message, after the
+    language is set."""
 
     def __init__(self, name: str, key: str, legacy: tuple[str, ...] = ()):
         super().__init__(name=name)
@@ -108,10 +109,16 @@ class _ReplyButton(filters.MessageFilter):
         return bool(message.text) and message.text in self.texts()
 
 
-_MENU_BUTTON = _ReplyButton("menu_button", ui.MENU_BUTTON_TEXT, (*ui.LEGACY_MENU_BUTTON_TEXTS, "🏠 Menu"))
-_REFRESH_BUTTON = _ReplyButton("refresh_button", ui.REFRESH_BUTTON_TEXT)
-_MUTE_BUTTON = _ReplyButton("mute_button", ui.MUTE_BUTTON_TEXT)
-_REPLY_BUTTONS = _MENU_BUTTON | _REFRESH_BUTTON | _MUTE_BUTTON
+_HOME_BUTTON = _ReplyButton("home_button", ui.HOME_BUTTON_TEXT, (*ui.LEGACY_HOME_BUTTON_TEXTS, "🏠 Menu"))
+_ABOUT_BUTTON = _ReplyButton("about_button", ui.ABOUT_BUTTON_TEXT)
+_ICONS_BUTTON = _ReplyButton("icons_button", ui.ICONS_BUTTON_TEXT)
+# The bottom buttons of 1.4.0, still on screen until a message brings the new keyboard.
+_REFRESH_BUTTON = _ReplyButton("refresh_button", ui.LEGACY_REFRESH_BUTTON_TEXT)
+_MUTE_BUTTON = _ReplyButton("mute_button", ui.LEGACY_MUTE_BUTTON_TEXT)
+_REPLY_BUTTONS = _HOME_BUTTON | _ABOUT_BUTTON | _ICONS_BUTTON | _REFRESH_BUTTON | _MUTE_BUTTON
+# The answer to anything the bot does not understand, and to a stale button.
+NOT_UNDERSTOOD = "Не понял. Всё — кнопками под полем ввода: 🏠 Главная, 📖 Что я умею, ❓ Значки."
+STALE_BUTTON = "Кнопка устарела — вот главная. Она всегда под полем ввода: «🏠 Главная»"
 
 
 def _deps(context: ContextTypes.DEFAULT_TYPE) -> tuple[Config, Database]:
@@ -158,6 +165,28 @@ OWNER_SETTING = "admin_chat_id"
 def _is_admin(update: Update, config: Config) -> bool:
     user = update.effective_user
     return user is not None and config.admin_chat_id is not None and user.id == config.admin_chat_id
+
+
+# The reply keyboard the owner has on screen: bumped when its buttons change,
+# so the new one is brought by one note after the update (Telegram replaces a
+# keyboard only with a message).
+KEYBOARD_SETTING = "reply_keyboard"
+KEYBOARD_VERSION = "2"   # 1.5.0: 🏠 Главная · 📖 Что я умею · ❓ Значки
+
+
+async def show_keyboard_once(bot, config: Config, db: Database) -> bool:
+    """At startup: bring the current keyboard to an owner who still has an
+    older one, once. Nothing before the first /start — it brings the keyboard."""
+    if config.admin_chat_id is None or await db.get_setting(KEYBOARD_SETTING) == KEYBOARD_VERSION:
+        return False
+    await notifier.send_keyboard(
+        bot, config, db,
+        t("Главные кнопки теперь под полем ввода: 🏠 Главная, 📖 Что я умею и ❓ Значки. Меню ☰ убрал — "
+          "команды работают как раньше, а «🔄 Обновить данные» и «🔕 Помолчать…» — на главной."),
+        ui.persistent_keyboard(),
+    )
+    await db.set_setting(KEYBOARD_SETTING, KEYBOARD_VERSION)
+    return True
 
 
 async def restore_owner(config: Config, db: Database) -> None:
@@ -391,6 +420,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     # Two messages: a message carries either the persistent keyboard or inline buttons.
     await update.message.reply_text(ui.welcome(claimed), reply_markup=ui.persistent_keyboard())
+    await db.set_setting(KEYBOARD_SETTING, KEYBOARD_VERSION)
     await _reply(update, await ui.home(db, config))
 
 
@@ -403,7 +433,14 @@ async def cmd_home(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 @_admin_only
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await _reply(update, ui.help_screen())
+    """/help and «📖 Что я умею»: what the bot does and every command."""
+    await _reply(update, ui.about_screen())
+
+
+@_admin_only
+async def cmd_icons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """«❓ Значки»: the icon dictionary and what rings."""
+    await _reply(update, ui.icons_screen())
 
 
 @_admin_only
@@ -617,16 +654,21 @@ async def cmd_mute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 @_admin_only
 async def cmd_mute_quick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """The 🔕 reply button: eight hours of silence, then the home screen."""
+    """The «🔕 Тихо 8 ч» reply button of 1.4.0: eight hours of silence, then the home screen."""
     config, db = _deps(context)
     note = await _mute(db, config, "8h")
     await _reply(update, (await ui.home(db, config)).noted(note))
 
 
 async def _reply_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """One of the three buttons at the bottom of the chat."""
+    """One of the three buttons at the bottom of the chat, or a button of the
+    1.4.0 keyboard still on screen (🔄 Обновить, 🔕 Тихо 8 ч)."""
     text = update.message.text or ""
-    if text in _REFRESH_BUTTON.texts():
+    if text in _ABOUT_BUTTON.texts():
+        await cmd_help(update, context)
+    elif text in _ICONS_BUTTON.texts():
+        await cmd_icons(update, context)
+    elif text in _REFRESH_BUTTON.texts():
         await cmd_now(update, context)
     elif text in _MUTE_BUTTON.texts():
         await cmd_mute_quick(update, context)
@@ -641,21 +683,21 @@ async def cmd_unmute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await _reply(update, (await ui.when_to_write(db, config)).noted(t("🔔 Снова пишу обо всём.")))
 
 
+def _ask_by_message(context: ContextTypes.DEFAULT_TYPE, kind: str) -> int:
+    """A command without its value starts the same step as its button: the
+    value comes as the next message, with «✖️ Отмена» (BOT_PRINCIPLES §2)."""
+    context.user_data["awaiting"] = kind
+    return AWAITING_INPUT
+
+
 @_admin_only
-async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    config, db = _deps(context)
-
+async def cmd_setcookie(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """/setcookie <li_at> stores the cookie; /setcookie alone asks for it as the next message."""
     if not context.args:
-        await update.message.reply_text(
-            t(
-                "Пришли cookie вместе с командой: /setcookie <значение li_at>\n\n"
-                "Где взять: linkedin.com → DevTools → Application → Cookies → li_at → Value. "
-                "Сообщение с cookie я сразу удалю."
-            )
-        )
-        return
-
+        await _reply(update, ui.input_prompt("cookie"))
+        return _ask_by_message(context, "cookie")
     await _store_cookie(update, context, " ".join(context.args).strip())
+    return ConversationHandler.END
 
 
 async def _store_cookie(update: Update, context: ContextTypes.DEFAULT_TYPE, cookie: str) -> None:
@@ -729,20 +771,13 @@ async def _store_cookie(update: Update, context: ContextTypes.DEFAULT_TYPE, cook
 
 
 @_admin_only
-async def cmd_igtoken(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    config, db = _deps(context)
-
+async def cmd_igtoken(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """/igtoken <token> stores the token; /igtoken alone asks for it as the next message."""
     if not context.args:
-        await update.message.reply_text(
-            t(
-                "Пришли токен вместе с командой: /igtoken <токен>\n\n"
-                "Где взять: developers.facebook.com → твоё приложение → Instagram API → "
-                "«API setup with Unified login» → Generate token. Сообщение с токеном я сразу удалю."
-            )
-        )
-        return
-
+        await _reply(update, ui.input_prompt("token"))
+        return _ask_by_message(context, "token")
     await _store_token(update, context, "".join(context.args).strip())
+    return ConversationHandler.END
 
 
 async def _store_token(update: Update, context: ContextTypes.DEFAULT_TYPE, token: str) -> None:
@@ -894,18 +929,15 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 @_admin_only
 async def on_unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(t("Такой команды нет. Все команды — в /help."))
+    await update.message.reply_text(
+        t("Такой команды нет. Все команды — в «📖 Что я умею» под полем ввода."), reply_markup=ui.persistent_keyboard()
+    )
 
 
 @_admin_only
 async def on_unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # The persistent keyboard again: the user may have hidden or lost it.
-    await update.message.reply_text(
-        t("Не понимаю это сообщение. Главная — кнопка «{button}» внизу, все команды — /help.").format(
-            button=t(ui.MENU_BUTTON_TEXT)
-        ),
-        reply_markup=ui.persistent_keyboard(),
-    )
+    await update.message.reply_text(t(NOT_UNDERSTOOD), reply_markup=ui.persistent_keyboard())
 
 
 # ---------------------------------------------------------------------------
@@ -1164,8 +1196,13 @@ async def _cb_instagram(press: _Press, context, args: list[str]) -> None:
     await _show(press.query, await ui.instagram(db, config))
 
 
-async def _cb_help(press: _Press, context, args: list[str]) -> None:
-    await _show(press.query, ui.help_screen())
+async def _cb_about(press: _Press, context, args: list[str]) -> None:
+    """«📖 Что я умею»; also the «❓ Помощь» button of older menus."""
+    await _show(press.query, ui.about_screen())
+
+
+async def _cb_icons(press: _Press, context, args: list[str]) -> None:
+    await _show(press.query, ui.icons_screen())
 
 
 async def _screen(context, screen_id: str) -> ui.Screen | None:
@@ -1189,22 +1226,26 @@ async def _cb_open(press: _Press, context, args: list[str]) -> None:
     config, db = _deps(context)
     screen = await _screen(context, args[0]) if args else None
     if screen is None:
-        await press.answer(t("Это меню устарело — вот актуальное"))
+        await press.answer(t(STALE_BUTTON))
         screen = await ui.home(db, config)
     await context.bot.send_message(chat_id=config.admin_chat_id, text=screen.text, **_markup(screen))
 
 
 async def _cb_mute(press: _Press, context, args: list[str]) -> None:
-    """mute:8h | mute:off — under an alert: a toast, the alert stays; with
-    :home — pressed on the home screen, which is re-rendered."""
+    """mute — the «🔕 Помолчать…» picker; mute:<1h|4h|8h|1d> | mute:off —
+    under an alert: a toast, the alert stays; with :home — pressed on the
+    home screen or the picker, and the home screen is shown."""
     config, db = _deps(context)
-    if not args or args[0] not in ("8h", "off") or len(args) > 2:
+    if not args:
+        await _show(press.query, ui.mute_picker())
+        return
+    if args[0] not in ("off", *ui.MUTE_CHOICES) or len(args) > 2:
         return
     if args[0] == "off":
         await _unmute(context)
         note = t("🔔 Снова пишу обо всём.")
     else:
-        await notifier.set_mute(db, notifier.MUTE_DEFAULT)
+        await notifier.set_mute(db, notifier.parse_duration(args[0]))
         note = t("🔕 Молчу до {until}.").format(until=await notifier.mute_until_local(db, config))
     if len(args) == 2 and args[1] == cb.HOME:
         await _show(press.query, (await ui.home(db, config)).noted(note))
@@ -1249,7 +1290,9 @@ _ROUTES: dict[str, Route] = {
     ui.MONITORS: _cb_monitors,
     ui.LINKEDIN: _cb_linkedin,
     ui.INSTAGRAM: _cb_instagram,
-    ui.HELP: _cb_help,
+    cb.ABOUT: _cb_about,
+    cb.ICONS: _cb_icons,
+    cb.HELP: _cb_about,
     ui.COMMENTS: _cb_comments,
     ui.CHANNEL: _cb_channel,
     cb.CONNECTIONS: _cb_connections,
@@ -1276,7 +1319,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     route = _ROUTES.get(_LEGACY.get(head, head))
     try:
         if route is None:
-            await press.answer(t("Это меню устарело — вот актуальное"))
+            await press.answer(t(STALE_BUTTON))
             await _show(query, await ui.home(db, config))
         else:
             await route(press, context, args)
@@ -1400,6 +1443,7 @@ COMMANDS = {
     "start": cmd_start,
     "stats": cmd_home,
     "help": cmd_help,
+    "icons": cmd_icons,
     "now": cmd_now,
     "week": cmd_week,
     "security": cmd_security,
@@ -1416,8 +1460,6 @@ COMMANDS = {
     "setquiet": cmd_setquiet,
     "mute": cmd_mute,
     "unmute": cmd_unmute,
-    "setcookie": cmd_setcookie,
-    "igtoken": cmd_igtoken,
     "cookieage": cmd_cookieage,
     "restore": cmd_restore,
 }
@@ -1449,7 +1491,13 @@ def register_handlers(app, config: Config, db: Database) -> None:
         allow_reentry=True,
     )
     input_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(input_conv_start, pattern="^(?:" + "|".join(map(re.escape, INPUT_KINDS)) + ")$")],
+        # A button, or /setcookie and /igtoken typed without their value (with
+        # it they store the secret at once and end there).
+        entry_points=[
+            CallbackQueryHandler(input_conv_start, pattern="^(?:" + "|".join(map(re.escape, INPUT_KINDS)) + ")$"),
+            CommandHandler("setcookie", cmd_setcookie),
+            CommandHandler("igtoken", cmd_igtoken),
+        ],
         states={
             AWAITING_INPUT: [
                 MessageHandler(_REPLY_BUTTONS, li_conv_menu),

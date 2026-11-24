@@ -99,7 +99,7 @@ async def test_open_sends_the_screen_as_a_new_message(make_update, make_context,
     assert query.edits == [] and bot.messages[-1].startswith("<b>🛡 Безопасность")
     assert "home" in buttons(bot.markups[-1])
     query = await press(make_update, make_context, "open:nope")
-    assert query.answers[0]["text"].startswith("Это меню устарело") and bot.messages[-1].startswith("<b>📊")
+    assert query.answers[0]["text"].startswith("Кнопка устарела") and bot.messages[-1].startswith("<b>📊")
 
 
 async def test_mute_is_a_toast_under_an_alert_and_a_rerender_on_home(make_update, make_context, db):
@@ -145,9 +145,29 @@ async def test_the_error_notice_carries_a_way_home(make_context, bot):
 
 # --- the reply keyboard ---------------------------------------------------------
 
-async def test_the_three_reply_buttons_act(make_update, make_context, db, monkeypatch):
-    assert [b.text for row in ui.persistent_keyboard().keyboard for b in row] == ["🏠 Меню", "🔄 Обновить", "🔕 Тихо 8 ч"]
+async def test_the_three_reply_buttons_act(make_update, make_context, db):
+    assert [b.text for row in ui.persistent_keyboard().keyboard for b in row] == ["🏠 Главная", "📖 Что я умею", "❓ Значки"]
 
+    update = make_update(text="🏠 Главная")
+    await handlers._reply_button(update, make_context())
+    assert update.message.replies[0].startswith("<b>📊")
+    assert {"now", "mute", "set"} <= set(buttons(update.message.markups[0]))       # refresh and silence: one tap
+
+    update = make_update(text="📖 Что я умею")
+    await handlers._reply_button(update, make_context())
+    text = update.message.replies[0]
+    assert text.startswith("<b>📖 Что я умею</b>") and buttons(update.message.markups[0]) == {"home": "🏠 Главная"}
+    for name in handlers.COMMANDS:                                             # every command is listed
+        assert f"/{name}" in text, name
+    assert "/setcookie" in text and "/igtoken" in text and "/cancel" in text
+
+    update = make_update(text="❓ Значки")
+    await handlers._reply_button(update, make_context())
+    text = update.message.replies[0]
+    assert text.startswith("<b>❓ Значки</b>") and "🔴 нужно действие сейчас" in text and "Звонит только 🔴" in text
+
+
+async def test_the_buttons_of_the_old_keyboard_keep_working(make_update, make_context, db, monkeypatch):
     async def collect(*args, **kwargs):
         return CollectOutcome(report="📊 r", has_change=False)
 
@@ -161,9 +181,10 @@ async def test_the_three_reply_buttons_act(make_update, make_context, db, monkey
     assert update.message.replies[0].startswith("🔕 Молчу до") and await notifier.mute_until(db) is not None
     assert "mute:off:home" in buttons(update.message.markups[0])
 
-    update = make_update(text="🏠 Меню")
-    await handlers._reply_button(update, make_context())
-    assert "<b>📊" in update.message.replies[0]
+    for old in ("🏠 Меню", "📊 Меню", "🏠 Menu"):
+        update = make_update(text=old)
+        await handlers._reply_button(update, make_context())
+        assert "<b>📊" in update.message.replies[0], old
     assert handlers._REFRESH_BUTTON.filter(SimpleNamespace(text="🔄 Обновить"))
     assert not handlers._REFRESH_BUTTON.filter(SimpleNamespace(text="Обновить"))
 
@@ -198,7 +219,7 @@ async def test_connections_screen_states(config, db):
     assert "Telegram — @test_channel · ⏳ первый сбор ещё не был" in screen.text
     assert "➖ Instagram — не подключено: INSTAGRAM_USERNAME в .env" in screen.text
     assert "LinkedIn — https://www.linkedin.com/in/test/ · ✏️ число вручную" in screen.text
-    assert buttons(screen.keyboard) == {"li": "💼 LinkedIn", "home": "← Главная"}
+    assert buttons(screen.keyboard) == {"li": "💼 LinkedIn", "home": "🏠 Главная"}
     await db.set_setting("linkedin_li_at", COOKIE)
     assert "🟠 подтверди первое число" in (await ui.connections(db, config)).text
     await db.upsert("linkedin", 4500, source="cookie")
@@ -208,9 +229,38 @@ async def test_connections_screen_states(config, db):
     assert {"li:cookie", "li:enter", "conn"} <= set(buttons((await ui.linkedin(db, config)).keyboard))
 
 
-def test_the_command_menu_lists_mute_channel_and_connections():
-    assert {"mute", "channel", "connections"} <= {c.command for c in main._bot_commands()}
-    assert "connections" in handlers.COMMANDS
+async def test_no_command_list_and_the_new_keyboard_is_brought_once(bot, config, db, monkeypatch):
+    async def nothing(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(main, "report_startup_changes", nothing)
+    app = SimpleNamespace(bot=bot, bot_data={"config": config, "db": db})
+    await main._post_init(app)
+    app.bot_data["scheduler"].shutdown(wait=False)
+    assert bot.calls == ["delete_my_commands", "set_chat_menu_button"]           # no ☰ list (§2)
+    assert len(bot.messages) == 1 and bot.messages[0].startswith("Главные кнопки теперь под полем ввода")
+    assert [b.text for row in bot.markups[0].keyboard for b in row] == ["🏠 Главная", "📖 Что я умею", "❓ Значки"]
+    assert bot.silent == [True]
+    assert not await handlers.show_keyboard_once(bot, config, db)                # once
+    assert "connections" in handlers.COMMANDS and "icons" in handlers.COMMANDS
+
+
+async def test_mute_picker_on_home(make_update, make_context, db):
+    query = await press(make_update, make_context, "mute")
+    assert query.edits[0].startswith("<b>🔕 Помолчать</b>") and "🔴" in query.edits[0]
+    assert set(buttons(query.markups[0])) == {"mute:1h:home", "mute:4h:home", "mute:8h:home", "mute:1d:home", "home"}
+    query = await press(make_update, make_context, "mute:4h:home")
+    assert query.edits[0].startswith("🔕 Молчу до") and "mute:off:home" in buttons(query.markups[0])
+    assert await notifier.mute_until(db) is not None
+
+
+async def test_setcookie_and_igtoken_without_a_value_ask_for_it(make_update, make_context):
+    for command, kind in (("setcookie", "cookie"), ("igtoken", "token")):
+        update, context = make_update(text=f"/{command}"), make_context()
+        assert await getattr(handlers, f"cmd_{command}")(update, context) == handlers.AWAITING_INPUT
+        assert context.user_data["awaiting"] == kind
+        assert update.message.replies[0].startswith("🔑 Пришли")
+        assert buttons(update.message.markups[0]) == {"input:cancel": "✖️ Отмена"}
 
 
 # --- a cookie, a token, a zone by button ------------------------------------------

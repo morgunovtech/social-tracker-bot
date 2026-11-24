@@ -118,6 +118,13 @@ class FakeBot:
     async def unban_chat_member(self, chat_id, user_id, **kwargs):
         self.unbanned.append((chat_id, user_id))
 
+    # The ☰ command list and the menu button at startup (bot/main.py).
+    async def delete_my_commands(self, **kwargs):
+        self.calls = [*getattr(self, "calls", []), "delete_my_commands"]
+
+    async def set_chat_menu_button(self, **kwargs):
+        self.calls = [*getattr(self, "calls", []), "set_chat_menu_button"]
+
 
 class FakeMessage:
     """An incoming message; replies and later edits of a reply land in .replies,

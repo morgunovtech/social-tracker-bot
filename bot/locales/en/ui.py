@@ -4,18 +4,8 @@ from __future__ import annotations
 
 STRINGS: dict[str, str] = {
     # Reply keyboard and greeting
-    "🏠 Меню": "🏠 Menu",
     "📊 Меню": "📊 Menu",
     "✅ Теперь этот бот твой: он отвечает только тебе.": "✅ This bot is yours now: it answers only you.",
-    "👋 Привет! Я слежу за подписчиками и безопасностью твоих аккаунтов.\n\n"
-    "Пока всё в порядке, я молчу. О падении подписчиков, накрутке, смене названия, ссылок "
-    "или админов и о письмах про новые входы пишу сразу, а сводку присылаю по расписанию.\n\n"
-    "Кнопка «{menu}» внизу экрана всегда возвращает на главную.":
-        "👋 Hi! I keep an eye on your accounts' followers and security.\n\n"
-        "While everything is fine, I stay quiet. A drop in followers, fake growth, a changed name, "
-        "links or admins, and emails about new sign-ins I report right away; the summary comes on schedule.\n\n"
-        "The \"{menu}\" button at the bottom of the screen always takes you home.",
-    "Меню — кнопкой ниже, команды — через /": "Menu: the button below; commands: via /",
     # Report schedule in words
     "каждый день": "every day",
     "по будням": "on weekdays",
@@ -58,11 +48,9 @@ STRINGS: dict[str, str] = {
     "🛡 Безопасность": "🛡 Security",
     "✏️ Ввести число LinkedIn": "✏️ Enter LinkedIn count",
     "⚙️ Настройки": "⚙️ Settings",
-    "❓ Помощь": "❓ Help",
     "⏳ Собираю свежие данные — это займёт несколько секунд…": "⏳ Collecting fresh data — this takes a few seconds…",
     "🖼 График за 30 дней": "🖼 30-day chart",
     "📋 По дням": "📋 By day",
-    "Главная": "Home",
     "Все": "All",
     "Динамика": "Trends",
     # Security
@@ -207,9 +195,6 @@ STRINGS: dict[str, str] = {
     "\nСейчас: {count}": "\nNow: {count}",
     "<b>✏️ LinkedIn вручную</b>\n\nПришли число подписчиков одним сообщением, например 4520.{current}":
         "<b>✏️ LinkedIn by hand</b>\n\nSend the follower count in one message, e.g. 4520.{current}",
-    "Отмена": "Cancel",
-    "Это не похоже на число. Пришли только цифры, например 4520, или нажми «Отмена».":
-        "That does not look like a number. Send digits only, e.g. 4520, or press \"Cancel\".",
     "<b>✏️ Проверь число</b>\n\n{count} сильно отличается от прошлого значения "
     "{prev}. Возможно, это опечатка.":
         "<b>✏️ Check the number</b>\n\n{count} differs a lot from the previous value "
@@ -217,12 +202,6 @@ STRINGS: dict[str, str] = {
     "Сохранить {count}": "Save {count}",
     "✏️ Ввести заново": "✏️ Enter again",
     # Help
-    "<b>❓ Помощь</b>": "<b>❓ Help</b>",
-    "Каждый день я собираю подписчиков и слежу за безопасностью аккаунтов. "
-    "Пока всё в порядке — молчу; о проблеме пишу сразу, а сводку присылаю по расписанию.":
-        "Every day I collect follower counts and watch over the accounts' security. "
-        "While everything is fine, I stay quiet; I report a problem right away, and the summary comes on schedule.",
-    "<b>Значки</b>": "<b>Icons</b>",
     # The icon dictionary (bot/monitors/__init__.py, ICON_LEGEND)
     "нужно действие сейчас": "act now",
     "звонит сразу, даже ночью и в тишине": "rings at once, even at night and while muted",
@@ -245,30 +224,16 @@ STRINGS: dict[str, str] = {
         "worker, a comment the group gets blocked for. 🟠 — an expired cookie, a rejected token, collection "
         "failures, a drop in followers, a new title or avatar."
     ),
-    "<b>Команды</b>": "<b>Commands</b>",
-    "/start — главная": "/start — home",
     "/now — обновить данные": "/now — refresh data",
     "/week — динамика за неделю и график": "/week — the week's trends and a chart",
     "/security — безопасность аккаунтов": "/security — account security",
     "/settings — настройки": "/settings — settings",
     "/history [платформа] [дни] — таблица по дням, до 90 дней": "/history [platform] [days] — day-by-day table, up to 90 days",
-    "/linkedin &lt;число&gt; — ввести LinkedIn вручную": "/linkedin &lt;count&gt; — enter LinkedIn by hand",
-    "/setcookie &lt;li_at&gt; — cookie LinkedIn для автосбора": "/setcookie &lt;li_at&gt; — LinkedIn cookie for automatic collection",
-    "/igtoken &lt;токен&gt; — токен Instagram для автосбора": "/igtoken &lt;token&gt; — Instagram token for automatic collection",
     "/settime ЧЧ:ММ — время отчёта": "/settime HH:MM — report time",
-    "/setday &lt;дни&gt; — дни отчёта: sat, mon-fri, mon,thu, daily": "/setday &lt;days&gt; — report days: sat, mon-fri, mon,thu, daily",
-    "/settz &lt;пояс&gt; — часовой пояс, например Europe/Moscow": "/settz &lt;zone&gt; — time zone, e.g. Europe/Moscow",
     "/setquiet on|off — одна строка вместо отчёта, если за неделю без изменений":
         "/setquiet on|off — one line instead of the report when a week brought no change",
     "/connections — подключения: что собирается само, чему нужен токен или cookie":
         "/connections — connections: what is collected by itself, what needs a token or a cookie",
-    "<b>Кнопки внизу</b>": "<b>The buttons at the bottom</b>",
-    "🏠 Меню — главная · 🔄 Обновить — собрать данные сейчас · 🔕 Тихо 8 ч — помолчать":
-        "🏠 Menu — home · 🔄 Refresh — collect the data now · 🔕 Quiet for 8 h — mute",
-    "Под тревогами и отчётами — кнопки туда, где разбираться; ⚙️ — выключить такие уведомления.":
-        "Under alerts and reports — buttons to where to look into it; ⚙️ — stop sending such notifications.",
-    "/mute &lt;время&gt; — помолчать: 1h, 8h, 1d (по умолчанию 8h); /unmute — снять":
-        "/mute &lt;time&gt; — pause notifications: 1h, 8h, 1d (default 8h); /unmute — resume",
     # 🔔 Когда писать: quiet hours and /mute (bot/ui.py when_to_write, bot/notifier.py)
     "🔔 Когда писать: {when}": "🔔 When to write: {when}",
     "🔔 Когда писать": "🔔 When to write",
@@ -348,13 +313,6 @@ STRINGS: dict[str, str] = {
     "/channel — жизнь канала: подписки и отписки, откуда пришли, посты и реакции": (
         "/channel — life of the channel: joins and leaves, where they came from, posts and reactions"
     ),
-    "<b>Бэкап</b>": "<b>Backup</b>",
-    "По воскресеньям я присылаю файл с базой (и по кнопке «📦 Бэкап сейчас» в настройках). "
-    "Чтобы вернуть историю, пришли этот файл или ответь на него командой /restore — "
-    "уже собранное не перезапишется.":
-        "On Sundays I send the database file (and on the \"📦 Backup now\" button in the settings). "
-        "To bring the history back, send that file or reply to it with /restore — "
-        "what is already collected is not overwritten.",
     # the text-input conversations and the restore prompt
     "🔑 Пришли значение cookie li_at одним сообщением "
     "(linkedin.com → DevTools → Application → Cookies → li_at → Value). "
@@ -370,8 +328,6 @@ STRINGS: dict[str, str] = {
         "I will check it and delete the message right away.",
     "🌍 Пришли название часового пояса из базы IANA одним сообщением, например Asia/Kolkata или America/Chicago.":
         "🌍 Send the name of the time zone from the IANA database in one message, e.g. Asia/Kolkata or America/Chicago.",
-    "Не знаю такой часовой пояс. Нужно название из базы IANA, например Europe/Moscow, или нажми «Отмена».":
-        "Unknown time zone. It must be an IANA name, e.g. Europe/Moscow, or press \"Cancel\".",
     "✅ Восстановить": "✅ Restore",
     # the reply keyboard, the home screen, 🔌 Подключения
     "🔄 Обновить": "🔄 Refresh",
@@ -402,6 +358,106 @@ STRINGS: dict[str, str] = {
     "🔌 Подключения": "🔌 Connections",
     "🔕 Тихо 8 ч": "🔕 Quiet for 8 h",
     "⚙️ Не присылать такие": "⚙️ Stop sending these",
+    # The three buttons under the input field (BOT_PRINCIPLES §2) and the greeting
+    "📖 Что я умею": "📖 What I do",
+    "❓ Значки": "❓ Icons",
+    "✖️ Отмена": "✖️ Cancel",
+    "Всё — кнопками ниже": "Everything is on the buttons below",
+    "👋 Привет! Я слежу за подписчиками и безопасностью твоих аккаунтов.\n\n"
+    "Пока всё в порядке, я молчу. О падении подписчиков, накрутке, смене названия, ссылок "
+    "или админов и о письмах про новые входы пишу сразу, а сводку присылаю по расписанию.\n\n"
+    "Под полем ввода — три кнопки: «{home}» — главный экран, «{about}» — что я делаю и все команды, "
+    "«{icons}» — что значат значки и что звонит.":
+        "👋 Hi! I keep an eye on your accounts' followers and security.\n\n"
+        "While everything is fine, I stay quiet. A drop in followers, fake growth, a changed name, "
+        "links or admins, and emails about new sign-ins I report right away; the summary comes on schedule.\n\n"
+        "Three buttons under the input field: \"{home}\" — the home screen, \"{about}\" — what I do and every "
+        "command, \"{icons}\" — what the icons mean and what rings.",
+    "Это не похоже на число. Пришли только цифры, например 4520, или нажми «✖️ Отмена».":
+        "That does not look like a number. Send digits only, e.g. 4520, or press \"✖️ Cancel\".",
+    "Не знаю такой часовой пояс. Нужно название из базы IANA, например Europe/Moscow, или нажми «✖️ Отмена».":
+        "I do not know that time zone. It needs a name from the IANA database, e.g. Europe/Moscow, "
+        "or press \"✖️ Cancel\".",
+    # «🔕 Помолчать…» on the home screen
+    "🔕 Помолчать…": "🔕 Mute…",
+    "<b>🔕 Помолчать</b>": "<b>🔕 Mute</b>",
+    "Тихие часы на каждую ночь — ⚙️ Настройки → 🔔 Когда писать. Команда: /mute 8h, снять — /unmute.":
+        "Quiet hours for every night — ⚙️ Settings → 🔔 When to write. Command: /mute 8h, lift it with /unmute.",
+    # «📖 Что я умею»
+    "<b>📖 Что я умею</b>": "<b>📖 What I do</b>",
+    "Пока всё в порядке — молчу; о проблеме пишу сразу, а сводку присылаю по расписанию. "
+    "Сети подключаются в .env, остальное — кнопками.":
+        "While everything is fine, I stay quiet; I report a problem right away, and the summary comes on schedule. "
+        "Networks are connected in .env, everything else with buttons.",
+    "<b>Подписчики</b>": "<b>Followers</b>",
+    "• Каждый день собираю подписчиков Telegram, YouTube, Instagram и LinkedIn — тех сетей, что подключены.":
+        "• Every day I collect the followers of Telegram, YouTube, Instagram and LinkedIn — the networks connected.",
+    "• Отчёт по расписанию: за день, неделю и месяц, график за 30 дней, лидер недели, прогноз до круглого "
+    "числа; 1-го числа — итоги месяца.":
+        "• A report on schedule: the day, the week and the month, a 30-day chart, the week's leader, a forecast "
+        "to the next milestone; on the 1st — the month's results.",
+    "• Сразу пишу о падении подписчиков, наплыве ботов, круглом числе и о том, что сбор не работает.":
+        "• I write at once about a drop in followers, a bot influx, a milestone and a collection that fails.",
+    "• 📣 Канал — подписки и отписки, откуда пришли, посты и реакции.":
+        "• 📣 Channel — joins and leaves, where they came from, posts and reactions.",
+    "<b>Безопасность</b>": "<b>Security</b>",
+    "• Каждые 30 минут сверяю профиль: название, описание и ссылки, аватарку, админов и владельца, "
+    "число видео и публикаций.":
+        "• Every 30 minutes I compare the profile: the title, the description and its links, the avatar, "
+        "the admins and the owner, the number of videos and posts.",
+    "• Письма безопасности, если подключён почтовый воркер: новый вход, смена пароля, почты или 2FA, код входа.":
+        "• Security emails, with the mail worker connected: a new sign-in, a changed password, email or 2FA, "
+        "a login code.",
+    "• Комментарии канала, если есть ключ Claude: карточка с кнопками на то, за что блокируют группу. "
+    "Сам ничего не удаляю.":
+        "• The channel's comments, with a Claude key: a card with buttons for what gets a group blocked. "
+        "I delete nothing myself.",
+    "• Чек-лист 2FA и паролей — балл в отчёте. Пароли не спрашиваю и не храню.":
+        "• A 2FA and password checklist — a score in the report. I never ask for or keep a password.",
+    "<b>Сам за собой</b>": "<b>Looking after myself</b>",
+    "• По воскресеньям присылаю бэкап базы (и по кнопке «📦 Бэкап сейчас» в настройках). Пришли файл "
+    "обратно — верну историю, уже собранное не перезапишется.":
+        "• On Sundays I send a database backup (and on \"📦 Backup now\" in the settings). Send the file "
+        "back — I bring the history back without overwriting what is already collected.",
+    "• После обновления пишу «🔄 Бот обновился», по воскресеньям — об уязвимостях в своих пакетах.":
+        "• After an update I write \"🔄 The bot has been updated\", on Sundays — about vulnerabilities in my packages.",
+    "<b>Где что</b>": "<b>Where things are</b>",
+    "🏠 Главная — отчёт, «🔄 Обновить данные», 📈 Динамика, 🛡 Безопасность, 📣 Канал, 🔌 Подключения, "
+    "«🔕 Помолчать…», ⚙️ Настройки.":
+        "🏠 Home — the report, \"🔄 Refresh data\", 📈 Trends, 🛡 Security, 📣 Channel, 🔌 Connections, "
+        "\"🔕 Mute…\", ⚙️ Settings.",
+    "❓ Значки — что значат значки и что звонит. Под тревогами — кнопки туда, где разбираться.":
+        "❓ Icons — what the icons mean and what rings. Under the alerts — buttons to where to look into them.",
+    "<b>Команды</b> — короткие пути к тому же, что на кнопках:": "<b>Commands</b> — shortcuts to what the buttons do:",
+    "/start, /stats — главная": "/start, /stats — home",
+    "/setday <дни> — дни отчёта: sat, mon-fri, mon,thu, daily": "/setday <days> — report days: sat, mon-fri, mon,thu, daily",
+    "/settz <пояс> — часовой пояс, например Europe/Moscow": "/settz <zone> — time zone, e.g. Europe/Moscow",
+    "/mute <время> — помолчать: 1h, 8h, 1d (по умолчанию 8h); /unmute — снять":
+        "/mute <time> — pause notifications: 1h, 8h, 1d (default 8h); /unmute — resume",
+    "/linkedin <число> — ввести LinkedIn вручную": "/linkedin <count> — enter LinkedIn by hand",
+    "/setcookie [li_at] — cookie LinkedIn для автосбора; без значения — спрошу его следующим сообщением":
+        "/setcookie [li_at] — the LinkedIn cookie for automatic collection; without the value I ask for it next",
+    "/cookieage — сколько живёт cookie LinkedIn": "/cookieage — how old the LinkedIn cookie is",
+    "/igtoken [токен] — токен Instagram для автосбора; без значения — спрошу его следующим сообщением":
+        "/igtoken [token] — the Instagram token for automatic collection; without the value I ask for it next",
+    "/restore — вернуть историю из бэкапа: ответом на файл или подписью к нему":
+        "/restore — bring the history back from a backup: as a reply to the file or its caption",
+    "/cancel — выйти из шага ввода": "/cancel — leave an input step",
+    "/help — этот экран": "/help — this screen",
+    # «❓ Значки»
+    "<b>❓ Значки</b>": "<b>❓ Icons</b>",
+    "Значок говорит, насколько срочно; слова — что случилось. Значки одни на тревогах, экранах и в отчётах.":
+        "The icon says how urgent; the words say what happened. The icons are the same in alerts, screens and reports.",
+    "<b>Что звонит</b>": "<b>What rings</b>",
+    "Звонит только 🔴 — даже ночью, в тихие часы и в «🔕 Помолчать». Остальное приходит без звука, "
+    "а в тихие часы и в тишине ждёт и приходит одной сводкой. Отчёт по расписанию — тоже без звука.":
+        "Only 🔴 rings — even at night, in quiet hours and during \"🔕 Mute\". Everything else arrives silently, "
+        "and in quiet hours or while muted it waits and comes as one digest. The scheduled report is silent too.",
+    "Помолчать — «🔕 Помолчать…» на главной или /mute 8h; тихие часы — ⚙️ Настройки → 🔔 Когда писать. "
+    "«⚙️ Не присылать такие» под тревогой выключает такие уведомления.":
+        "To mute — \"🔕 Mute…\" on the home screen or /mute 8h; quiet hours — ⚙️ Settings → 🔔 When to write. "
+        "\"⚙️ Stop sending these\" under an alert switches such notifications off.",
+    "/icons — значки: что значат и что звонит": "/icons — the icons: what they mean and what rings",
 }
 
 # Russian singular → (English singular, English plural).

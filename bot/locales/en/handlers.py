@@ -41,12 +41,6 @@ STRINGS: dict[str, str] = {
         "Common zones are a button away: /settz without a name.",
     "✅ Коротко без изменений: включено": "✅ Short when unchanged: on",
     "✅ Коротко без изменений: выключено": "✅ Short when unchanged: off",
-    "Пришли cookie вместе с командой: /setcookie <значение li_at>\n\n"
-    "Где взять: linkedin.com → DevTools → Application → Cookies → li_at → Value. "
-    "Сообщение с cookie я сразу удалю.":
-        "Send the cookie with the command: /setcookie <li_at value>\n\n"
-        "Where to find it: linkedin.com → DevTools → Application → Cookies → li_at → Value. "
-        "I will delete the message with the cookie right away.",
     "🟠 Удалить сообщение с cookie не получилось — удали его из чата вручную.":
         "🟠 Could not delete the message with the cookie — delete it from the chat yourself.",
     "❌ Это не похоже на cookie: значение слишком короткое.":
@@ -73,12 +67,6 @@ STRINGS: dict[str, str] = {
         "The check returned {count} — too far from the previous {prev}, the number was not recorded. "
         "If it is right, enter it: /linkedin {raw}",
     "✅ Cookie сохранён. {fetched}": "✅ Cookie saved. {fetched}",
-    "Пришли токен вместе с командой: /igtoken <токен>\n\n"
-    "Где взять: developers.facebook.com → твоё приложение → Instagram API → "
-    "«API setup with Unified login» → Generate token. Сообщение с токеном я сразу удалю.":
-        "Send the token with the command: /igtoken <token>\n\n"
-        "Where to find it: developers.facebook.com → your app → Instagram API → "
-        "\"API setup with Unified login\" → Generate token. I will delete the message with the token right away.",
     "🟠 Удалить сообщение с токеном не получилось — удали его из чата вручную.":
         "🟠 Could not delete the message with the token — delete it from the chat yourself.",
     "❌ Это не похоже на токен: значение слишком короткое.":
@@ -111,10 +99,6 @@ STRINGS: dict[str, str] = {
     "пусто": "empty",
     "✅ Восстановлено, добавлено записей: {added}. Всего: {total} ({period}).":
         "✅ Restored, records added: {added}. Total: {total} ({period}).",
-    "Такой команды нет. Все команды — в /help.": "No such command. All commands are in /help.",
-    "Не понимаю это сообщение. Главная — кнопка «{button}» внизу, все команды — /help.":
-        "I do not understand this message. The \"{button}\" button below opens the home screen, "
-        "all commands are in /help.",
     "Уже собираю данные — подожди несколько секунд": "Already collecting — give it a few seconds",
     "Для графика пока мало данных: нужно хотя бы два дня": "Not enough data for a chart yet: it needs at least two days",
     "График — ниже": "The chart is below",
@@ -140,7 +124,6 @@ STRINGS: dict[str, str] = {
     "Отчёт будет приходить в {time}": "The report will come at {time}",
     "включено": "on",
     "выключено": "off",
-    "Это меню устарело — вот актуальное": "That menu is outdated — here is the current one",
     "Отменено": "Cancelled",
     "Отменено.": "Cancelled.",
     # /mute and /unmute
@@ -150,14 +133,6 @@ STRINGS: dict[str, str] = {
         "Usage: /mute <time>\nExamples: /mute 1h, /mute 8h, /mute 30m, /mute 1d\nDefault: 8h",
     "🔔 Снова пишу обо всём.": "🔔 Writing about everything again.",
     # bot/main.py: the / menu
-    "Главная: подписчики и статус": "Home: followers and status",
-    "Обновить данные": "Refresh the data",
-    "Динамика за неделю": "This week's dynamics",
-    "Безопасность аккаунтов": "Account security",
-    "Настройки": "Settings",
-    "Помощь и все команды": "Help and all commands",
-    "Помолчать 8 часов": "Mute for 8 hours",
-    "Подключения: токены и cookie": "Connections: tokens and cookies",
     # bot/scheduler.py
     "📉 Подписчики за 30 дней": "📉 Followers over 30 days",
     "📦 Еженедельный бэкап базы. Чтобы вернуть из него историю, ответь на это сообщение "
@@ -171,5 +146,16 @@ STRINGS: dict[str, str] = {
     "файл повреждён": "the file is corrupted",
     "это не файл базы SQLite": "it is not an SQLite database file",
     "в файле нет таблиц бота": "the file has none of the bot's tables",
+    # The three buttons (BOT_PRINCIPLES §2): what is not understood, a stale button, the note after the update
+    "Не понял. Всё — кнопками под полем ввода: 🏠 Главная, 📖 Что я умею, ❓ Значки.":
+        "Didn't get that. Everything is on the buttons under the input field: 🏠 Home, 📖 What I do, ❓ Icons.",
+    "Кнопка устарела — вот главная. Она всегда под полем ввода: «🏠 Главная»":
+        "This button is outdated — here is the home screen. It is always under the input field: \"🏠 Home\"",
+    "Такой команды нет. Все команды — в «📖 Что я умею» под полем ввода.":
+        "No such command. Every command is in \"📖 What I do\" under the input field.",
+    "Главные кнопки теперь под полем ввода: 🏠 Главная, 📖 Что я умею и ❓ Значки. Меню ☰ убрал — "
+    "команды работают как раньше, а «🔄 Обновить данные» и «🔕 Помолчать…» — на главной.":
+        "The main buttons are now under the input field: 🏠 Home, 📖 What I do and ❓ Icons. The ☰ menu is gone — "
+        "commands work as before, and \"🔄 Refresh data\" and \"🔕 Mute…\" are on the home screen.",
 }
 PLURALS: dict[str, tuple[str, str]] = {}
