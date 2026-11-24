@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from telegram.error import InvalidToken
 from telegram.ext import Application
 
 from bot import behavior, watchdog
@@ -117,8 +118,17 @@ def build_application(config: Config, db: Database) -> Application:
 
 
 def main() -> None:
+    """Start the bot. A setting that is wrong stops it with one readable log
+    line, not a traceback: an empty or placeholder BOT_TOKEN, a bad value in
+    .env (Config.from_env), a token Telegram refuses. python-telegram-bot puts
+    the refused token into its exception text, and an uncaught exception is
+    printed past the log formatter that would mask it."""
     global _config
-    config = Config.from_env()
+    try:
+        config = Config.from_env()
+    except RuntimeError as e:
+        logger.error("%s", e)
+        raise SystemExit(1) from None
     _config = config
     set_language(config.lang)
     db = Database(config.db_path)
@@ -128,7 +138,12 @@ def main() -> None:
     # Keep what was sent while the bot was down for a deploy; stale messages are
     # dropped by handlers.drop_stale_messages. Joins, leaves and reactions in
     # the channel only come when asked for (ALLOWED_UPDATES).
-    app.run_polling(drop_pending_updates=False, allowed_updates=list(ALLOWED_UPDATES))
+    try:
+        app.run_polling(drop_pending_updates=False, allowed_updates=list(ALLOWED_UPDATES))
+    except InvalidToken:
+        logger.error("Telegram refused BOT_TOKEN: revoked or mistyped? Copy it again from @BotFather "
+                     "(/mybots → the bot → API Token) into .env or the Railway variables")
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":
