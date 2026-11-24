@@ -2,7 +2,9 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
-## Unreleased
+## 1.6.0 — 2026-11-24
+
+The digest after a quiet night or a `/mute` reads like the principles say: one headline per held message, 🔴 and 🟠 first, and «ℹ️ N» for the rest of any of them. And 🛡 Security's recent events read in the chat language, whatever language they were recorded in.
 
 **The digest after the silence: headlines, and the rest a tap away** (the owner's `BOT_PRINCIPLES.md`, §3)
 - What waited out quiet hours or a `/mute` used to come back as every held alert in full, one after another in one long message. Now the digest is one line per message — its headline, icon first — 🔴 first, then 🟠, then the rest (a recovery, a fact, a report), each with the time it happened.
