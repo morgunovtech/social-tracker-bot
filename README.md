@@ -113,6 +113,8 @@ Logs: `docker compose logs -f`. Stop: `docker compose down`.
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/social-tracker-bot?referralCode=7hTMqE)
 
+The button carries my Railway referral code: Railway shares with me a part of what it bills an account created through it; your price stays the same. The same template without the code: <https://railway.com/deploy/social-tracker-bot>.
+
 Press the button, then **Configure** — the Deploy button stays grey until you do — and paste the token into `BOT_TOKEN`; leave the other fields empty. The template creates the service from this repository with a volume at `/app/data`; the networks are connected in the chat afterwards (🔌 Connections), so there is nothing to fill in under **Variables**.
 
 **What it costs.** For the first 30 days Railway gives $5 and asks for no card. After that the account drops to the Free plan with $1 of usage a month, which a bot that runs around the clock can outgrow: when the credit ends the bot stops and nobody is told, and 30 days later Railway deletes the volume with the database. The Hobby plan is $5 a month and includes $5 of usage; it needs a card that works abroad. Railway's terms: [its docs](https://docs.railway.com/reference/pricing/free-trial). The free way is your own server, above.
