@@ -2,7 +2,7 @@
 
 > Telegram-бот на вашем сервере для ваших соцсетей: подписчики в Telegram, YouTube, Instagram и LinkedIn, жизнь канала и безопасность аккаунтов — признаки угона, письма безопасности, опасные комментарии, — а ещё недельный отчёт о том, как вас находят люди и ИИ-ассистенты. Молчит, пока всё в порядке.
 
-🇬🇧 [In English](README.md) · [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/cL4hpn?referralCode=7hTMqE)
+🇬🇧 [In English](README.md) · [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/social-tracker-bot?referralCode=7hTMqE)
 
 Бот говорит с вами по-русски или по-английски. Язык он берёт из вашего Telegram при первом `/start` — русский остаётся русским, любой другой становится английским, — а кнопка «🗣 Язык / Language» в ⚙️ Настройках меняет его в любой момент; настройка одинаковая.
 
@@ -109,7 +109,7 @@ services:
 
 ### Railway
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/cL4hpn?referralCode=7hTMqE)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/social-tracker-bot?referralCode=7hTMqE)
 
 Нажмите кнопку, затем **Configure** — до этого кнопка Deploy серая — и вставьте токен в `BOT_TOKEN`; остальные поля оставьте пустыми. Шаблон создаёт сервис из этого репозитория с volume на `/app/data`; необязательные сети — переменные, которые можно заполнить потом (сервис → **Variables**).
 
@@ -286,7 +286,7 @@ python scripts/clean_deleted.py @your_channel --yes    # удалить
 ## Что создаётся вне репозитория
 
 - Telegram-бот (@BotFather) и, если нужен YouTube, API-ключ в проекте Google Cloud.
-- На Railway: проект с одним сервисом, собранным из этого репозитория, и volume на `/app/data` — их создаёт шаблон (`cL4hpn`); чтобы убрать — удалите проект.
+- На Railway: проект с одним сервисом, собранным из этого репозитория, и volume на `/app/data` — их создаёт шаблон (`social-tracker-bot`); чтобы убрать — удалите проект.
 - Публичный пакет на GitHub, `ghcr.io/morgunovtech/social-tracker-bot` — образ, который CI публикует на каждый зелёный `main`; удаляется в Packages репозитория.
 - Для Instagram: приложение Meta с вариантом Instagram API, бизнес-портфель, которому оно принадлежит, конфигурация «Facebook Login for Business» и роль Instagram Tester на вашем аккаунте. Удаление: приложение — на [developers.facebook.com](https://developers.facebook.com/apps/) (Settings → Basic → Remove app), портфель — в Meta Business Suite → Настройки компании → Информация о компании, доступ приложения — в Instagram → Настройки → Website permissions.
 - Опционально: проверка на [healthchecks.io](https://healthchecks.io) или задача heartbeat в TofsDevOps (задаётся в ⏱ Сторож или `HEALTHCHECK_URL`; чтобы убрать — удалите её там) и эндпоинт вашего сайта (`SITE_INGEST_URL`).
