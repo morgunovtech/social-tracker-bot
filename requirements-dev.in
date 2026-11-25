@@ -1,0 +1,9 @@
+# The tools CI and a developer need (not in the image), pinned.
+# requirements-dev.txt is the lock compiled from this file with hashes for
+# every package (see CONTRIBUTING.md, «Dependencies»); change a pin here,
+# then recompile. Packages the bot uses too stay at the bot's versions:
+-c requirements.txt
+pytest==9.2.0
+pytest-asyncio==1.5.0
+ruff==0.17.5
+pip-audit==2.10.1

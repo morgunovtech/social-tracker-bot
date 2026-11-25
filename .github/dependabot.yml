@@ -1,4 +1,6 @@
-# Dependabot opens one grouped PR per week with every Python update, plus
+# Dependabot opens one grouped PR per week with every Python update (the
+# bot's lock, requirements.in → requirements.txt, and the dev tools' lock,
+# requirements-dev.in → requirements-dev.txt, both in /), plus
 # monthly PRs for the base image, the Actions and the mail-worker's npm
 # packages. CI tests them; the auto-merge workflow merges only patch/minor
 # bumps of the Python libraries once CI is green, and Railway redeploys from
@@ -36,8 +38,8 @@ updates:
       interval: monthly
     cooldown:
       default-days: 7
-  # The mail-worker is deployed by hand (npx wrangler deploy): a merged bump
-  # reaches Cloudflare with the next deploy, not by itself.
+  # The mail-worker is deployed by hand (sh mail-worker/update.sh --deploy):
+  # a merged bump reaches Cloudflare with the next deploy, not by itself.
   - package-ecosystem: npm
     directory: /mail-worker
     schedule:

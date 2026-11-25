@@ -264,7 +264,7 @@ LinkedIn — 4 981
 
 Бот обновляется сам, не трогая свой контейнер изнутри:
 
-1. **Dependabot** раз в неделю (в субботу) открывает один общий PR со всеми обновлениями Python-пакетов, раз в месяц — для базового образа, Actions и npm-пакетов mail-worker (воркер деплоится вручную, так что влитое обновление доедет до Cloudflare со следующим `npx wrangler deploy`).
+1. **Dependabot** раз в неделю (в субботу) открывает один общий PR со всеми обновлениями Python-пакетов, раз в месяц — для базового образа, Actions и npm-пакетов mail-worker (воркер деплоится вручную, так что влитое обновление доедет до Cloudflare со следующим `sh mail-worker/update.sh --deploy`).
 2. **CI** проверяет каждый: ruff, pytest на Python 3.12–3.15, `pip-audit`, сборку продового образа, который должен стартовать от `appuser`, и тесты с `npm audit` у mail-worker.
 3. **Minor и patch вливаются сами**, когда CI зелёный: job auto-merge (`.github/workflows/dependabot-automerge.yml`) сам дожидается проверок «lint · test · audit» и «mail-worker», так что правило ветки ему для этого не нужно; major, базовый образ, Actions и npm-пакеты ждут вас. Защита ветки `main` требует те же пять проверок от любого PR, вашего тоже.
 4. **Railway передеплоивает** из `main`.
@@ -305,7 +305,8 @@ python scripts/clean_deleted.py @your_channel --yes    # удалить
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+.venv/bin/pip install --require-hashes --no-deps -r requirements-dev.txt   # ruff, pytest, pip-audit
+.venv/bin/pip install --require-hashes --no-deps -r requirements.txt       # ровно то, что ставит образ
 .venv/bin/ruff check .
 .venv/bin/pytest -q
 ```

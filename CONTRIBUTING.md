@@ -12,7 +12,8 @@ Thanks for looking. This is a small self-hosted bot; issues and pull requests ar
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+.venv/bin/pip install --require-hashes --no-deps -r requirements-dev.txt   # ruff, pytest, pip-audit
+.venv/bin/pip install --require-hashes --no-deps -r requirements.txt       # exactly what the image gets
 .venv/bin/ruff check .
 .venv/bin/pytest -q
 ```
@@ -29,6 +30,8 @@ The tests never touch the network: Telegram is a fake bot, every API is a local 
 ## Dependencies
 
 Direct dependencies are pinned in `requirements.in`; `requirements.txt` is the lock compiled from it with hashes, and the image installs exactly that (`--require-hashes --no-deps`). Changed a pin? Recompile the lock with `uv pip compile requirements.in --universal --python-version 3.12 --generate-hashes --no-header -o requirements.txt` (Dependabot does it in its own PRs).
+
+The dev tools (ruff, pytest, pytest-asyncio, pip-audit) are locked the same way: pins in `requirements-dev.in`, the hashed lock in `requirements-dev.txt`, one lock for Python 3.12–3.15, installed by CI with the same flags. Its `-c requirements.txt` line keeps a package the bot uses too (certifi, packaging…) at the bot's version, so recompile it after the main lock: `uv pip compile requirements-dev.in --universal --python-version 3.12 --generate-hashes --no-header -o requirements-dev.txt`. Install the dev lock first and `requirements.txt` second, as above: if the two ever disagree, the image's version wins and `pip check` says so. `tests/test_lock.py` fails when a lock is behind its `.in` file.
 
 ## Principles
 

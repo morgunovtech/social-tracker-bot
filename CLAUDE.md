@@ -4,12 +4,12 @@ General rules for every project (branches and PRs, worktrees, no twins, repos in
 
 ## Commands
 
-- Run: `cp .env.example .env` (fill in `BOT_TOKEN`; `ADMIN_CHAT_ID` is optional, the first `/start` is the owner), then `docker compose up -d`, or `python -m bot.main` in a venv with `requirements.txt` installed.
+- Run: `cp .env.example .env` (fill in `BOT_TOKEN`; `ADMIN_CHAT_ID` is optional, the first `/start` is the owner), then `docker compose up -d`, or `python -m bot.main` in a venv with `requirements.txt` installed (the dev tools: `pip install --require-hashes --no-deps -r requirements-dev.txt` first, then the same for `requirements.txt` — both are hashed locks compiled from their `.in` files, see CONTRIBUTING.md, «Dependencies»).
 - Test / lint (the same as CI): `ruff check .`, `pytest -q` (offline: a fake Telegram, local HTTP servers for every API), `pip-audit -r requirements.txt --strict`; the mail-worker: `cd mail-worker && npm test`.
 
 ## Deploy
 
-Railway redeploys from `main` on every push (project «Social Tacker Bot», service `social-tracker-bot`, volume at `/app/data`); the Railway template `social-tracker-bot` is the one-click path for others. The mail-worker is a Cloudflare Email Worker deployed by hand (`npx wrangler deploy` in `mail-worker/`). Verify a deploy by the «🔄 Бот обновился» message or the build line in ⚙️ Settings.
+Railway redeploys from `main` on every push (project «Social Tacker Bot», service `social-tracker-bot`, volume at `/app/data`); the Railway template `social-tracker-bot` is the one-click path for others. The mail-worker is a Cloudflare Email Worker deployed by hand, a merge never deploys it: the first time by `mail-worker/README.md`, «Setup»; an update with `sh mail-worker/update.sh` (a dry run) and then `--deploy`. Never run a plain `npx wrangler deploy` from a clean checkout: `wrangler.toml` is a template (placeholder KV id, empty `ALLOWED_SENDERS`), the real values live only on Cloudflare, and an empty `ALLOWED_SENDERS` makes the worker reject every mail. Verify a deploy by the «🔄 Бот обновился» message or the build line in ⚙️ Settings.
 
 ## Conventions
 
