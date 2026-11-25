@@ -1115,7 +1115,7 @@ async def linkedin_prompt(db: Database) -> Screen:
 INPUT_PROMPTS = {
     "rep_words": (
         "🏷 Пришли через запятую, как тебя и твои продукты ищут: имя и фамилию (обоими алфавитами, если так ищут), "
-        "названия продуктов и сайтов — например: Семён Моргунов, Semyon Morgunov, FoundYou, Good Pass. "
+        "названия продуктов и сайтов — например: Семён Моргунов, Semyon Morgunov, FoundYou, Fingerprint. "
         "Регистр не важен; пробел внутри слова находит и слитное написание."
     ),
     "rep_google": (

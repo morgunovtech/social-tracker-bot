@@ -2,6 +2,13 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.8.5 — 2026-11-25
+
+One line of bot copy: the Reputation set-up hint that asks for your brand words gives different examples. Nothing else changes.
+
+**Changed**
+- The example brand words in the Reputation hint (🔌 Подключения → 🔎 Репутация → the brand words step, in both languages) now name only products on the owner's public showcase; a product kept off it is no longer mentioned.
+
 ## 1.8.4 — 2026-11-24
 
 Documentation only: the privacy table and SECURITY.md now name every host the bot talks to and every secret it keeps, the two READMEs say the same things, and the list of what the bot creates outside the repository is complete. Nothing in the bot changes.
