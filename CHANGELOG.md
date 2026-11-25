@@ -2,6 +2,18 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.11.0 — 2026-11-25
+
+The base image now updates itself, every week. No new variables, permissions or requests; the bot behaves the same in the chat.
+
+**A fresh base image**
+- Dependabot checks the base image, `python:3.15-slim-trixie`, every week — on Saturday at 13:00 Moscow time, in the window of the Python libraries' PR — instead of once a month; a new build of the image waits 3 days, not 7: the tag is re-pushed every 1–7 days, and a week-long wait could hold every new build back for weeks.
+- A PR that changes only the digest in the `FROM` line (same tag: Debian's fixes, at most a Python patch release) merges itself after the same CI: the image is built, started on a root-owned volume and built for arm64. After the merge the CI run on `main` publishes a fresh `:latest` to ghcr.io, and Railway rebuilds the bot. Such a PR used to wait for you, and the image kept an old base for weeks: on 25 Nov it was a build of 5 Nov while Docker Hub had one of 24 Nov. Rebuilding on a schedule would not have fixed it — the base is pinned by digest and the packages by hash, so it would rebuild the same image.
+- A new Python in the image (the tag changes) still waits for you: CI does not run the tests inside the new image.
+
+**Running it**
+- On Railway the bot may restart once more on Saturday — after a new build of the image — and says «🔄 Бот обновился» with the new build number, as after every update (and the Python version, when the build brings a patch release). On your own server `docker compose pull && docker compose up -d` brings the fresh base.
+
 ## 1.10.3 — 2026-11-25
 
 A safe way to update a deployed mail-worker, and the dev tools installed from a hashed lock. The bot itself behaves the same.

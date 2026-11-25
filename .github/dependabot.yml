@@ -1,13 +1,15 @@
 # Dependabot opens one grouped PR per week with every Python update (the
 # bot's lock, requirements.in → requirements.txt, and the dev tools' lock,
-# requirements-dev.in → requirements-dev.txt, both in /), plus
-# monthly PRs for the base image, the Actions and the mail-worker's npm
-# packages. CI tests them; the auto-merge workflow merges only patch/minor
-# bumps of the Python libraries once CI is green, and Railway redeploys from
-# main. A version reaches a PR no sooner than 7 days after its release
-# (cooldown; security updates are not delayed), a major one after 30. The bot
-# then reports «🔄 Бот обновился» on its next start, and lists the PRs that
-# wait for a human in its Sunday check.
+# requirements-dev.in → requirements-dev.txt, both in /), a weekly PR for the
+# base image, and monthly PRs for the Actions and the mail-worker's npm
+# packages. CI tests them; the auto-merge workflow merges patch/minor bumps
+# of the Python libraries and a new build of the same base image (only the
+# digest in FROM changes) once CI is green, Railway redeploys from main, and
+# the CI run on main publishes the new :latest. A version reaches a PR no
+# sooner than 7 days after its release, a major one after 30, a base image
+# build after 3 (cooldown; security updates are not delayed). The bot then
+# reports «🔄 Бот обновился» on its next start when Python or a package
+# changed, and lists the PRs that wait for a human in its Sunday check.
 version: 2
 updates:
   - package-ecosystem: pip
@@ -26,12 +28,23 @@ updates:
       python-deps:
         patterns: ["*"]
     labels: ["dependencies"]
+  # The base image: python:3.15-slim-trixie is rebuilt every few days (Debian
+  # security fixes, a Python patch release). The digest in FROM pins one
+  # build, so without this PR the bot and the ghcr.io image keep an old base
+  # for good — rebuilding on a schedule would rebuild the same thing. A PR
+  # that moves only the digest (same tag) merges itself after CI; one that
+  # changes the tag (a new Python) waits for a human.
   - package-ecosystem: docker
     directory: /
     schedule:
-      interval: monthly
+      interval: weekly
+      day: saturday
+      time: "13:00"   # the pip window: the redeploy after the merge restarts the bot
+      timezone: Europe/Moscow
+    # 3 days, not 7: the tag is re-pushed every 1–7 days, and a cooldown
+    # longer than that gap can hold every new build back for weeks.
     cooldown:
-      default-days: 7
+      default-days: 3
   - package-ecosystem: github-actions
     directory: /
     schedule:
