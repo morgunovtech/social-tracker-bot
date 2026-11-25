@@ -102,6 +102,7 @@ STRINGS: dict[str, str] = {
     "Уже собираю данные — подожди несколько секунд": "Already collecting — give it a few seconds",
     "Для графика пока мало данных: нужно хотя бы два дня": "Not enough data for a chart yet: it needs at least two days",
     "График — ниже": "The chart is below",
+    "Язык: {lang}. Кнопки под полем ввода обновил.": "Language: {lang}. The buttons under the input field are updated.",
     "Сохранено": "Saved",
     "{label}: выключено. Включить снова — ⚙️ Настройки → 🧩 Мониторинги":
         "{label}: off. To switch it back on — ⚙️ Settings → 🧩 Monitors",

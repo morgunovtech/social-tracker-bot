@@ -97,6 +97,11 @@ STRINGS: dict[str, str] = {
     "📅 Дни отчёта": "📅 Report days",
     "🕗 Время отчёта": "🕗 Report time",
     "🌍 Часовой пояс": "🌍 Time zone",
+    "🗣 Язык / Language": "🗣 Language",
+    "🗣 Язык: {lang}": "🗣 Language: {lang}",
+    "русский": "Russian",
+    "английский": "English",
+    "🗣 Говорю по-английски, как твой Telegram. Перейти на русский — кнопка ниже.": "🗣 I speak English, as your Telegram does. To switch to Russian, use the button below.",
     "Коротко без изменений": "Short when unchanged",
     "📦 Бэкап сейчас": "📦 Backup now",
     "<b>📅 Дни отчёта</b>\n\n"

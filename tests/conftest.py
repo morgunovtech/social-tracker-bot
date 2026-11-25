@@ -50,6 +50,7 @@ from types import SimpleNamespace  # noqa: E402
 
 import pytest  # noqa: E402
 
+from bot import i18n
 from bot.config import Config  # noqa: E402
 from bot.db import Database, utcnow  # noqa: E402
 
@@ -217,6 +218,14 @@ def buttons(markup) -> dict[str, str]:
 
 def labels(markup) -> list[str]:
     return [b.text for row in markup.inline_keyboard for b in row]
+
+
+@pytest.fixture(autouse=True)
+def _russian_again():
+    """«🗣 Язык / Language» in ⚙️ Настройки switches the process-wide chat
+    language: a test that pressed it must not hand English to the next one."""
+    yield
+    i18n.set_language("ru")
 
 
 @pytest.fixture

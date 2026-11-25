@@ -206,6 +206,9 @@ class Config:
     quiet_if_no_change: bool
 
     # Chat language: ru (default) or en. Reports, screens, alerts and the / menu.
+    # BOT_LANG is the starting value: the language chosen in the chat — or taken
+    # from the owner's Telegram at the first /start when BOT_LANG is empty —
+    # is kept in the database and wins (handlers.restore_language).
     lang: str
 
     # Database
@@ -275,6 +278,11 @@ class Config:
             comments_chat_id=_chat_id("COMMENTS_CHAT_ID"),
             comments_daily_limit=_int("COMMENTS_DAILY_LIMIT", DEFAULT_COMMENTS_DAILY_LIMIT, 0, 100_000),
         )
+
+    def set_lang(self, lang: str) -> None:
+        """The chat language chosen at runtime (the second exception to the
+        frozen dataclass, next to set_owner)."""
+        object.__setattr__(self, "lang", lang)
 
     def set_owner(self, user_id: int) -> None:
         """The owner learnt at runtime: the first /start, or the DB at startup.
