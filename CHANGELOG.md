@@ -2,6 +2,23 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.10.1 — 2026-11-25
+
+The install script stops calling a bot that did not start «running», and the documents catch up with 1.9.0–1.10.0. The bot itself behaves the same.
+
+**Fixed**
+- `scripts/install.sh` no longer says «The bot is running» when the bot stopped right after the start (a refused token): it shows the last log lines and where to fix the token (#86).
+
+**Docs**
+- The README says the Deploy button carries a Railway referral code and gives the link without it (#87).
+- The README (both languages) catches up with 1.9.0–1.10.0: 🔌 Подключения shows a network as connected or not, with «➕» and «✏️»; «🗣 Язык / Language» is listed in ⚙️ Настройки; the YouTube key can come from the chat; the backup is described as made without any stored secret; `SOCIAL_TRACKER_DIR` changes the install folder; SonarQube Cloud and the Sponsor button are in «What it creates outside the repo».
+- The Railway listing (`docs/RAILWAY_TEMPLATE.md`) says AI assistants, not crawlers, and «within half an hour» for a profile change — the check runs every 30 minutes.
+
+**Repo**
+- A Sponsor button, `.github/FUNDING.yml` (#88).
+- The memory of what `.env` said (what «-» in 🔌 Подключения brings back) is kept on the config object instead of by its id — a flaky test on CI; the running bot, with its single config, was not affected (#86).
+- `docs/images/template-icon-transparent.svg` — a transparent icon for the service inside the Railway template (#89).
+
 ## 1.10.0 — 2026-11-25
 
 Networks are connected from the chat. A fresh install needs the bot token and nothing else in `.env` or the hosting panel.

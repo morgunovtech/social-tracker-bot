@@ -1,7 +1,9 @@
 <!-- The listing of the Railway template social-tracker-bot (railway.com/deploy/social-tracker-bot).
      Railway keeps its own copy: after editing this file, paste the part below
      the line into Workspace → Templates → Social Tracker Bot → Marketplace →
-     Overview. Category: Bots. Icon: docs/images/template-icon.png.
+     Overview. Category: Bots. Icon: docs/images/template-icon.png
+     (the listing); the service icon inside the template is
+     docs/images/template-icon-transparent.svg.
      Description (25–75 characters):
      Followers + account security for Telegram, YouTube, Instagram, LinkedIn. -->
 
@@ -18,9 +20,9 @@ The template deploys one service built from the open-source repository, with a v
 ## Common Use Cases
 
 - One daily collection and one weekly report of your follower counts across four networks, with deltas, a 30-day chart, milestones and a forecast
-- An alert within minutes when a profile is renamed, gets a new admin or a strange link — the first signs of a hijacked account
+- An alert within half an hour when a profile is renamed, gets a new admin or a strange link — the first signs of a hijacked account
 - The life of your Telegram channel: who joined and left, through which invite link, every post and its reactions
-- A weekly reputation report: how often your name was searched for, and how often AI crawlers read your site
+- A weekly reputation report: how often your name was searched for, and how often AI assistants opened your pages
 - A security checklist per account with a score, and a weekly backup of the database sent to your chat without secrets
 
 ## Dependencies for Social Tracker Bot Hosting
