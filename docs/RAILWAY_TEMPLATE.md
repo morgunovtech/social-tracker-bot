@@ -1,4 +1,4 @@
-<!-- The listing of the Railway template cL4hpn (railway.com/deploy/cL4hpn).
+<!-- The listing of the Railway template social-tracker-bot (railway.com/deploy/social-tracker-bot).
      Railway keeps its own copy: after editing this file, paste the part below
      the line into Workspace → Templates → Social Tracker Bot → Marketplace →
      Overview. Category: Bots. Icon: docs/images/template-icon.png.

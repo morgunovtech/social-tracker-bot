@@ -9,7 +9,7 @@ General rules for every project (branches and PRs, worktrees, no twins, repos in
 
 ## Deploy
 
-Railway redeploys from `main` on every push (project «Social Tacker Bot», service `social-tracker-bot`, volume at `/app/data`); the Railway template `cL4hpn` is the one-click path for others. The mail-worker is a Cloudflare Email Worker deployed by hand (`npx wrangler deploy` in `mail-worker/`). Verify a deploy by the «🔄 Бот обновился» message or the build line in ⚙️ Settings.
+Railway redeploys from `main` on every push (project «Social Tacker Bot», service `social-tracker-bot`, volume at `/app/data`); the Railway template `social-tracker-bot` is the one-click path for others. The mail-worker is a Cloudflare Email Worker deployed by hand (`npx wrangler deploy` in `mail-worker/`). Verify a deploy by the «🔄 Бот обновился» message or the build line in ⚙️ Settings.
 
 ## Conventions
 

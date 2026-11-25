@@ -2,7 +2,7 @@
 
 > A self-hosted Telegram bot for your social accounts: followers on Telegram, YouTube, Instagram and LinkedIn, the life of your channel, and the accounts' security — hijack signs, security emails, comments that get a group blocked — plus a weekly report on how people and AI assistants find you. It stays quiet while things are fine and speaks up the moment something breaks.
 
-🇷🇺 [По-русски](README.ru.md) · [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/cL4hpn?referralCode=7hTMqE)
+🇷🇺 [По-русски](README.ru.md) · [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/social-tracker-bot?referralCode=7hTMqE)
 
 The bot talks to you in English or Russian. It takes the language from your Telegram at the first `/start` — Russian stays Russian, any other becomes English — and «🗣 Language» in ⚙️ Settings switches it at any time; the setup is the same in both.
 
@@ -109,7 +109,7 @@ Logs: `docker compose logs -f`. Stop: `docker compose down`.
 
 ### Railway
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/cL4hpn?referralCode=7hTMqE)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/social-tracker-bot?referralCode=7hTMqE)
 
 Press the button, then **Configure** — the Deploy button stays grey until you do — and paste the token into `BOT_TOKEN`; leave the other fields empty. The template creates the service from this repository with a volume at `/app/data`; the optional networks are variables you fill in later (the service → **Variables**).
 
@@ -281,7 +281,7 @@ python scripts/clean_deleted.py @your_channel --yes    # remove them
 ## What it creates outside the repo
 
 - A Telegram bot (@BotFather) and, if you use it, a YouTube Data API key in a Google Cloud project.
-- On Railway: a project with one service built from this repository and a volume at `/app/data` — the template (`cL4hpn`) creates them; delete the project to tear down.
+- On Railway: a project with one service built from this repository and a volume at `/app/data` — the template (`social-tracker-bot`) creates them; delete the project to tear down.
 - A public package on GitHub, `ghcr.io/morgunovtech/social-tracker-bot` — the image CI publishes on every green `main`; delete it under the repository's Packages.
 - For Instagram: a Meta app with the Instagram API use case, a business portfolio it belongs to, a «Facebook Login for Business» configuration and the Instagram Tester role on your account. Teardown: remove the app on [developers.facebook.com](https://developers.facebook.com/apps/) (Settings → Basic → Remove app), the portfolio in Meta Business Suite → Business settings → Business info, and the app under Instagram → Settings → Website permissions.
 - Optionally a [healthchecks.io](https://healthchecks.io) check or a TofsDevOps heartbeat task (set in ⏱ Watchdog or `HEALTHCHECK_URL`; delete it there to tear down) and your own site's ingest endpoint (`SITE_INGEST_URL`).
