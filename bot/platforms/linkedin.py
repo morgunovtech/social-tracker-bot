@@ -34,7 +34,7 @@ _FOLLOWER_PATTERNS = [
 
 # Text fallback: "1,234 followers" / "1 234 подписчика"
 _FOLLOWER_TEXT_PATTERN = re.compile(
-    r"([\d][\d\s, ]*)\s*(?:followers?|подписчик(?:а|ов)?)",
+    r"([\d][\d\s, ]*)(?:followers?|подписчик(?:а|ов)?)",
     re.IGNORECASE,
 )
 

@@ -21,10 +21,11 @@ jobs:
           cache: pip
       # The dev tools first, then exactly what the image gets (hashes checked,
       # nothing else resolved): the tests run on the image's versions, and
-      # pip check says if a dev tool disagrees with them.
+      # pip check says if a dev tool disagrees with them. Wheels only, as in
+      # the Dockerfile: no package's build script runs on the runner.
       - run: |
-          pip install -r requirements-dev.txt
-          pip install --require-hashes --no-deps -r requirements.txt
+          pip install --only-binary :all: -r requirements-dev.txt
+          pip install --only-binary :all: --require-hashes --no-deps -r requirements.txt
           pip check
       - run: ruff check .
       - run: pytest -q
@@ -71,7 +72,8 @@ jobs:
           node-version: lts/*
           cache: npm
           cache-dependency-path: mail-worker/package-lock.json
-      - run: npm ci
+      # No lifecycle scripts: the one dependency (postal-mime) is plain JS.
+      - run: npm ci --ignore-scripts
       - run: npm test
       - run: npm audit --omit=dev
 

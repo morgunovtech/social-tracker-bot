@@ -118,4 +118,7 @@ test("Gmail's forwarding confirmation passes the allowlist, a lookalike doesn't"
 
 test("html is reduced to text", () => {
   assert.equal(htmlToText("<div>a<br>b</div><script>x()</script>&lt;c&gt;"), "a\nb\n <c>");
+  // A tag ends at the next "<" or ">": a run of unclosed "<" costs linear time.
+  assert.equal(htmlToText("1 <<b>2</b>"), "1 < 2");
+  assert.equal(htmlToText("<".repeat(200000)), "<".repeat(200000));
 });
