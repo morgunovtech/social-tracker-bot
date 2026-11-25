@@ -24,7 +24,7 @@ The bot is modular: connect only the platforms you have, and switch monitors on 
 - **Problems arrive at once**: a revoked Instagram token or an expired LinkedIn cookie, collection failing 2+ days in a row, a drop in followers (20 or more, or at least 1%), data that has gone stale.
 - **Self-recovering**: failed platforms are retried hourly (up to 3 times), a run missed while the bot was down is caught up on start, a dead man's switch tells you when the bot itself dies — set from the chat (🔌 Connections → ⏱ Watchdog) with a live test ping that reads the answer, or with `HEALTHCHECK_URL`. Point it at a [TofsDevOps](https://github.com/morgunovtech/Tofs_DevOps_bot) heartbeat address and the ping also carries a line per network («✅ Telegram · 12 340, +18 today», «🔴 LinkedIn · profile unreadable») to TofsDevOps's main screen, next to your sites; refreshed after every profile check.
 - **Watches what it sends out, too**: the counts pushed to your site, the lines to TofsDevOps and the watchdog's mark. A day without one that landed is one 🟠 that says where and why («🟠 s.example.com has not accepted the follower counts for 1 d: answers with error 401»), the first one that lands after it one ✅ with how long it did not; ⚙️ Settings → 📤 Deliveries shows when each last landed. A log line alone is not a notification (monitor «Outgoing deliveries» in `/modules`).
-- **Your data stays yours**: SQLite on your volume, a weekly backup sent to your chat (without the LinkedIn cookie and the Instagram token), and `/restore` to merge a backup back without overwriting anything collected since.
+- **Your data stays yours**: SQLite on your volume, a weekly backup sent to your chat (without any stored secret — cookie, tokens, keys, the watchdog address), and `/restore` to merge a backup back without overwriting anything collected since.
 - **Short when unchanged**: a one-liner instead of the full report when nothing changed.
 - **Three buttons under the input field** — 🏠 Home, 📖 What I do, ❓ Icons — one tap from anywhere, however far up the menu has scrolled; «🔄 Refresh data» and «🔕 Mute…» are on the home screen. No ☰ command list: commands still work when typed, and «📖 What I do» lists them all. Every alert and report carries buttons to where to look into it (🛡 Security, 📈 Trends, 📣 Channel), a 🟠 one also «⚙️ Stop sending these».
 - **Rings only when it matters**: 🔴 — a likely hijack, a new sign-in, a changed password, a vanished profile, a silent mail worker — rings at once, even at night; everything else arrives silently, and during quiet hours or a `/mute` it waits and comes as one digest. One set of icons everywhere, the same as TofsDevOps's: see [Icons](#icons) and [When it writes](#when-it-writes).
@@ -46,7 +46,7 @@ What leaves your server and what does not, as the code does it:
 | Where | What and why |
 |---|---|
 | Telegram Bot API | The bot's messages to you, and the public data of your channel (follower count, title, description, admins when the bot is a channel admin). As a channel admin the bot also receives what Telegram sends admins: every join and leave (who, and through which invite link), every post, and the reactions a post gathers. Nothing of that leaves your server. |
-| YouTube Data API (`googleapis.com`) | Your channel's statistics with your own key, once a day. Only with `YOUTUBE_API_KEY`. |
+| YouTube Data API (`googleapis.com`) | Your channel's statistics with your own key, once a day. Only with a YouTube key — sent in the chat or `YOUTUBE_API_KEY`. |
 | Instagram API (`graph.facebook.com`) | Your account's follower count and profile with your own token, once a day. Only with a token. |
 | LinkedIn (`linkedin.com`) | Your profile page, opened with your `li_at` cookie once a day. Only with the cookie; without it you type the number in. |
 | Watchdog (⏱ Watchdog or `HEALTHCHECK_URL`) | An empty ping after the daily run, and one test ping when you set the address — healthchecks.io or a TofsDevOps address; TofsDevOps also gets one status line per network (count, delta). Only when set; the address is kept out of the logs and the backup. |
@@ -88,7 +88,7 @@ Every variable, with a comment on what it does, is in [`.env.example`](.env.exam
 curl -fsSL https://raw.githubusercontent.com/morgunovtech/social-tracker-bot/main/scripts/install.sh | sh
 ```
 
-It asks for the bot token, writes `.env` and `docker-compose.yml` into `~/social-tracker-bot` and starts the bot; run it again to update. Read it first if you like: [scripts/install.sh](scripts/install.sh). The networks from [Setup](#setup) are connected in the chat afterwards.
+It asks for the bot token, writes `.env` and `docker-compose.yml` into `~/social-tracker-bot` (another folder: `SOCIAL_TRACKER_DIR=…`) and starts the bot; run it again to update. Read it first if you like: [scripts/install.sh](scripts/install.sh). The networks from [Setup](#setup) are connected in the chat afterwards.
 
 **Or by hand.** Make a folder with two files — `.env` with one line, `BOT_TOKEN=<the token from @BotFather>` (every other variable is in [`.env.example`](.env.example)), and `docker-compose.yml`:
 
@@ -139,14 +139,14 @@ Everything is a button away. Three buttons live under the input field: «🏠 Ho
 ├── 🛡 Security — score, each account, what to do first, recent events
 │   ├── an account's checklist → one question at a time, with why it matters
 │   └── 💬 Channel comments — mode, how many were checked, the accuracy of your marks
-├── 🔌 Connections — every network: in .env or not, collected by itself or waiting for a token, a cookie, the first number
+├── 🔌 Connections — every network: connected or not («➕» connects it here, «✏️» changes or removes it), collected by itself or waiting for a token, a cookie, the first number
 │   ├── 📸 Instagram — how the number is collected, the token's age, «🔑 Send the token»
 │   ├── ⏱ Watchdog — who tells you when the bot stops: state, the last ping, «🔗 Send the link» (tested live), «🔄 Check again», «⏏ Disconnect»
 │   ├── 🔎 Reputation — the weekly report's sources and brand words, «🔑» per source (tested live), «📨 Report now»
 │   └── 💼 LinkedIn — how the number is collected, the cookie's age, «🔑 Send the cookie», «✏️ Enter count by hand»
 ├── ✏️ Enter LinkedIn — only while the number is typed in by hand
 ├── 🔕 Mute… — for an hour, four, eight or a day, and what still rings; 🔔 Unmute while a mute lasts
-├── ⚙️ Settings — report days (checkboxes), report hour (a grid) and minutes, time zone (presets or «✏️ Another zone…»), short when unchanged, 📦 Backup now; the last line names the running build (commit) and Python
+├── ⚙️ Settings — report days (checkboxes), report hour (a grid) and minutes, time zone (presets or «✏️ Another zone…»), 🗣 Language, short when unchanged, 📦 Backup now; the last line names the running build (commit) and Python
 │   ├── 🔔 When to write — quiet hours (presets), «🔕 Mute» for an hour, four, eight or a day
 │   └── 🧩 Monitors — switch each one on and off (📣 Channel and 💬 Comments have the switch on their own screens too)
 └── 📖 What I do · ❓ Icons — the two other buttons under the input field, as screens
@@ -164,8 +164,8 @@ No ☰ command list is published: the three buttons under the input field are th
 | `/now` | Collect now and show the report |
 | `/week` | This week vs last week, with the chart |
 | `/security` | Security score, the checklist per account, recent security events |
-| `/settings` | Report schedule, short when unchanged, when to write, monitors, connections, backup now, the running build |
-| `/connections` | Every network: in .env or not, collected by itself or waiting for a token, a cookie, the first number; the Instagram and LinkedIn screens |
+| `/settings` | Report schedule, time zone, 🗣 Language, short when unchanged, when to write, monitors, connections, backup now, the running build |
+| `/connections` | Every network: connected or not, collected by itself or waiting for a token, a cookie, the first number; «➕»/«✏️» per network; the Instagram and LinkedIn screens |
 | `/help` | What the bot does, where things are, every command — the «📖 What I do» screen |
 | `/icons` | What each icon means and what rings — the «❓ Icons» screen |
 | `/stats` | The home screen without the greeting |
@@ -289,6 +289,7 @@ python scripts/clean_deleted.py @your_channel --yes    # remove them
 - A public package on GitHub, `ghcr.io/morgunovtech/social-tracker-bot` — the image CI publishes on every green `main`; delete it under the repository's Packages.
 - For Instagram: a Meta app with the Instagram API use case, a business portfolio it belongs to, a «Facebook Login for Business» configuration and the Instagram Tester role on your account. Teardown: remove the app on [developers.facebook.com](https://developers.facebook.com/apps/) (Settings → Basic → Remove app), the portfolio in Meta Business Suite → Business settings → Business info, and the app under Instagram → Settings → Website permissions.
 - Optionally a [healthchecks.io](https://healthchecks.io) check or a TofsDevOps heartbeat task (set in ⏱ Watchdog or `HEALTHCHECK_URL`; delete it there to tear down) and your own site's ingest endpoint (`SITE_INGEST_URL`).
+- On GitHub, for this repository itself: the SonarQube Cloud GitHub App installed on the repo and its project on [sonarcloud.io](https://sonarcloud.io) (automatic analysis of every push and pull request, no config in the repo) — teardown: delete the project on sonarcloud.io and remove the repo from the app (Settings → GitHub Apps); and the «Sponsor» button, `.github/FUNDING.yml`, which points at the owner's GitHub Sponsors listing — delete the file to remove the button.
 - Optionally a GitHub personal access token (`GITHUB_TOKEN`), only to lift the anonymous rate limit of the update watch; revoke it under Settings → Developer settings.
 - Optionally, for security emails: a Cloudflare Worker, a KV namespace, an Email Routing rule with its DNS records, and a forwarding address + filter in your mailbox — listed with teardown steps in [mail-worker/README.md](mail-worker/README.md).
 - Optionally, for the reputation report: a Google Cloud project with a service account and its JSON key, added as a user of your Search Console properties (remove the user and delete the key to tear down); a Yandex OAuth app at oauth.yandex.ru and its token (delete the app); a Cloudflare API token with Zone Read and Analytics Read (delete it under My Profile → API Tokens).
