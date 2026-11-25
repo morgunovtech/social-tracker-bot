@@ -2,6 +2,21 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.10.0 — 2026-11-25
+
+Networks are connected from the chat. A fresh install needs the bot token and nothing else in `.env` or the hosting panel.
+
+**Added**
+- **🔌 Подключения → «➕ Telegram», «➕ YouTube», «➕ Instagram», «➕ LinkedIn».** The bot asks for the value as the next message and checks it: a Telegram channel by reading its follower count, a YouTube channel id and API key (two steps) by asking YouTube for the subscribers, an Instagram @username and a LinkedIn profile link by their form. What passes is kept in the database and works at once, without a restart. «✏️» changes a network; «-» removes what the chat set and brings the `.env` value back.
+- The message with the YouTube key is deleted from the chat; the key is left out of the Sunday backup and is masked in the logs like the one from `.env`.
+
+**Changed**
+- A value set in the chat wins over the same variable in `.env`; the variables stay as starting values, so an existing install changes nothing.
+- The screens no longer send you to `.env`: 🔌 Подключения, 🧩 Мониторинги, 🛡 Безопасность without networks and «📖 Что я умею» point at the buttons.
+
+**Not in this release**
+- `ANTHROPIC_API_KEY` (the comment check) and the mail-worker address are still variables.
+
 ## 1.9.0 — 2026-11-25
 
 An easier first five minutes. No new permissions; a bot that already has an owner keeps its language and schedule.

@@ -25,6 +25,7 @@ from bot.callbacks import (
     CHANNEL,
     CHART,
     COMMENTS,
+    CONN_ADD,
     CONNECTIONS,
     DYNAMICS,
     HOME,
@@ -425,12 +426,14 @@ async def connections(db: Database, config: Config) -> Screen:
     install needs; the per-network screens hang under it."""
     lines = [t("<b>🔌 Подключения</b>"), ""]
     rows: list[list[InlineKeyboardButton]] = []
+    add: list[InlineKeyboardButton] = []        # «➕ …» for a network that is not connected
+    change: list[InlineKeyboardButton] = []     # «✏️ …» to replace or remove one that is
     for platform in PLATFORMS:
         if not platform.enabled(config):
-            lines.append(t("{icon} {label} — не подключено: {needs} в .env").format(
-                icon=UNAVAILABLE, label=platform.label, needs=_ENV_NEEDS[platform.id]
-            ))
+            lines.append(t("{icon} {label} — не подключено").format(icon=UNAVAILABLE, label=platform.label))
+            add.append(_button(f"➕ {platform.label}", CONN_ADD[platform.id]))
             continue
+        change.append(_button(f"✏️ {platform.label}", CONN_ADD[platform.id]))
         target = esc(platform.target(config))
         latest = await db.get_latest(platform.id)
         state = ""
@@ -455,7 +458,8 @@ async def connections(db: Database, config: Config) -> Screen:
             rows.append([_button("💼 LinkedIn", LINKEDIN)])
     lines += ["", await watchdog_line(db, config)]
     rows.append([_button(t("⏱ Сторож"), WATCHDOG), _button(t("🔎 Репутация"), REPUTATION)])
-    lines += ["", t("Сети включаются в .env и перезапуском бота; токен Instagram, cookie LinkedIn и сторож — кнопками здесь.")]
+    lines += ["", t("«➕» подключает сеть прямо здесь, «✏️» меняет или убирает её; то, что задано в чате, сильнее .env.")]
+    rows = [add[i:i + 2] for i in range(0, len(add), 2)] + rows + [change[i:i + 2] for i in range(0, len(change), 2)]
     rows.append(_home())
     return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
 
@@ -570,15 +574,6 @@ def watchdog_off_confirm() -> Screen:
     )
 
 
-# What .env needs for a network that is not connected (shown on 🔌 Подключения).
-_ENV_NEEDS = {
-    "telegram": "TELEGRAM_CHANNEL_ID",
-    "youtube": "YOUTUBE_API_KEY + YOUTUBE_CHANNEL_ID",
-    "instagram": "INSTAGRAM_USERNAME",
-    "linkedin": "LINKEDIN_PROFILE_URL",
-}
-
-
 def loading() -> Screen:
     return Screen(t("⏳ Собираю свежие данные — это займёт несколько секунд…"))
 
@@ -649,7 +644,7 @@ async def security(db: Database, config: Config, top: int = 5) -> Screen:
     result = await hygiene.overall(db, config)
     if result is None:
         return Screen(
-            t("<b>🛡 Безопасность</b>\n\nНет подключённых платформ — подключи хотя бы одну в .env."),
+            t("<b>🛡 Безопасность</b>\n\nНет подключённых платформ — подключи хотя бы одну: 🔌 Подключения."),
             InlineKeyboardMarkup([_home()]),
         )
     total, recs = result
@@ -982,7 +977,7 @@ async def timezone(db: Database, config: Config) -> Screen:
 
 
 async def monitors_screen(db: Database, config: Config) -> Screen:
-    lines = [t("<b>🧩 Мониторинги</b>"), "", t("<b>Платформы</b> — подключаются в .env")]
+    lines = [t("<b>🧩 Мониторинги</b>"), "", t("<b>Платформы</b> — подключаются в «🔌 Подключения»")]
     for p in PLATFORMS:
         if p.enabled(config):
             lines.append(f"{ON} {p.label} — {esc(p.target(config))}")
@@ -1151,6 +1146,28 @@ INPUT_PROMPTS = {
         "Zone → Analytics → Read; Zone Resources — твои зоны.\n"
         "Пришли токен одним сообщением — я проверю его пробным запросом и сразу удалю сообщение."
     ),
+    "conn_telegram": (
+        "📣 Пришли @username канала, ссылку t.me/… или его id (-100…). Сначала добавь меня в администраторы канала: "
+        "так я увижу и подписчиков, и вступления с постами. Убрать канал, заданный здесь, — пришли «-»."
+    ),
+    "conn_youtube": (
+        "▶️ Шаг 1 из 2. Пришли id канала YouTube — 24 знака, начинается с UC "
+        "(studio.youtube.com → Настройки → Канал → Расширенные настройки), или ссылку youtube.com/channel/UC…. "
+        "Убрать канал, заданный здесь, — пришли «-»."
+    ),
+    "conn_youtube_key": (
+        "🔑 Шаг 2 из 2. Ключ YouTube Data API: console.cloud.google.com → проект → APIs & Services → включи "
+        "«YouTube Data API v3» → Credentials → Create credentials → API key. "
+        "Пришли ключ одним сообщением — я проверю его на твоём канале и сразу удалю сообщение."
+    ),
+    "conn_instagram": (
+        "📸 Пришли @username Instagram (аккаунт должен быть профессиональным: Creator или Business). "
+        "Токен попрошу следующим шагом. Убрать аккаунт, заданный здесь, — пришли «-»."
+    ),
+    "conn_linkedin": (
+        "💼 Пришли ссылку на свой профиль LinkedIn вида https://www.linkedin.com/in/имя/. "
+        "Убрать профиль, заданный здесь, — пришли «-»."
+    ),
     "cookie": (
         "🔑 Пришли значение cookie li_at одним сообщением "
         "(linkedin.com → DevTools → Application → Cookies → li_at → Value). "
@@ -1276,7 +1293,7 @@ def about_screen() -> Screen:
         "",
         t(
             "Пока всё в порядке — молчу; о проблеме пишу сразу, а сводку присылаю по расписанию. "
-            "Сети подключаются в .env, остальное — кнопками."
+            "Сети, ключи и расписание — кнопками, без правки файлов."
         ),
         "",
         t("<b>Подписчики</b>"),

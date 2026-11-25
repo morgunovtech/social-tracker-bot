@@ -56,8 +56,8 @@ STRINGS: dict[str, str] = {
     # Security
     "не заполнено": "not filled in",
     "{points} из {max}": "{points} of {max}",
-    "<b>🛡 Безопасность</b>\n\nНет подключённых платформ — подключи хотя бы одну в .env.":
-        "<b>🛡 Security</b>\n\nNo platforms are connected — connect at least one in .env.",
+    "<b>🛡 Безопасность</b>\n\nНет подключённых платформ — подключи хотя бы одну: 🔌 Подключения.":
+        "<b>🛡 Security</b>\n\nNo platforms are connected — connect at least one: 🔌 Connections.",
     "<b>🛡 Безопасность: {total} из {max}</b>": "<b>🛡 Security: {total} of {max}</b>",
     "<b>Что сделать в первую очередь</b>": "<b>What to do first</b>",
     "…и ещё {n} — в чек-листах аккаунтов": "…and {n} more — in the account checklists",
@@ -135,7 +135,7 @@ STRINGS: dict[str, str] = {
         "The report time and days follow this zone. Pick yours or send its name with the command, "
         "e.g. /settz Asia/Kolkata",
     "<b>🧩 Мониторинги</b>": "<b>🧩 Monitors</b>",
-    "<b>Платформы</b> — подключаются в .env": "<b>Platforms</b> — connected in .env",
+    "<b>Платформы</b> — подключаются в «🔌 Подключения»": "<b>Platforms</b> — connected in «🔌 Connections»",
     "не подключено": "not connected",
     "<b>Проверки</b> — нажми, чтобы включить или выключить": "<b>Checks</b> — tap to turn on or off",
     "{icon} {label} — нужно: {needs}": "{icon} {label} — needs: {needs}",
@@ -392,7 +392,24 @@ STRINGS: dict[str, str] = {
     "🌍 Выбрать часовой пояс": "🌍 Choose the time zone",
     "<b>🔌 Подключения</b>": "<b>🔌 Connections</b>",
     "Подключения": "Connections",
-    "{icon} {label} — не подключено: {needs} в .env": "{icon} {label} — not connected: {needs} in .env",
+    "{icon} {label} — не подключено": "{icon} {label} — not connected",
+    "📣 Пришли @username канала, ссылку t.me/… или его id (-100…). Сначала добавь меня в администраторы канала: так я увижу и подписчиков, и вступления с постами. Убрать канал, заданный здесь, — пришли «-».":
+        "📣 Send the channel's @username, a t.me/… link or its id (-100…). Make me an admin of the channel first: "
+        "that is how I see the followers, the joins and the posts. To remove a channel set here, send «-».",
+    "▶️ Шаг 1 из 2. Пришли id канала YouTube — 24 знака, начинается с UC (studio.youtube.com → Настройки → Канал → Расширенные настройки), или ссылку youtube.com/channel/UC…. Убрать канал, заданный здесь, — пришли «-».":
+        "▶️ Step 1 of 2. Send the YouTube channel id — 24 characters, starts with UC "
+        "(studio.youtube.com → Settings → Channel → Advanced settings), or a youtube.com/channel/UC… link. "
+        "To remove a channel set here, send «-».",
+    "🔑 Шаг 2 из 2. Ключ YouTube Data API: console.cloud.google.com → проект → APIs & Services → включи «YouTube Data API v3» → Credentials → Create credentials → API key. Пришли ключ одним сообщением — я проверю его на твоём канале и сразу удалю сообщение.":
+        "🔑 Step 2 of 2. A YouTube Data API key: console.cloud.google.com → a project → APIs & Services → enable "
+        "«YouTube Data API v3» → Credentials → Create credentials → API key. "
+        "Send the key in one message — I will check it on your channel and delete the message at once.",
+    "📸 Пришли @username Instagram (аккаунт должен быть профессиональным: Creator или Business). Токен попрошу следующим шагом. Убрать аккаунт, заданный здесь, — пришли «-».":
+        "📸 Send your Instagram @username (the account must be professional: Creator or Business). "
+        "I will ask for the token as the next step. To remove an account set here, send «-».",
+    "💼 Пришли ссылку на свой профиль LinkedIn вида https://www.linkedin.com/in/имя/. Убрать профиль, заданный здесь, — пришли «-».":
+        "💼 Send the link to your LinkedIn profile, like https://www.linkedin.com/in/name/. "
+        "To remove a profile set here, send «-».",
     "🟠 нужен токен": "🟠 a token is needed",
     "🟠 токен отклонён": "🟠 the token was rejected",
     "🟠 cookie отклонён, число вручную": "🟠 the cookie was rejected, the number by hand",
@@ -434,9 +451,9 @@ STRINGS: dict[str, str] = {
     # «📖 Что я умею»
     "<b>📖 Что я умею</b>": "<b>📖 What I do</b>",
     "Пока всё в порядке — молчу; о проблеме пишу сразу, а сводку присылаю по расписанию. "
-    "Сети подключаются в .env, остальное — кнопками.":
+    "Сети, ключи и расписание — кнопками, без правки файлов.":
         "While everything is fine, I stay quiet; I report a problem right away, and the summary comes on schedule. "
-        "Networks are connected in .env, everything else with buttons.",
+        "Networks, keys and the schedule are set with buttons — no files to edit.",
     "<b>Подписчики</b>": "<b>Followers</b>",
     "• Каждый день собираю подписчиков Telegram, YouTube, Instagram и LinkedIn — тех сетей, что подключены.":
         "• Every day I collect the followers of Telegram, YouTube, Instagram and LinkedIn — the networks connected.",
@@ -509,9 +526,8 @@ STRINGS: dict[str, str] = {
         "\"⚙️ Stop sending these\" under an alert switches such notifications off.",
     "/icons — значки: что значат и что звонит": "/icons — the icons: what they mean and what rings",
     # ⏱ Сторож (bot/watchdog.py, bot/ui.py)
-    "Сети включаются в .env и перезапуском бота; токен Instagram, cookie LinkedIn и сторож — кнопками здесь.":
-        "Networks are switched on in .env and by restarting the bot; the Instagram token, the LinkedIn cookie "
-        "and the watchdog — with the buttons here.",
+    "«➕» подключает сеть прямо здесь, «✏️» меняет или убирает её; то, что задано в чате, сильнее .env.":
+        "«➕» connects a network right here, «✏️» changes or removes it; what is set in the chat wins over .env.",
     "⏱ Сторож": "⏱ Watchdog",
     "{icon} ⏱ Сторож — не подключён: если я остановлюсь, никто не скажет":
         "{icon} ⏱ Watchdog — not connected: if I stop, nobody will tell you",
