@@ -2,6 +2,17 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.10.3 — 2026-11-25
+
+A safe way to update a deployed mail-worker, and the dev tools installed from a hashed lock. The bot itself behaves the same.
+
+**Running it**
+- mail-worker: `sh mail-worker/update.sh` updates a worker that is already deployed — a dry run by default, `--deploy` to upload. It deploys the committed code with the `EVENTS` id read from the deployed worker and `--keep-vars`, then checks that `ALLOWED_SENDERS`, `EVENTS` and `TOKEN` are what they were and that the endpoint still answers 401 without the token. A plain `npx wrangler deploy` from a clean checkout is not that: `wrangler.toml` there is a template, and its empty `ALLOWED_SENDERS` would make the worker reject every mail. `mail-worker/README.md` has the new section «Updating a deployed worker»; a merge still does not deploy the worker.
+- If your checkout keeps your own values in `wrangler.toml`, `npx wrangler deploy` works as before; the script works from any checkout.
+
+**Repo**
+- The dev tools (ruff, pytest, pytest-asyncio, pip-audit) are pinned in `requirements-dev.in` and locked with hashes in `requirements-dev.txt`, one lock for Python 3.12–3.15; CI installs them with `--require-hashes --no-deps --only-binary :all:`, like the bot's own packages. Setting up a dev venv is now two commands (README, «Development»). This closes the last open SonarQube finding.
+
 ## 1.10.2 — 2026-11-25
 
 Hardening after the first SonarQube Cloud analysis. Nothing changes on the screens or in the messages.

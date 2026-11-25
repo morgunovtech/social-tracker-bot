@@ -19,12 +19,13 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
-      # The dev tools first, then exactly what the image gets (hashes checked,
-      # nothing else resolved): the tests run on the image's versions, and
-      # pip check says if a dev tool disagrees with them. Wheels only, as in
-      # the Dockerfile: no package's build script runs on the runner.
+      # The dev tools first, then exactly what the image gets — both from a
+      # lock (hashes checked, nothing else resolved): the tests run on the
+      # image's versions, and pip check says if a dev tool disagrees with
+      # them. Wheels only, as in the Dockerfile: no package's build script
+      # runs on the runner.
       - run: |
-          pip install --only-binary :all: -r requirements-dev.txt
+          pip install --only-binary :all: --require-hashes --no-deps -r requirements-dev.txt
           pip install --only-binary :all: --require-hashes --no-deps -r requirements.txt
           pip check
       - run: ruff check .

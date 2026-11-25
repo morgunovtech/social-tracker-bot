@@ -53,6 +53,35 @@ Plus, in your mailbox: a forwarding address and a filter. Remove both when teari
    Cloudflare's own mail is left out on purpose: new logins and new API tokens there come from [TofsDevOps](https://github.com/morgunovtech/Tofs_DevOps_bot), which reads the account's audit log; forwarding them here too would bring each alert twice. Not covered, for want of a real mail or a documented subject: Bing Webmaster (new users of a site), Railway (it has no passwords; email sign-in codes come from a third party, Magic), Proton (new sign-ins are push notifications only). A mail from those senders still reaches you as «ℹ️ Письмо без признаков тревоги»; forward one by hand and its subject can become a rule.
 6. **Test it:** forward any security email by hand. The bot answers within 5 minutes; a mail it doesn't recognise is reported as «📨 Письмо без признаков тревоги» so you know the path works.
 
+## Updating a deployed worker
+
+**A merge into `main` does not deploy the worker.** Railway redeploys the bot; the worker on Cloudflare keeps running the code of its last deploy until you update it yourself:
+
+```bash
+git pull
+sh mail-worker/update.sh            # dry run: builds and checks, uploads nothing
+sh mail-worker/update.sh --deploy   # the same, then deploys and verifies
+```
+
+Why a script and not `npx wrangler deploy`: `wrangler.toml` in the repository is a template — the KV id is a placeholder and `ALLOWED_SENDERS` is empty; your real values live on Cloudflare. From a clean checkout a plain deploy fails on the placeholder, and with the id pasted in it would replace `ALLOWED_SENDERS` with the empty list: the worker then rejects every mail. (A plain deploy is safe only from a checkout whose `wrangler.toml` still holds both of your values; the script works from any.)
+
+What `update.sh` does, in order:
+
+1. Exports the committed `mail-worker/` (`HEAD`, without local edits) into a temporary folder and runs `npm ci --ignore-scripts` there. Nothing is written to your checkout.
+2. Reads the bindings of the version that serves now (`wrangler deployments status`, `wrangler versions view … --json`) and stops if `ALLOWED_SENDERS` is empty, or `EVENTS` or `TOKEN` is missing — a worker that is not set up is not something to update.
+3. Writes the temporary `wrangler.toml`: the `EVENTS` id taken from the deployed worker itself, the `[vars]` block removed.
+4. `wrangler deploy --dry-run --keep-vars`. Without `--deploy` it ends here.
+5. `wrangler deploy --keep-vars`: `--keep-vars` leaves the variables Cloudflare has, and secrets (`TOKEN`) are never touched by a deploy.
+6. Reads the bindings of the new version and compares: `ALLOWED_SENDERS` the same and not empty, `EVENTS` the same namespace, `TOKEN` bound. Then asks `<worker URL>/events` without the token and expects 401.
+
+If step 6 fails, the script says what differs and prints the way back, `npx wrangler rollback <previous version id> --name socialbot-mail`. The KV id and the senders are never printed and never reach a tracked file.
+
+Good to know:
+
+- wrangler is not in `package.json`: `npx` runs the newest one, as in Setup. The script was written against wrangler 4.168 (`deploy --dry-run`, `--keep-vars`, `versions view --json`, `deployments status --json`).
+- `WORKER_NAME=…` if you renamed the worker; `WORKER_URL=https://…` if it is served from a custom domain instead of `workers.dev` (otherwise the 401 check is left to you).
+- To change `ALLOWED_SENDERS` itself: Cloudflare dashboard → Workers & Pages → `socialbot-mail` → Settings → Variables and Secrets. The next `update.sh` keeps what you set there.
+
 ## Limits
 
 Each bot poll is one KV list operation: 288 a day at one poll per 5 minutes. Cloudflare's free plan allows 1,000 list operations a day, so don't point a second bot (say, a local dev copy) at the same worker for long. Each mail costs one write and one delete (1,000 a day each on the free plan).
@@ -67,6 +96,8 @@ Both endpoints require `Authorization: Bearer <TOKEN>`; without a configured sec
 ## Development
 
 ```bash
-npm ci
+npm ci --ignore-scripts
 npm test
 ```
+
+The tests cover the worker and `update.sh` — the script runs against a fake `wrangler`, so nothing reaches Cloudflare.

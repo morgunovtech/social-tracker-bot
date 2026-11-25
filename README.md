@@ -259,7 +259,7 @@ A likely hijack has no icon of its own: it is 🔴 with «looks like a hijack» 
 
 The bot keeps itself up to date without touching its own container:
 
-1. **Dependabot** opens one grouped PR per week with every Python update (Saturday), plus monthly PRs for the base image, the Actions and the mail-worker's npm packages (the worker is deployed by hand, so a merged bump reaches Cloudflare with the next `npx wrangler deploy`).
+1. **Dependabot** opens one grouped PR per week with every Python update (Saturday), plus monthly PRs for the base image, the Actions and the mail-worker's npm packages (the worker is deployed by hand, so a merged bump reaches Cloudflare with the next `sh mail-worker/update.sh --deploy`).
 2. **CI** tests each one: ruff, pytest on Python 3.12–3.15, `pip-audit`, a build of the production image that must start as `appuser`, and the mail-worker's tests and `npm audit`.
 3. **Minor and patch updates merge themselves** once CI is green: the auto-merge job (`.github/workflows/dependabot-automerge.yml`) waits for the «lint · test · audit» and «mail-worker» check runs itself, so no branch rule is needed to hold it back; major ones, the base image, the Actions and the npm packages wait for you. Branch protection on `main` requires the same five checks of every PR, yours included.
 4. **Railway redeploys** from `main`.
@@ -300,7 +300,8 @@ python scripts/clean_deleted.py @your_channel --yes    # remove them
 
 ```bash
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+.venv/bin/pip install --require-hashes --no-deps -r requirements-dev.txt   # ruff, pytest, pip-audit
+.venv/bin/pip install --require-hashes --no-deps -r requirements.txt       # exactly what the image gets
 .venv/bin/ruff check .
 .venv/bin/pytest -q
 ```
