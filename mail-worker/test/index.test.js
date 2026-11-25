@@ -122,3 +122,17 @@ test("html is reduced to text", () => {
   assert.equal(htmlToText("1 <<b>2</b>"), "1 < 2");
   assert.equal(htmlToText("<".repeat(200000)), "<".repeat(200000));
 });
+
+test("style and script blocks are cut in one pass", () => {
+  assert.equal(htmlToText("a<STYLE type=x>p{}</style>b<script>1</Script>c"), "a b c");
+  // The first closing tag ends the block; a block of the other kind inside it goes too.
+  assert.equal(htmlToText("a<style><script></style>b</script>c"), "a b c");
+  // An opener without its closing tag stays as text, and a later closed block of the other kind is still cut.
+  assert.equal(htmlToText("a<style b<script>x</script>c"), "a<style b c");
+  assert.equal(htmlToText("a</style><style>b"), "a b");
+  // Thousands of unclosed openers: the old pattern rescanned the mail from each one (minutes at this size).
+  const unclosed = "<style<script".repeat(100000);
+  const started = performance.now();
+  assert.equal(htmlToText(unclosed), unclosed);
+  assert.ok(performance.now() - started < 2000, "htmlToText is not linear on unclosed <style / <script");
+});

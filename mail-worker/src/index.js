@@ -101,9 +101,34 @@ function constantTimeEqual(a, b) {
   return diff === 0;
 }
 
+// Replaces every <style…</style> and <script…</script> block with a space, as
+// /<(style|script)[\s\S]*?<\/\1>/gi did, but in one pass: that pattern looked
+// for the closing tag again from every opener, to the end of the mail — a mail
+// with thousands of unclosed "<style" took seconds. Here a name whose closing
+// tag was not found once is not looked for again.
+function stripStyleAndScript(html) {
+  const opener = /<(?:(style)|script)/gi;
+  const closers = { style: /<\/style>/gi, script: /<\/script>/gi };
+  let out = "";
+  let from = 0;
+  let match;
+  while ((closers.style || closers.script) && (match = opener.exec(html))) {
+    const name = match[1] ? "style" : "script";
+    const closer = closers[name];
+    if (!closer) continue;
+    closer.lastIndex = opener.lastIndex;
+    if (!closer.exec(html)) {
+      closers[name] = null; // no closing tag from here on: later openers stay too
+      continue;
+    }
+    out += html.slice(from, match.index) + " ";
+    from = opener.lastIndex = closer.lastIndex;
+  }
+  return out + html.slice(from);
+}
+
 export function htmlToText(html) {
-  return html
-    .replace(/<(style|script)[\s\S]*?<\/\1>/gi, " ")
+  return stripStyleAndScript(html)
     .replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d)>/gi, "\n")
     .replace(/<[^<>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
