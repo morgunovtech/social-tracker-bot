@@ -45,7 +45,7 @@ os.environ.update({
 import asyncio  # noqa: E402
 import dataclasses  # noqa: E402
 import sqlite3  # noqa: E402
-from datetime import timedelta  # noqa: E402
+from datetime import UTC, datetime, timedelta  # noqa: E402
 from types import SimpleNamespace  # noqa: E402
 
 import pytest  # noqa: E402
@@ -238,10 +238,13 @@ def bot() -> FakeBot:
 
 @pytest.fixture
 def insert(db):
-    """Insert a follower row collected `days_ago` days back (UTC)."""
+    """Insert a follower row collected `days_ago` days back (UTC) — counted
+    from `now` when a test pins the clock, else from the real one."""
 
-    def _insert(platform: str, count: int, days_ago: int = 0, source: str = "api") -> None:
-        ts = (utcnow() - timedelta(days=days_ago)).strftime("%Y-%m-%d %H:%M:%S")
+    def _insert(
+        platform: str, count: int, days_ago: int = 0, source: str = "api", now: datetime | None = None,
+    ) -> None:
+        ts = ((now or utcnow()).astimezone(UTC) - timedelta(days=days_ago)).strftime("%Y-%m-%d %H:%M:%S")
         with sqlite3.connect(db._db_path) as conn:
             conn.execute(
                 "INSERT INTO followers (platform, count, source, collected_at) VALUES (?, ?, ?, ?)",

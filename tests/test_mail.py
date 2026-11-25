@@ -1,6 +1,6 @@
 import dataclasses
 import re
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import aiohttp
 import pytest
@@ -308,7 +308,10 @@ async def test_failed_send_is_not_acknowledged(bot, mail_config, db, worker):
     assert worker["acked"] == [] and await db.recent_events() == []
 
 
-async def test_unreachable_worker_alerted_once_then_recovery(bot, mail_config, db, worker):
+async def test_unreachable_worker_alerted_once_then_recovery(bot, mail_config, db, worker, monkeypatch):
+    # A pinned noon: a 40-minute silence that crossed midnight would be written with dates.
+    now = datetime(2026, 11, 23, 12, 0, tzinfo=UTC)
+    monkeypatch.setattr(mail, "utcnow", lambda: now)
     worker["status"] = 500
     for _ in range(mail.UNREACHABLE_AFTER + 2):
         await _check(bot, mail_config, db)
@@ -316,7 +319,7 @@ async def test_unreachable_worker_alerted_once_then_recovery(bot, mail_config, d
     # 🔴: while the worker is silent a hijack sign reaches nobody — the alert rings.
     assert bot.silent == [False]
     assert "Что делать:" in bot.messages[0] and "Тех.: HTTP 500 · 6 опросов подряд" in bot.messages[0]
-    since = utcnow() - timedelta(minutes=40)
+    since = now - timedelta(minutes=40)
     await db.set_setting("mail_fail_since", since.isoformat())                    # the first failed poll
     worker["status"] = 200
     await _check(bot, mail_config, db)
