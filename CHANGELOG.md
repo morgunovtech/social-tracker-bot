@@ -2,6 +2,21 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.10.2 — 2026-11-25
+
+Hardening after the first SonarQube Cloud analysis. Nothing changes on the screens or in the messages.
+
+**Fixed**
+- The weekly backup file is read off the event loop: the bot keeps answering while the Sunday backup is prepared (#91).
+- A LinkedIn page with a digit followed by a long run of spaces could stall the follower count: the pattern no longer backtracks. What it finds is the same (#91).
+- mail-worker: turning a mail's HTML into text took time that grew with the square of the mail's size when it held thousands of unclosed `<`, `<style` or `<script` (0.2 s for 120 KB of `<style`); both steps are now one pass. Ordinary mail gives the same text (#91, #92).
+
+**Running it**
+- The bot updates itself as usual. The mail-worker is deployed by hand: if you run one, `git pull` and `npx wrangler deploy` in `mail-worker/` bring it this fix.
+
+**Repo**
+- CI and the Docker image install Python packages from wheels only (`--only-binary :all:`), and CI's `npm ci` for the mail-worker runs with `--ignore-scripts`: no dependency's build script runs on the runner or in the image (#91).
+
 ## 1.10.1 — 2026-11-25
 
 The install script stops calling a bot that did not start «running», and the documents catch up with 1.9.0–1.10.0. The bot itself behaves the same.
