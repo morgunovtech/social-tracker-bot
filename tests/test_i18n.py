@@ -4,7 +4,7 @@ drifted from its English entry falls back to Russian and shows up here."""
 
 import dataclasses
 import re
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -204,6 +204,9 @@ async def test_every_screen(config, db, insert, monkeypatch):
     screen_english(await ui.linkedin(db, config))
     screen_english(await ui.instagram(db, config))
     # Quiet hours and a mute: the when screen, the home chip, the mute note.
+    # «0-23» is half-open (00:00–23:00): at 23:xx the real clock is outside it, so the
+    # notifier reads a pinned noon — the mute deadline is counted from the same clock.
+    monkeypatch.setattr(notifier, "utcnow", lambda: datetime(2026, 11, 23, 12, 0, tzinfo=UTC))
     await notifier.set_quiet_hours(db, "0-23")
     await notifier.set_mute(db, timedelta(hours=1))
     screen_english(await ui.when_to_write(db, config))
