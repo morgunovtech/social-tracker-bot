@@ -69,12 +69,14 @@ def linkedin_url(raw: str) -> str | None:
     return f"https://www.linkedin.com/{m.group(1)}/" if m else None
 
 
-# What .env said, per config object: «-» in the chat brings it back.
-_ENV: dict[int, dict[str, str | None]] = {}
-
-
 def _env(config: Config) -> dict[str, str | None]:
-    return _ENV.setdefault(id(config), {attr: getattr(config, attr) for attr in KEYS})
+    """What .env said, remembered on the config object itself the first time
+    it is asked for: «-» in the chat brings these values back."""
+    env = getattr(config, "_connections_env", None)
+    if env is None:
+        env = {attr: getattr(config, attr) for attr in KEYS}
+        object.__setattr__(config, "_connections_env", env)
+    return env
 
 
 async def restore(config: Config, db: Database) -> None:
