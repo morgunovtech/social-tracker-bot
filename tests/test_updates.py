@@ -2,6 +2,7 @@ import dataclasses
 import json
 from datetime import UTC, datetime, timedelta
 
+import aiohttp
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestServer
@@ -21,6 +22,7 @@ from bot.updates import (
 
 RUNNING = "aaaaaaa1111111"
 HEAD = "bbbbbbb2222222"
+BOT = {"login": "dependabot[bot]", "type": "Bot"}   # what the pulls API returns for Dependabot
 
 
 @pytest.fixture
@@ -172,7 +174,7 @@ async def test_deploy_watch_needs_a_known_build(bot, config, db, github):
 
 def _pr(number, title, days_open):
     opened = (datetime.now(UTC) - timedelta(days=days_open)).isoformat().replace("+00:00", "Z")
-    return {"number": number, "title": title, "created_at": opened, "user": {"login": "dependabot[bot]"},
+    return {"number": number, "title": title, "created_at": opened, "user": BOT,
             "html_url": f"https://github.com/me/bot/pull/{number}"}
 
 
@@ -201,6 +203,37 @@ async def test_prs_waiting_for_a_human(bot, watch_config, db, github):
     assert "Ждёт твоего решения: aiohttp 3.14.4→4.0.0" in text and "/pull/10" in text
     assert "тесты не прошли" in text and "/pull/11" in text
     assert "/pull/12" not in text and "/pull/13" not in text
+
+
+async def test_a_lookalike_account_is_not_dependabot(watch_config, github, monkeypatch):
+    """The repository is public: anyone can open a PR from an account named
+    «dependabot-preview» or «dependabotx» with a title that looks like a major
+    bump. Only GitHub's own app — login «dependabot[bot]», type «Bot» — is
+    read; the rest never reach the chat or the title parser."""
+    bump = "Bump aiohttp from 3.14.4 to 4.0.0"
+
+    def pr(number, user):
+        return {**_pr(number, bump, 9), "user": user}
+
+    github["pulls"] = [
+        pr(1, {"login": "dependabotx", "type": "User"}),
+        pr(2, {"login": "dependabot-preview", "type": "User"}),
+        pr(3, {"login": "dependabot", "type": "User"}),
+        pr(4, {"login": "dependabot-preview[bot]", "type": "Bot"}),
+        pr(5, {"login": "Dependabot[bot]", "type": "Bot"}),
+        pr(6, {"login": "dependabot[bot]", "type": "User"}),
+        pr(7, {"login": "dependabot[bot]"}),
+        pr(8, None),
+        pr(9, "dependabot[bot]"),
+        pr(10, BOT),
+    ]
+    parsed = []
+    real = updates.is_major_bump
+    monkeypatch.setattr(updates, "is_major_bump", lambda title: parsed.append(title) or real(title))
+    async with aiohttp.ClientSession() as session:
+        prs = await updates.waiting_prs(session, watch_config)
+    assert [p["number"] for p in prs] == [10]
+    assert len(parsed) == 1          # a stranger's title is not even parsed
 
 
 async def test_dependency_watch_silent_when_healthy(bot, watch_config, db, github):

@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 GITHUB_API = "https://api.github.com"
 OSV_BATCH = "https://api.osv.dev/v1/querybatch"
+DEPENDABOT_LOGIN = "dependabot[bot]"
 # A minor/patch PR still open after this long did not auto-merge: CI is red.
 STUCK_AFTER = timedelta(days=2)
 _TIMEOUT = aiohttp.ClientTimeout(total=30)
@@ -228,6 +229,16 @@ async def vulnerabilities(session: aiohttp.ClientSession, versions: dict[str, st
     return out
 
 
+def _is_dependabot(author) -> bool:
+    """The PR was opened by GitHub's Dependabot app itself. The login is exact:
+    «dependabot[bot]» cannot be registered by a person (no brackets in a
+    login), while «dependabot-preview» or «dependabotx» can — and on a public
+    repository anyone may open a PR whose title this module then reads and
+    shows in the chat. GitHub marks the app's account as «Bot»."""
+    return (isinstance(author, dict) and author.get("login") == DEPENDABOT_LOGIN
+            and author.get("type") == "Bot")
+
+
 async def waiting_prs(session: aiohttp.ClientSession, config: Config) -> list[dict] | None:
     """Dependabot PRs that wait for a human: major bumps (never auto-merged)
     and minor ones still open after STUCK_AFTER (auto-merge waits for a green
@@ -240,7 +251,7 @@ async def waiting_prs(session: aiohttp.ClientSession, config: Config) -> list[di
     now = datetime.now(UTC)
     out = []
     for pr in data:
-        if not str((pr.get("user") or {}).get("login") or "").startswith("dependabot"):
+        if not _is_dependabot((pr or {}).get("user")):
             continue
         title = str(pr.get("title") or "")
         major = is_major_bump(title)
