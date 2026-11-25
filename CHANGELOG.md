@@ -2,6 +2,14 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.11.1 — 2026-11-25
+
+The Sunday list of Dependabot PRs that wait for you reads only Dependabot's own PRs. No new variables, permissions or requests.
+
+**PRs waiting for you**
+- A PR counts as Dependabot's only when GitHub's Dependabot app opened it: the login is exactly `dependabot[bot]` and the account type is «Bot». Before, a login that merely started with «dependabot» was enough: the repository is public, so a PR from a look-alike account (`dependabotx`, `dependabot-preview`) showed up in the Sunday message as an update waiting for you, and its title went into the version parser.
+- What you notice: PRs from such accounts are no longer listed. Real Dependabot PRs are listed as before; the auto-merge already checked the exact login.
+
 ## 1.11.0 — 2026-11-25
 
 The base image now updates itself, every week. No new variables, permissions or requests; the bot behaves the same in the chat.

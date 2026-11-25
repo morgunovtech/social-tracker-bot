@@ -1,6 +1,6 @@
 [project]
 name = "social-tracker-bot"
-version = "1.11.0"
+version = "1.11.1"
 description = "Self-hosted Telegram bot that watches your social accounts: followers on Telegram, YouTube, Instagram and LinkedIn, your channel's joins, posts and reactions, plus hijack, comment and security-email alerts and a weekly reputation report on how people and AI assistants find you"
 requires-python = ">=3.12"
 license = { text = "MIT" }
