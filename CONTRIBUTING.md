@@ -47,3 +47,7 @@ The bot follows the same rules as the owner's other Telegram bots ([TofsDevOps](
 The source of truth is the owner's `BOT_PRINCIPLES.md`, kept with the playbook outside the repositories; it ends with the list of what this repository still has to change to match. A principle changes there first, then here.
 
 Open the pull request against `main`; CI must be green. Keep the README (both languages) in step with what you change.
+
+## Social preview
+
+`docs/images/social-preview.png` (1280×640) is the source of the repository's social preview, the picture a link to this repo shows in a feed. GitHub takes it only by hand: Settings → General → Social preview → Upload an image; no code refers to the file, so after changing it, upload it there again. The picture is a render of the morgunov.tech share-card template (the design system, `templates/share-card`, card `socialtracker-en`), so a link to this repo looks like the family's other links; its text is changed in the template's `cards.js`, the card is not drawn by hand.
