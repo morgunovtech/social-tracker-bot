@@ -13,7 +13,7 @@ from telegram.error import BadRequest, Conflict, NetworkError
 from telegram.ext import ApplicationHandlerStop, ConversationHandler
 
 from bot import callbacks as cb
-from bot import handlers, notifier, ui
+from bot import handlers, i18n, notifier, ui
 from bot.db import Database, utcnow
 from bot.scheduler import CollectOutcome, setup_scheduler
 
@@ -139,6 +139,8 @@ async def test_every_button_answers_once_and_leads_back(make_update, make_contex
         if data in cb.CONVERSATION_ENTRIES:                         # answered by the next message
             continue
         photos = len(bot.photos)
+        if data == "set:lang":                                      # a switch: there (English) and back,
+            await press(make_update, make_context, data)            # so the walk goes on in Russian
         query = await press(make_update, make_context, data)
         assert len(query.answers) == 1, data                        # answered exactly once
         assert query.edits or query.answers[0]["text"] or len(bot.photos) > photos, f"{data} did nothing"
@@ -894,3 +896,57 @@ async def test_a_stale_command_with_a_secret_is_deleted_and_explained(make_updat
 async def test_button_presses_are_never_dropped_as_stale(make_update, make_context):
     # A press has no send time of its own: the menu it sits on may be days old.
     assert await handlers.drop_stale_messages(make_update(callback="home"), make_context()) is None
+
+
+async def test_a_non_russian_telegram_makes_a_new_bot_english(make_update, make_context, config, db, bot, monkeypatch):
+    """BOT_LANG empty: the first /start of an owner whose Telegram is not
+    Russian switches the bot — greeting included — says so once, and a
+    schedule nobody set moves to UTC. A restart keeps the language."""
+    for name in ("BOT_LANG", "TIMEZONE", "REPORT_TZ"):
+        monkeypatch.delenv(name, raising=False)
+    unclaimed = dataclasses.replace(config, admin_chat_id=None)
+    context = make_context()
+    context.bot_data["config"] = unclaimed
+    update = make_update(user_id=STRANGER_ID)
+    update.effective_user.language_code = "de"
+    await handlers.cmd_start(update, context)
+
+    assert i18n.language() == "en" and unclaimed.lang == "en"
+    assert update.message.replies[0].startswith("✅ This bot is yours now")
+    assert update.message.replies[1].startswith("🗣 I speak English, as your Telegram does.")
+    assert buttons(update.message.markups[1]) == {"set:lang": "🗣 Language"}
+    assert await db.get_setting("report_tz") == "UTC"
+
+    i18n.set_language("ru")                                 # a restart: BOT_LANG is still empty
+    restarted = dataclasses.replace(config, admin_chat_id=None, lang="ru")
+    await handlers.restore_language(restarted, db)
+    assert i18n.language() == "en" and restarted.lang == "en"
+
+
+@pytest.mark.parametrize(("code", "env", "stored", "expected"), [
+    ("ru", "", None, "ru"), ("ru-RU", "", None, "ru"), (None, "", None, "ru"), ("pt-br", "", None, "en"),
+    ("en", "ru", None, "ru"),                               # BOT_LANG=ru was written on purpose
+    ("en", "", "ru", "ru"),                                 # the chat already chose
+])
+async def test_which_telegram_language_switches_the_bot(config, db, monkeypatch, code, env, stored, expected):
+    monkeypatch.setenv("BOT_LANG", env)
+    if stored:
+        await db.set_setting(handlers.LANG_SETTING, stored)
+    assert await handlers.adopt_owner_language(code, config, db) == (expected == "en")
+    assert config.lang == expected and i18n.language() == expected
+
+
+async def test_an_english_owner_keeps_a_zone_that_was_chosen(config, db, monkeypatch):
+    monkeypatch.setenv("BOT_LANG", "")
+    monkeypatch.setenv("TIMEZONE", "Asia/Almaty")
+    assert await handlers.adopt_owner_language("en", config, db)
+    assert await db.get_setting("report_tz") is None
+
+
+async def test_the_language_button_switches_there_and_back(make_update, make_context, config, db, bot):
+    query = await press(make_update, make_context, "set:lang")
+    assert i18n.language() == "en" and await db.get_setting(handlers.LANG_SETTING) == "en"
+    assert "🗣 Language: English" in query.edits[0]
+    assert bot.messages[-1] == "Language: English. The buttons under the input field are updated."
+    query = await press(make_update, make_context, "set:lang")
+    assert i18n.language() == "ru" and "🗣 Язык: русский" in query.edits[0]

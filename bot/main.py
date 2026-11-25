@@ -8,7 +8,14 @@ from telegram.ext import Application
 from bot import behavior, watchdog
 from bot.config import Config
 from bot.db import Database
-from bot.handlers import ALLOWED_UPDATES, collect_lock, register_handlers, restore_owner, show_keyboard_once
+from bot.handlers import (
+    ALLOWED_UPDATES,
+    collect_lock,
+    register_handlers,
+    restore_language,
+    restore_owner,
+    show_keyboard_once,
+)
 from bot.i18n import set_language
 from bot.redact import RedactingFormatter
 from bot.scheduler import setup_scheduler
@@ -58,6 +65,7 @@ async def _post_init(app: Application) -> None:
 
     await db.init()
     await restore_owner(config, db)
+    await restore_language(config, db)
     await watchdog.url(db, config)   # an address set in the chat joins the log redactor
 
     scheduler = await setup_scheduler(app.bot, config, db, lock=collect_lock(app.bot_data))

@@ -27,9 +27,9 @@ from telegram.ext import (
 
 from bot import callbacks as cb
 from bot import monitors, notifier, reputation, ui, watchdog
-from bot.config import DOW_ORDER, Config, normalize_dow, normalize_tz
+from bot.config import DEFAULT_TZ, DOW_ORDER, Config, normalize_dow, normalize_tz
 from bot.db import HELD_KEEP_DAYS, Database, utcnow
-from bot.i18n import t
+from bot.i18n import LANGUAGES, set_language, t
 from bot.monitors import NO_PREVIEW, channel, comments, hygiene
 from bot.platforms import BY_ID, PLATFORM_IDS
 from bot.platforms import instagram as ig
@@ -205,6 +205,41 @@ async def restore_owner(config: Config, db: Database) -> None:
         logger.info("Owner restored from the database")
     else:
         logger.warning("No owner yet: the first /start claims the bot")
+
+
+# The chat language once it was chosen at runtime — in ⚙️ Настройки, or by the
+# owner's Telegram at the first /start. It wins over BOT_LANG (chat beats .env).
+LANG_SETTING = "bot_lang"
+
+
+async def restore_language(config: Config, db: Database) -> None:
+    """At startup: the language kept in the database, when there is one."""
+    stored = await db.get_setting(LANG_SETTING)
+    if stored in LANGUAGES and stored != config.lang:
+        config.set_lang(stored)
+        set_language(stored)
+
+
+async def _switch_language(config: Config, db: Database, lang: str) -> None:
+    await db.set_setting(LANG_SETTING, lang)
+    config.set_lang(lang)
+    set_language(lang)
+
+
+async def adopt_owner_language(code: str | None, config: Config, db: Database) -> bool:
+    """The bot was just claimed and nobody chose a language — BOT_LANG is empty
+    and the chat never set one: the owner's Telegram decides. Russian stays
+    Russian, any other language becomes English, and a schedule nobody set
+    moves to the English default zone (UTC). True when the bot switched."""
+    if (os.getenv("BOT_LANG") or "").strip() or await db.get_setting(LANG_SETTING):
+        return False
+    if not code or code.lower().split("-")[0] == "ru":
+        return False
+    await _switch_language(config, db, "en")
+    zone_chosen = (os.getenv("TIMEZONE") or os.getenv("REPORT_TZ") or "").strip() or await db.get_setting("report_tz")
+    if not zone_chosen:
+        await db.set_setting("report_tz", DEFAULT_TZ["en"])
+    return True
 
 
 async def _answer(query, text: str | None = None, show_alert: bool = False) -> None:
@@ -418,7 +453,7 @@ async def _save_linkedin(db: Database, config: Config, count: int) -> ui.Screen:
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config, db = _deps(context)
-    claimed = False
+    claimed = adopted = False
     if config.admin_chat_id is None and update.effective_user is not None:
         # The first person to say /start owns the bot (BOT_PRINCIPLES §5);
         # ADMIN_CHAT_ID in the environment pins or changes the owner.
@@ -426,12 +461,17 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await db.set_setting(OWNER_SETTING, str(update.effective_user.id))
         logger.info("Owner claimed by the first /start")
         claimed = True
+        adopted = await adopt_owner_language(getattr(update.effective_user, "language_code", None), config, db)
+        if adopted:
+            await _apply_schedule(context)
     if not _is_admin(update, config):
         await update.message.reply_text(t("Это личный бот: он отвечает только своему владельцу."))
         return
     # Two messages: a message carries either the persistent keyboard or inline buttons.
     await update.message.reply_text(ui.welcome(claimed), reply_markup=ui.persistent_keyboard())
     await db.set_setting(KEYBOARD_SETTING, KEYBOARD_VERSION)
+    if adopted:
+        await _reply(update, ui.language_note())
     await _reply(update, await ui.home(db, config))
 
 
@@ -1151,6 +1191,15 @@ async def _cb_settings(press: _Press, context, args: list[str]) -> None:
         quiet = not await is_quiet_mode(db, config)
         await db.set_setting("quiet_if_no_change", "1" if quiet else "0")
         await press.answer(t("Коротко без изменений: включено") if quiet else t("Коротко без изменений: выключено"))
+        screen = await ui.settings(db, config)
+    elif action == "lang" and len(args) == 1:
+        # Two languages: the button is a switch. The three buttons under the
+        # input field keep their old words until a message brings new ones.
+        await _switch_language(config, db, "en" if config.lang == "ru" else "ru")
+        await press.answer(t("Сохранено"))
+        await context.bot.send_message(
+            chat_id=config.admin_chat_id, text=t("Язык: {lang}. Кнопки под полем ввода обновил.").format(lang=t(ui.LANG_NAMES[config.lang])),
+            reply_markup=ui.persistent_keyboard())
         screen = await ui.settings(db, config)
     elif action == "when" and len(args) == 1:
         screen = await ui.when_to_write(db, config)

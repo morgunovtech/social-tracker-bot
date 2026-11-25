@@ -4,7 +4,7 @@
 
 🇷🇺 [По-русски](README.ru.md) · [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/cL4hpn?referralCode=7hTMqE)
 
-The bot talks to you in English or Russian (`BOT_LANG`); the setup is the same in both.
+The bot talks to you in English or Russian. It takes the language from your Telegram at the first `/start` — Russian stays Russian, any other becomes English — and «🗣 Language» in ⚙️ Settings switches it at any time; the setup is the same in both.
 
 <p align="center">
   <img src="docs/images/home.png" width="31%" alt="Home: the follower report, the security score, the next report">
@@ -64,7 +64,7 @@ Everything else stays with you: follower history, the channel's joins, leaves, p
 
 ## Setup
 
-0. **Language.** `BOT_LANG=en` or `ru` (the default): every screen, report, alert and the `/` menu, and the default time zone — UTC for `en`, Moscow for `ru` (see [Schedule](#schedule)). It can be changed later: the recent events on 🛡 Security are stored before translation and read in the new language too. The examples below show the Russian bot.
+0. **Language.** Nothing to set: the first `/start` takes it from your Telegram (Russian stays Russian, any other becomes English). `BOT_LANG=en` or `ru` fixes it beforehand, and ⚙️ Settings → «🗣 Language» switches it later — the choice made in the chat wins over `BOT_LANG`. It covers every screen, report and alert, and the default time zone — UTC for English, Moscow for Russian (see [Schedule](#schedule)). Switching is safe: the recent events on 🛡 Security are stored before translation and read in the new language too. The examples below show the Russian bot.
 1. **Telegram (required).** Create a bot with [@BotFather](https://t.me/BotFather) → `BOT_TOKEN`, start it and send it `/start` right away: **the first person to do so becomes its owner**, and the bot answers nobody else. `ADMIN_CHAT_ID` (your user id, from [@userinfobot](https://t.me/userinfobot)) is optional: set it to pin the owner or to take the bot over; it wins over the stored one. To track a channel, make the bot an **admin** of it → `TELEGRAM_CHANNEL_ID`; as an admin it also sees who joins and leaves, every post and its reactions (the 📣 Channel screen).
 2. **YouTube (optional).** In [Google Cloud Console](https://console.cloud.google.com/) enable YouTube Data API v3 and create an API key → `YOUTUBE_API_KEY`; your channel id (`UC…`) → `YOUTUBE_CHANNEL_ID`.
 3. **Instagram (optional).** The account must be professional (Creator or Business: Settings → Account type in the app, free). On [developers.facebook.com](https://developers.facebook.com/) create an app with the **Instagram API** use case (Meta also asks for a business portfolio: free, no verification needed for your own account), open «API setup with Unified login», create the configuration from the template, add your account as an **Instagram Tester**, accept the invitation in Instagram (Settings → Website permissions → Tester invitations) and press **Generate token**. Your @username → `INSTAGRAM_USERNAME`, then send the bot `/igtoken <token>` — it checks that the token was granted for that account, deletes your message and keeps the token (or set `INSTAGRAM_ACCESS_TOKEN` in `.env`). The token does not expire; if Meta revokes it, the bot says so once and in every report until a new one arrives. This is the official Instagram API: the bot reads only its own account's public data (followers, name, bio, post count) and watches those for a hijack.
@@ -80,10 +80,28 @@ Every variable, with a comment on what it does, is in [`.env.example`](.env.exam
 
 ### Docker Compose
 
+**One command**, when Docker is already installed:
+
 ```bash
-cp .env.example .env    # fill it in
-docker compose up -d
+curl -fsSL https://raw.githubusercontent.com/morgunovtech/social-tracker-bot/main/scripts/install.sh | sh
 ```
+
+It asks for the bot token, writes `.env` and `docker-compose.yml` into `~/social-tracker-bot` and starts the bot; run it again to update. Read it first if you like: [scripts/install.sh](scripts/install.sh). The networks and keys from [Setup](#setup) are lines you add to that `.env` later.
+
+**Or by hand.** Make a folder with two files — `.env` with one line, `BOT_TOKEN=<the token from @BotFather>` (every other variable is in [`.env.example`](.env.example)), and `docker-compose.yml`:
+
+```yaml
+services:
+  tracker-bot:
+    image: ghcr.io/morgunovtech/social-tracker-bot:latest
+    container_name: social-tracker-bot
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+```
+
+Then `docker compose up -d`. With a clone of this repository the same is `cp .env.example .env`, the token into `BOT_TOKEN`, `docker compose up -d`.
 
 `docker-compose.yml` pulls the image every green `main` publishes to `ghcr.io/morgunovtech/social-tracker-bot` (amd64 and arm64); to run your own changes, replace `image:` with `build: .` and add `--build`.
 
@@ -93,7 +111,13 @@ Logs: `docker compose logs -f`. Stop: `docker compose down`.
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/cL4hpn?referralCode=7hTMqE)
 
-The template creates the service from this repository with a volume at `/app/data` and asks for `BOT_TOKEN` only; the optional networks are variables you fill in later. By hand: create a service from this repository, set the variables from `.env.example`, and **attach a volume at `/app/data`** — without one the database is lost on every deploy.
+Press the button, then **Configure** — the Deploy button stays grey until you do — and paste the token into `BOT_TOKEN`; leave the other fields empty. The template creates the service from this repository with a volume at `/app/data`; the optional networks are variables you fill in later (the service → **Variables**).
+
+**What it costs.** For the first 30 days Railway gives $5 and asks for no card. After that the account drops to the Free plan with $1 of usage a month, which a bot that runs around the clock can outgrow: when the credit ends the bot stops and nobody is told, and 30 days later Railway deletes the volume with the database. The Hobby plan is $5 a month and includes $5 of usage; it needs a card that works abroad. Railway's terms: [its docs](https://docs.railway.com/reference/pricing/free-trial). The free way is your own server, above.
+
+**Updates.** Deployed with the button: Railway notices a new version and offers the update inside your project — accept it, and the bot says «🔄 The bot has been updated» after the restart.
+
+By hand: create a service from this repository, set the variables from `.env.example`, and **attach a volume at `/app/data`** — without one the database is lost on every deploy.
 
 The database lives in `./data` (on Railway, in the volume at `/app/data`). The container starts as root only to hand that directory to the unprivileged `appuser`, then drops root for good.
 
@@ -190,7 +214,7 @@ Problems come first («🟠 Instagram rejected the token — send a new one via 
 
 Data is collected every day at the report time, and the report goes out on the report day(s). Time and days are in your time zone: pick it with the «🌍 Time zone» button in ⚙️ Settings or with `/settz`, and `/settime 09:00` means 09:00 on your clock, summer time included. Switching the zone keeps the report at the same moment and shows it on the new clock (08:00 UTC becomes 11:00 in Moscow).
 
-`TIMEZONE`, `REPORT_HOUR`, `REPORT_MINUTE` and `REPORT_DOW` are the defaults until you change them in the bot: Saturday, 08:00. With `TIMEZONE` empty the zone follows the chat language — UTC for `BOT_LANG=en`, `Europe/Moscow` for `ru`. Older names still work: `REPORT_TZ` for `TIMEZONE` (read when `TIMEZONE` is empty), `REPORT_HOUR_UTC` for `REPORT_HOUR`. A schedule saved by a version without the zone setting stays in UTC until you pick a zone. Before 1.5.0 an empty zone meant UTC; a bot that kept its schedule that way (with `REPORT_HOUR_UTC`, say) hears once after the update that the same time is now read in the language's zone, with the buttons to pick yours. The date in the report's title, the 1st of the month for the digest and the Sunday of the backup follow your zone; the day-by-day follower history is kept on UTC days.
+`TIMEZONE`, `REPORT_HOUR`, `REPORT_MINUTE` and `REPORT_DOW` are the defaults until you change them in the bot: Saturday, 08:00. With `TIMEZONE` empty the zone follows the chat language — UTC for English, `Europe/Moscow` for Russian (`BOT_LANG`, or the language the first `/start` took from your Telegram). Older names still work: `REPORT_TZ` for `TIMEZONE` (read when `TIMEZONE` is empty), `REPORT_HOUR_UTC` for `REPORT_HOUR`. A schedule saved by a version without the zone setting stays in UTC until you pick a zone. Before 1.5.0 an empty zone meant UTC; a bot that kept its schedule that way (with `REPORT_HOUR_UTC`, say) hears once after the update that the same time is now read in the language's zone, with the buttons to pick yours. The date in the report's title, the 1st of the month for the digest and the Sunday of the backup follow your zone; the day-by-day follower history is kept on UTC days.
 
 ## When it writes
 

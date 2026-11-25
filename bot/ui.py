@@ -132,6 +132,9 @@ def welcome(claimed: bool = False) -> str:
     ).format(home=t(HOME_BUTTON_TEXT), about=t(ABOUT_BUTTON_TEXT), icons=t(ICONS_BUTTON_TEXT))
 
 
+LANG_NAMES = {"ru": "русский", "en": "английский"}
+
+
 @dataclass(frozen=True)
 class Screen:
     text: str
@@ -812,6 +815,12 @@ async def question(db: Database, platform: Platform, key: str) -> Screen:
 # Settings
 # ---------------------------------------------------------------------------
 
+def language_note() -> Screen:
+    """Once, right after a claim that switched the bot to English."""
+    return Screen(t("🗣 Говорю по-английски, как твой Telegram. Перейти на русский — кнопка ниже."),
+                  InlineKeyboardMarkup([[_button(t("🗣 Язык / Language"), f"{SETTINGS}:lang")]]))
+
+
 async def settings(db: Database, config: Config) -> Screen:
     dow, hour, minute, tz = await _schedule(db, config)
     quiet = await is_quiet_mode(db, config)
@@ -823,6 +832,8 @@ async def settings(db: Database, config: Config) -> Screen:
         t("🌍 Часовой пояс: {tz}").format(tz=esc(tz_name(tz))),
         t("Данные собираются каждый день в это время, а отчёт приходит в выбранные дни."),
         "",
+        t("🗣 Язык: {lang}").format(lang=t(LANG_NAMES[config.lang])),
+        "",
         t("📝 Коротко без изменений: {state}").format(state=t("включено") if quiet else t("выключено")),
         t("Когда включено, неделя без изменений — это одна строка вместо отчёта."),
         "",
@@ -833,7 +844,7 @@ async def settings(db: Database, config: Config) -> Screen:
     ])
     rows = [
         [_button(t("📅 Дни отчёта"), f"{SETTINGS}:days"), _button(t("🕗 Время отчёта"), f"{SETTINGS}:time")],
-        [_button(t("🌍 Часовой пояс"), f"{SETTINGS}:tz")],
+        [_button(t("🌍 Часовой пояс"), f"{SETTINGS}:tz"), _button(t("🗣 Язык / Language"), f"{SETTINGS}:lang")],
         [_button(f"{_check(quiet)} {t('Коротко без изменений')}", f"{SETTINGS}:quiet"), _button(t("🔔 Когда писать"), f"{SETTINGS}:when")],
         [_button(t("🧩 Мониторинги"), MONITORS), _button(t("🔌 Подключения"), CONNECTIONS)],
         [_button(t("📦 Бэкап сейчас"), BACKUP)],

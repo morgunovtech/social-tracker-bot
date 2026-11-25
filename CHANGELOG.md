@@ -2,6 +2,20 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.9.0 — 2026-11-25
+
+An easier first five minutes. No new permissions; a bot that already has an owner keeps its language and schedule.
+
+**Added**
+- **The language comes from your Telegram.** With `BOT_LANG` empty, the first `/start` — the one that makes you the owner — takes the language from your Telegram: Russian stays Russian, any other becomes English, from the greeting on. The bot says so once, and a schedule nobody set moves to the English default zone (UTC).
+- **«🗣 Язык / Language» in ⚙️ Настройки** switches between Russian and English at any time; the choice is kept in the database and wins over `BOT_LANG` (chat beats `.env`).
+- **One-command install on your own server:** `scripts/install.sh` asks for the bot token, writes `.env` and `docker-compose.yml` into `~/social-tracker-bot` and starts the published image; a second run updates and keeps the token and the data.
+- `docs/RAILWAY_TEMPLATE.md` and `docs/images/template-icon.png` — the text and the icon of the Railway marketplace listing.
+
+**Changed**
+- `.env.example`: `BOT_LANG` is empty, and `TELEGRAM_CHANNEL_ID` no longer holds the placeholder `@your_channel` — a copied file tracked a channel that does not exist.
+- README (both languages): the Docker steps no longer need a clone; the Railway steps name **Configure**, what the hosting costs after the trial, and how updates reach a button deploy.
+
 ## 1.8.5 — 2026-11-25
 
 One line of bot copy: the Reputation set-up hint that asks for your brand words gives different examples. Nothing else changes.
