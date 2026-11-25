@@ -554,6 +554,8 @@ async def test_quiet_hours_do_not_hold_the_report(bot, config, db, insert, fake_
     insert("telegram", 1010, 0)
     await db.set_setting("report_dow", "*")
     await db.set_setting("hygiene_nudged_at", utcnow().date().isoformat())  # no reminder due
+    # «0-23» is half-open (00:00–23:00): at 23:xx the real clock is outside it — the notifier reads a pinned noon.
+    monkeypatch.setattr(notifier, "utcnow", lambda: datetime(2026, 11, 4, 12, 0, tzinfo=UTC))
     await notifier.set_quiet_hours(db, "0-23")                      # all day long, for the test
     assert await notifier.in_quiet_hours(db, config)
     await _scheduled_job(bot, config, db, job_scheduler)

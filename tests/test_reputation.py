@@ -7,7 +7,7 @@ from __future__ import annotations
 import base64
 import dataclasses
 import json
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import aiohttp
 import pytest
@@ -160,7 +160,8 @@ async def _connect(db, *monitor_ids):
 
 
 async def test_the_report_says_what_the_sources_saw(bot, config, db, sources, insert):
-    today = date(2026, 11, 24)
+    now = datetime(2026, 11, 24, 12, 0, tzinfo=UTC)
+    today = now.date()
     start, _, prev_start, _ = reputation.window(today)
     assert (start, prev_start) == (date(2026, 11, 15), date(2026, 11, 8))
     await _connect(db, "rep_google", "rep_ai")
@@ -169,8 +170,10 @@ async def test_the_report_says_what_the_sources_saw(bot, config, db, sources, in
                                    prev_start: _week(92, 5)}
     sources["rep_ai"].weeks = {start: _week(343, 0, {"ChatGPT-User": 200, "Perplexity-User": 100},
                                             {"foundyou.morgunov.tech": 250}), prev_start: _week(76)}
-    insert("telegram", 1000, 7)
-    insert("telegram", 1120, 0)
+    # Dated from the same fixed day as the report: by the real clock a row «7 days ago»
+    # lands on 18.11 after midnight UTC — past the baseline window of today − 7 days.
+    insert("telegram", 1000, 7, now=now)
+    insert("telegram", 1120, 0, now=now)
     async with aiohttp.ClientSession() as session:
         text, keep = await reputation.build(db, config, session, today)
     assert text.splitlines()[0] == "🔎 <b>Репутация за неделю</b> · 15.11–21.11"
