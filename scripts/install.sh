@@ -65,5 +65,5 @@ docker compose up -d
 
 say ""
 say "✓ The bot is running. Open it in Telegram and send /start — the first /start becomes the owner."
-say "  Networks, keys and the schedule: the README (Setup) — add lines to $DIR/.env and run this again."
+say "  Networks are connected in the chat: the «Connections» button on the home screen."
 say "  Folder: $DIR    Logs: docker compose logs -f    Update: run this command again."

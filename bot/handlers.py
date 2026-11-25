@@ -26,7 +26,7 @@ from telegram.ext import (
 )
 
 from bot import callbacks as cb
-from bot import monitors, notifier, reputation, ui, watchdog
+from bot import connections, monitors, notifier, reputation, ui, watchdog
 from bot.config import DEFAULT_TZ, DOW_ORDER, Config, normalize_dow, normalize_tz
 from bot.db import HELD_KEEP_DAYS, Database, utcnow
 from bot.i18n import LANGUAGES, set_language, t
@@ -34,6 +34,8 @@ from bot.monitors import NO_PREVIEW, channel, comments, hygiene
 from bot.platforms import BY_ID, PLATFORM_IDS
 from bot.platforms import instagram as ig
 from bot.platforms.linkedin import collect_linkedin, plausible_count
+from bot.platforms.telegram import collect_telegram
+from bot.platforms.youtube import collect_youtube
 from bot.reporter import _fmt
 from bot.scheduler import (
     CHART_CAPTION,
@@ -58,7 +60,8 @@ AWAITING_INPUT = 2       # a cookie, a token or a time zone, by button (ui.input
 LI_CONV_TIMEOUT = 120
 # What each entry button asks for.
 INPUT_KINDS = {cb.LI_COOKIE: "cookie", cb.IG_TOKEN: "token", cb.TZ_OTHER: "tz", cb.WD_URL: "watchdog",
-               cb.REP_WORDS: "rep_words", **{entry: monitor for monitor, entry in cb.REP_KEYS.items()}}
+               cb.REP_WORDS: "rep_words", **{entry: monitor for monitor, entry in cb.REP_KEYS.items()},
+               **{entry: f"conn_{platform}" for platform, entry in cb.CONN_ADD.items()}}
 # A service-account key file is small; anything bigger is not one.
 KEY_FILE_MAX_BYTES = 20_000
 
@@ -848,7 +851,7 @@ async def _store_token(update: Update, context: ContextTypes.DEFAULT_TYPE, token
         return
 
     if not config.instagram_username:
-        await chat.send_message(t("❌ Не задан INSTAGRAM_USERNAME — Instagram не подключён.") + note)
+        await chat.send_message(t("❌ Сначала подключи Instagram: 🔌 Подключения → «➕ Instagram».") + note)
         return
 
     await chat.send_message(t("⏳ Проверяю токен…"))
@@ -867,7 +870,7 @@ async def _store_token(update: Update, context: ContextTypes.DEFAULT_TYPE, token
         else:
             reason = (
                 t(
-                    "токен выдан не для @{username} — проверь INSTAGRAM_USERNAME "
+                    "токен выдан не для @{username} — проверь @username в «🔌 Подключения» "
                     "и какой аккаунт добавлен в приложение Meta"
                 ).format(username=config.instagram_username)
                 if user_id is None
@@ -987,6 +990,7 @@ async def _restore_document(context: ContextTypes.DEFAULT_TYPE, document) -> str
         await tg_file.download_to_drive(path)
         try:
             result = await db.restore_from(path)
+            await connections.restore(config, db)   # networks the backup connected from the chat
         except ValueError as e:
             return t("❌ Не похоже на бэкап этого бота: {error}.").format(error=e)
     # The backup may carry another report time: apply it to the running job.
@@ -1644,11 +1648,107 @@ async def input_conv_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     elif kind in reputation.BY_MONITOR and not await _store_rep_key(update, context, kind, value):
         context.user_data["awaiting"] = kind
         return AWAITING_INPUT
+    elif kind is not None and kind.startswith("conn_"):
+        again = await _store_connection(update, context, kind, value)
+        if again:
+            context.user_data["awaiting"] = again
+            return AWAITING_INPUT
     return ConversationHandler.END
+
+
+# What «-» forgets for each network, and what its first collection needs next.
+_CONN_ATTRS = {
+    "conn_telegram": ("telegram_channel_id",),
+    "conn_youtube": ("youtube_channel_id", "youtube_api_key"),
+    "conn_youtube_key": ("youtube_channel_id", "youtube_api_key"),
+    "conn_instagram": ("instagram_username",),
+    "conn_linkedin": ("linkedin_profile_url",),
+}
+
+
+async def _store_connection(update: Update, context: ContextTypes.DEFAULT_TYPE, kind: str, value: str) -> str | None:
+    """The message after «➕ <network>» on 🔌 Подключения: the value is
+    checked — with a live request where there is one — kept in the database
+    and put to work at once. Returns the kind to keep asking for (a value
+    that was not taken, or YouTube's second step), None when the step is over."""
+    config, db = _deps(context)
+    chat = update.effective_chat
+
+    async def again(note: str, step: str = kind) -> str:
+        screen = ui.input_retry(note)
+        await chat.send_message(screen.text, **_markup(screen))
+        return step
+
+    async def done(note: str) -> None:
+        await _reply(update, (await ui.connections(db, config)).noted(note))
+
+    if value == connections.REMOVE and kind != "conn_youtube_key":
+        await connections.remove(config, db, *_CONN_ATTRS[kind])
+        context.user_data.pop("conn_youtube_channel", None)
+        await done(t("Убрал то, что было задано в чате. Если сеть есть в .env — действует она."))
+        return None
+
+    if kind == "conn_telegram":
+        channel = connections.telegram_channel(value)
+        if channel is None:
+            return await again(t("❌ Нужен @username канала, ссылка t.me/… или его id вида -100…. Пришли ещё раз или нажми «✖️ Отмена»."))
+        count = await collect_telegram(context.bot, channel)
+        if count is None:
+            return await again(t(
+                "❌ Не вижу канал {channel}. Проверь имя и добавь меня в администраторы канала, "
+                "потом пришли его ещё раз — или нажми «✖️ Отмена»."
+            ).format(channel=channel))
+        await connections.save(config, db, telegram_channel_id=channel)
+        await done(t("✅ Telegram-канал {channel} подключён: сейчас {count}. Чтобы видеть вступления, посты и реакции, я должен быть его администратором.").format(
+            channel=channel, count=_fmt(count)))
+    elif kind == "conn_youtube":
+        channel = connections.youtube_channel(value)
+        if channel is None:
+            return await again(t("❌ Нужен id канала — 24 знака, начинается с UC (YouTube → Настройки → Расширенные настройки), или ссылка youtube.com/channel/UC…. Пришли ещё раз или нажми «✖️ Отмена»."))
+        context.user_data["conn_youtube_channel"] = channel
+        if config.youtube_api_key:        # the key is already there (.env or an earlier step): check the pair now
+            return await _store_connection(update, context, "conn_youtube_key", config.youtube_api_key)
+        return await again(t(ui.INPUT_PROMPTS["conn_youtube_key"]), "conn_youtube_key")
+    elif kind == "conn_youtube_key":
+        channel = context.user_data.get("conn_youtube_channel") or config.youtube_channel_id
+        typed = value != config.youtube_api_key
+        note = ""
+        if typed:                         # a secret: out of the chat history before any check
+            try:
+                await update.message.delete()
+            except Exception:
+                note = "\n" + t("🟠 Удалить сообщение с ключом не получилось — удали его из чата вручную.")
+        key = connections.youtube_key(value)
+        if key is None or not channel:
+            return await again(t("❌ Это не похоже на ключ YouTube Data API. Пришли его ещё раз или нажми «✖️ Отмена».") + note)
+        async with aiohttp.ClientSession() as session:
+            count = await collect_youtube(session, key, channel)
+        if count is None:
+            return await again(t(
+                "❌ YouTube не отдал число подписчиков канала {channel} с этим ключом. Проверь, что в проекте включён "
+                "YouTube Data API v3 и id канала верный, и пришли ключ ещё раз — или нажми «✖️ Отмена»."
+            ).format(channel=channel) + note)
+        context.user_data.pop("conn_youtube_channel", None)
+        await connections.save(config, db, youtube_channel_id=channel, youtube_api_key=key)
+        await done(t("✅ YouTube подключён: сейчас {count}.").format(count=_fmt(count)) + note)
+    elif kind == "conn_instagram":
+        username = connections.instagram_username(value)
+        if username is None:
+            return await again(t("❌ Нужен @username Instagram или ссылка на профиль. Пришли ещё раз или нажми «✖️ Отмена»."))
+        await connections.save(config, db, instagram_username=username)
+        await done(t("✅ Instagram @{username} записан. Остался токен: кнопка «📸 Instagram» ниже.").format(username=username))
+    elif kind == "conn_linkedin":
+        url = connections.linkedin_url(value)
+        if url is None:
+            return await again(t("❌ Нужна ссылка на профиль вида linkedin.com/in/…. Пришли ещё раз или нажми «✖️ Отмена»."))
+        await connections.save(config, db, linkedin_profile_url=url)
+        await done(t("✅ Профиль LinkedIn записан. Дальше — cookie или число вручную: кнопка «💼 LinkedIn» ниже."))
+    return None
 
 
 async def input_conv_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.pop("awaiting", None)
+    context.user_data.pop("conn_youtube_channel", None)
     return await li_conv_cancel(update, context)
 
 

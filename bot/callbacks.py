@@ -59,8 +59,11 @@ WD_URL = "wd:url"
 # The reputation report's inputs: the brand words and one read-only key per source.
 REP_WORDS = "rep:words"
 REP_KEYS = {"rep_google": "rep:k:g", "rep_yandex": "rep:k:y", "rep_ai": "rep:k:c"}
+# A network connected from the chat (bot/connections.py): platform id → entry.
+CONN_ADD = {"telegram": "conn:tg", "youtube": "conn:yt", "instagram": "conn:ig", "linkedin": "conn:li"}
 INPUT_CANCEL = "input:cancel"
-CONVERSATION_ENTRIES = frozenset({LI_ENTER, LI_COOKIE, IG_TOKEN, TZ_OTHER, WD_URL, REP_WORDS, *REP_KEYS.values()})
+CONVERSATION_ENTRIES = frozenset({LI_ENTER, LI_COOKIE, IG_TOKEN, TZ_OTHER, WD_URL, REP_WORDS, *REP_KEYS.values(),
+                                  *CONN_ADD.values()})
 
 # The screens an alert or a report may open, with their labels (translated when built).
 SCREEN_LABELS = {

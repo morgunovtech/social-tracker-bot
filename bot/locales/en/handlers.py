@@ -71,12 +71,38 @@ STRINGS: dict[str, str] = {
         "🟠 Could not delete the message with the token — delete it from the chat yourself.",
     "❌ Это не похоже на токен: значение слишком короткое.":
         "❌ This does not look like a token: the value is too short.",
-    "❌ Не задан INSTAGRAM_USERNAME — Instagram не подключён.":
-        "❌ INSTAGRAM_USERNAME is not set — Instagram is not connected.",
+    "❌ Сначала подключи Instagram: 🔌 Подключения → «➕ Instagram».":
+        "❌ Connect Instagram first: 🔌 Connections → «➕ Instagram».",
+    "Убрал то, что было задано в чате. Если сеть есть в .env — действует она.":
+        "Removed what was set in the chat. If the network is in .env, that value is in force.",
+    "❌ Нужен @username канала, ссылка t.me/… или его id вида -100…. Пришли ещё раз или нажми «✖️ Отмена».":
+        "❌ I need the channel's @username, a t.me/… link or its id like -100…. Send it again or press «✖️ Cancel».",
+    "❌ Не вижу канал {channel}. Проверь имя и добавь меня в администраторы канала, потом пришли его ещё раз — или нажми «✖️ Отмена».":
+        "❌ I cannot see the channel {channel}. Check the name and make me an admin of the channel, "
+        "then send it again — or press «✖️ Cancel».",
+    "✅ Telegram-канал {channel} подключён: сейчас {count}. Чтобы видеть вступления, посты и реакции, я должен быть его администратором.":
+        "✅ The Telegram channel {channel} is connected: {count} now. To see joins, posts and reactions I must be its admin.",
+    "❌ Нужен id канала — 24 знака, начинается с UC (YouTube → Настройки → Расширенные настройки), или ссылка youtube.com/channel/UC…. Пришли ещё раз или нажми «✖️ Отмена».":
+        "❌ I need the channel id — 24 characters, starts with UC (YouTube → Settings → Advanced settings), "
+        "or a youtube.com/channel/UC… link. Send it again or press «✖️ Cancel».",
+    "❌ Это не похоже на ключ YouTube Data API. Пришли его ещё раз или нажми «✖️ Отмена».":
+        "❌ This does not look like a YouTube Data API key. Send it again or press «✖️ Cancel».",
+    "❌ YouTube не отдал число подписчиков канала {channel} с этим ключом. Проверь, что в проекте включён YouTube Data API v3 и id канала верный, и пришли ключ ещё раз — или нажми «✖️ Отмена».":
+        "❌ YouTube did not return the subscriber count of {channel} with this key. Check that YouTube Data API v3 "
+        "is enabled in the project and the channel id is right, then send the key again — or press «✖️ Cancel».",
+    "✅ YouTube подключён: сейчас {count}.": "✅ YouTube is connected: {count} now.",
+    "❌ Нужен @username Instagram или ссылка на профиль. Пришли ещё раз или нажми «✖️ Отмена».":
+        "❌ I need an Instagram @username or a profile link. Send it again or press «✖️ Cancel».",
+    "✅ Instagram @{username} записан. Остался токен: кнопка «📸 Instagram» ниже.":
+        "✅ Instagram @{username} is saved. The token is left: the «📸 Instagram» button below.",
+    "❌ Нужна ссылка на профиль вида linkedin.com/in/…. Пришли ещё раз или нажми «✖️ Отмена».":
+        "❌ I need a profile link like linkedin.com/in/…. Send it again or press «✖️ Cancel».",
+    "✅ Профиль LinkedIn записан. Дальше — cookie или число вручную: кнопка «💼 LinkedIn» ниже.":
+        "✅ The LinkedIn profile is saved. Next — the cookie or the number by hand: the «💼 LinkedIn» button below.",
     "⏳ Проверяю токен…": "⏳ Checking the token…",
     "Instagram отклонил токен": "Instagram rejected the token",
     "не удалось связаться с Instagram (подробности в логах)": "could not reach Instagram (details in the logs)",
-    "токен выдан не для @{username} — проверь INSTAGRAM_USERNAME и какой аккаунт добавлен в приложение Meta":
+    "токен выдан не для @{username} — проверь @username в «🔌 Подключения» и какой аккаунт добавлен в приложение Meta":
         "the token was not issued for @{username} — check INSTAGRAM_USERNAME "
         "and which account is added to the Meta app",
     "Instagram не ответил (подробности в логах)": "Instagram did not answer (details in the logs)",

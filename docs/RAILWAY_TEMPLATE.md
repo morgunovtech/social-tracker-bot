@@ -13,7 +13,7 @@ Social Tracker Bot is a self-hosted Telegram bot for your own social accounts: f
 
 ## About Hosting Social Tracker Bot
 
-The template deploys one service built from the open-source repository, with a volume at `/app/data` for its SQLite database. You fill in one field: the bot token from @BotFather. Then you send the bot `/start` in Telegram — the first person to do so becomes its owner, and the bot answers nobody else. Every platform is optional: connect only the ones you have. The Instagram token, the LinkedIn cookie, the watchdog and the reputation report are set up in the chat; the Telegram channel, the YouTube key and the other identifiers are service variables you add later. The bot speaks English or Russian and picks the language from your Telegram at the first `/start`. It needs no public domain and no other services.
+The template deploys one service built from the open-source repository, with a volume at `/app/data` for its SQLite database. You fill in one field: the bot token from @BotFather. Then you send the bot `/start` in Telegram — the first person to do so becomes its owner, and the bot answers nobody else. Every platform is optional: connect only the ones you have. Every network, the watchdog and the reputation report are connected in the chat with buttons — the bot checks each value and starts collecting without a restart, so there is nothing more to fill in under Variables. The bot speaks English or Russian and picks the language from your Telegram at the first `/start`. It needs no public domain and no other services.
 
 ## Common Use Cases
 

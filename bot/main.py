@@ -5,7 +5,7 @@ import logging
 from telegram.error import InvalidToken
 from telegram.ext import Application
 
-from bot import behavior, watchdog
+from bot import behavior, connections, watchdog
 from bot.config import Config
 from bot.db import Database
 from bot.handlers import (
@@ -66,6 +66,7 @@ async def _post_init(app: Application) -> None:
     await db.init()
     await restore_owner(config, db)
     await restore_language(config, db)
+    await connections.restore(config, db)   # networks connected from the chat
     await watchdog.url(db, config)   # an address set in the chat joins the log redactor
 
     scheduler = await setup_scheduler(app.bot, config, db, lock=collect_lock(app.bot_data))

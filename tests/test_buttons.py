@@ -246,9 +246,11 @@ async def test_home_shows_the_last_collection_and_what_is_left_to_set_up(make_up
 async def test_connections_screen_states(config, db):
     screen = await ui.connections(db, config)
     assert "Telegram — @test_channel · ⏳ первый сбор ещё не был" in screen.text
-    assert "➖ Instagram — не подключено: INSTAGRAM_USERNAME в .env" in screen.text
+    assert "➖ Instagram — не подключено\n" in screen.text
     assert "LinkedIn — https://www.linkedin.com/in/test/ · ✏️ число вручную" in screen.text
-    assert buttons(screen.keyboard) == {"li": "💼 LinkedIn", "wd": "⏱ Сторож", "rep": "🔎 Репутация", "home": "🏠 Главная"}
+    assert buttons(screen.keyboard) == {
+        "conn:ig": "➕ Instagram", "li": "💼 LinkedIn", "wd": "⏱ Сторож", "rep": "🔎 Репутация",
+        "conn:tg": "✏️ Telegram", "conn:yt": "✏️ YouTube", "conn:li": "✏️ LinkedIn", "home": "🏠 Главная"}
     await db.set_setting("linkedin_li_at", COOKIE)
     assert "🟠 подтверди первое число" in (await ui.connections(db, config)).text
     await db.upsert("linkedin", 4500, source="cookie")
