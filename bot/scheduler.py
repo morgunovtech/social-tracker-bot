@@ -6,6 +6,7 @@ import os
 import tempfile
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import aiohttp
@@ -301,8 +302,7 @@ async def _send_backup(bot: Bot, config: Config, db: Database, today: date | Non
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "backup.db")
             await db.snapshot_without_secrets(path)
-            with open(path, "rb") as f:
-                data = f.read()
+            data = await asyncio.to_thread(Path(path).read_bytes)   # off the event loop
         await notifier.send_document(
             bot, config, db, data, f"followers-{(today or utcnow().date()).isoformat()}.db",
             t(

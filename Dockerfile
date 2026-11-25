@@ -7,8 +7,10 @@ WORKDIR /app
 
 COPY requirements.txt .
 # Exactly the locked versions, each checked against its hash (requirements.txt
-# is compiled from requirements.in); nothing else gets resolved.
-RUN pip install --no-cache-dir --require-hashes --no-deps -r requirements.txt
+# is compiled from requirements.in); nothing else gets resolved. Wheels only:
+# a source archive would run its build script as root here — a dependency
+# without a wheel for this Python fails the build instead.
+RUN pip install --no-cache-dir --only-binary :all: --require-hashes --no-deps -r requirements.txt
 
 COPY bot/ bot/
 COPY entrypoint.sh .
