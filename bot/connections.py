@@ -27,6 +27,8 @@ KEYS = {
     "youtube_api_key": "conn_youtube_api_key",
     "instagram_username": "conn_instagram_username",
     "linkedin_profile_url": "conn_linkedin_profile_url",
+    # The Claude key of the comment check (💬 Комментарии): a secret, like the YouTube key.
+    "anthropic_api_key": "conn_anthropic_api_key",
 }
 REMOVE = "-"
 
@@ -35,6 +37,7 @@ _TG_ID = re.compile(r"^-100\d{5,15}$")
 _YT_ID = re.compile(r"(UC[A-Za-z0-9_-]{22})")
 _YT_KEY = re.compile(r"^[A-Za-z0-9_-]{30,60}$")
 _IG_NAME = re.compile(r"^(?:https?://)?(?:www\.)?instagram\.com/([A-Za-z0-9._]{1,30})/?(?:\?.*)?$|^@?([A-Za-z0-9._]{1,30})$")
+_ANTHROPIC_KEY = re.compile(r"^sk-ant-[A-Za-z0-9_-]{20,200}$")
 _LI_URL = re.compile(r"^(?:https?://)?(?:[a-z]{2,3}\.)?linkedin\.com/(in/[^/?#\s]{2,100})/?(?:[?#].*)?$", re.IGNORECASE)
 
 
@@ -62,6 +65,12 @@ def youtube_key(raw: str) -> str | None:
 def instagram_username(raw: str) -> str | None:
     m = _IG_NAME.match(raw.strip())
     return (m.group(1) or m.group(2)).lower() if m else None
+
+
+def anthropic_key(raw: str) -> str | None:
+    """A Claude API key as the Console shows it (sk-ant-…); spaces a copy brought along are dropped."""
+    value = "".join(raw.split())
+    return value if _ANTHROPIC_KEY.match(value) else None
 
 
 def linkedin_url(raw: str) -> str | None:

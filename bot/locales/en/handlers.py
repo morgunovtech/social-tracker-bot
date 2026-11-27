@@ -219,5 +219,25 @@ STRINGS: dict[str, str] = {
         "⏳ Checking in with the watchdog…",
     "Убрал то, что было задано в чате. Если сеть задана в настройках хостинга — действует она.":
         "Removed what was set in the chat. If the network is set in the hosting settings, that one is in force.",
+    "❌ Ключ не принят: проверь, что он скопирован целиком и не отозван.":
+        "❌ The key was not accepted: check that it was copied whole and not revoked.",
+    "❌ У ключа нет доступа к API: проверь его рабочее пространство на console.anthropic.com.":
+        "❌ The key has no access to the API: check its workspace on console.anthropic.com.",
+    "❌ Ключ работает, но модель {model} ему недоступна.":
+        "❌ The key works, but the model {model} is not available to it.",
+    "⚠️ Не смог проверить ключ: Anthropic сейчас не отвечает. Попробуй через пару минут.":
+        "⚠️ I could not check the key: Anthropic is not answering right now. Try again in a couple of minutes.",
+    "Пришли ключ ещё раз или нажми «✖️ Отмена».":
+        "Send the key again or press «✖️ Cancel».",
+    "Убрал ключ, заданный в чате. Если ключ задан в настройках хостинга — действует он.":
+        "Removed the key set in the chat. If a key is set in the hosting settings, that one is in force.",
+    "❌ Это не похоже на ключ Claude API: он начинается с sk-ant-.":
+        "❌ This does not look like a Claude API key: it starts with sk-ant-.",
+    "✅ Ключ Claude принят: модель {model} ему доступна. Проверяю комментарии со следующего.":
+        "✅ The Claude key is accepted: the model {model} is available to it. I check comments from the next one on.",
+    "Лимит: {n} в сутки":
+        "Limit: {n} a day",
+    "Лимит снят":
+        "Limit removed",
 }
 PLURALS: dict[str, tuple[str, str]] = {}

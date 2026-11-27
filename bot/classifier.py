@@ -17,6 +17,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 import anthropic
@@ -79,6 +80,100 @@ SCHEMA = {
 }
 
 _LANGUAGE_NAMES = {"ru": "Russian", "en": "English"}
+
+# What a million tokens cost on the Anthropic API, USD — input, output — and
+# the model's short name for the screen. Read from
+# platform.claude.com/docs/en/about-claude/pricing on PRICES_AS_OF; a model
+# not listed shows its tokens only. Thinking is billed as output. Haiku 5.5
+# costs more for prompts over 100K tokens; a comment is ~1K.
+PRICES_AS_OF = "2026-11-27"
+PRICES: dict[str, tuple[float, float, str]] = {
+    "claude-opus-5-5": (4.0, 20.0, "Opus 5.5"),
+    "claude-opus-5": (5.0, 25.0, "Opus 5"),
+    "claude-opus-4-8": (5.0, 25.0, "Opus 4.8"),
+    "claude-sonnet-5-5": (2.0, 10.0, "Sonnet 5.5"),
+    "claude-sonnet-5": (2.0, 10.0, "Sonnet 5"),
+    "claude-haiku-5-5": (0.10, 0.50, "Haiku 5.5"),
+    "claude-fable-5-2": (8.0, 40.0, "Fable 5.2"),
+}
+# A comment as the estimate before any data assumes it: the ~550-token
+# system prompt, the comment and the facts in, a short JSON and a little
+# thinking at effort low out.
+TYPICAL_INPUT_TOKENS, TYPICAL_OUTPUT_TOKENS = 1000, 300
+
+
+def model_name(model: str) -> str:
+    """«Opus 5.5» for claude-opus-5-5; the id itself for a model not in PRICES."""
+    return PRICES[model][2] if model in PRICES else model
+
+
+def cost(model: str, input_tokens: int, output_tokens: int) -> float | None:
+    """USD for the tokens at the model's list price; None for a model not in PRICES."""
+    if model not in PRICES:
+        return None
+    price_in, price_out, _ = PRICES[model]
+    return (input_tokens * price_in + output_tokens * price_out) / 1_000_000
+
+
+@dataclass(frozen=True)
+class Usage:
+    """One billed attempt: the model that ran it and its tokens."""
+
+    model: str
+    input_tokens: int
+    output_tokens: int
+
+
+def _tokens(usage) -> tuple[int, int]:
+    """Billed input (cache reads and writes included) and output of a usage object."""
+    def n(name: str) -> int:
+        return int(getattr(usage, name, 0) or 0)
+
+    return n("input_tokens") + n("cache_creation_input_tokens") + n("cache_read_input_tokens"), n("output_tokens")
+
+
+def usages(response) -> list[Usage]:
+    """What a response cost, attempt by attempt. With a server-side fallback
+    usage.iterations holds every attempt (the declined one is billed too) and
+    the top-level usage only the last; without one, the top level is all."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return []
+    iterations = getattr(usage, "iterations", None) or []
+    out = []
+    for entry in iterations:
+        tokens_in, tokens_out = _tokens(entry)
+        if tokens_in or tokens_out:
+            out.append(Usage(str(getattr(entry, "model", None) or response.model), tokens_in, tokens_out))
+    if out:
+        return out
+    tokens_in, tokens_out = _tokens(usage)
+    return [Usage(str(response.model), tokens_in, tokens_out)]
+
+
+# What a key check can say (handlers phrase it): it works, it was refused,
+# it has no access, the model is not available to it, Anthropic did not answer.
+KEY_OK, KEY_REFUSED, KEY_NO_ACCESS, KEY_NO_MODEL, KEY_UNCHECKED = "ok", "refused", "no_access", "no_model", "unchecked"
+
+
+async def check_key(api_key: str, model: str) -> str:
+    """A free live check of a key sent in the chat: can it see the model the
+    comments are checked with? One of the KEY_* answers."""
+    client = make_client(api_key)
+    try:
+        await client.models.retrieve(model)
+    except anthropic.AuthenticationError:
+        return KEY_REFUSED
+    except anthropic.PermissionDeniedError:
+        return KEY_NO_ACCESS
+    except anthropic.NotFoundError:
+        return KEY_NO_MODEL
+    except anthropic.APIError as e:
+        logger.warning("Claude key check failed: %s", type(e).__name__)
+        return KEY_UNCHECKED
+    finally:
+        await client.close()
+    return KEY_OK
 
 
 @dataclass(frozen=True)
@@ -176,9 +271,14 @@ def parse_verdict(response) -> Verdict:
     return Verdict(category, confidence, " ".join(str(data.get("reason", "")).split())[:300])
 
 
-async def classify(client: anthropic.AsyncAnthropic, model: str, sample: Sample, lang: str = "ru") -> Verdict:
+async def classify(
+    client: anthropic.AsyncAnthropic, model: str, sample: Sample, lang: str = "ru",
+    on_usage: Callable[[Usage], Awaitable[None]] | None = None,
+) -> Verdict:
     """One classification. Raises the SDK's errors (and ValueError on a
-    malformed answer): the caller decides what «could not check» means."""
+    malformed answer): the caller decides what «could not check» means.
+    on_usage hears every billed attempt before the answer is read — a
+    refusal and an answer cut off at max_tokens are billed too."""
     response = await client.beta.messages.create(
         model=model,
         max_tokens=MAX_TOKENS,
@@ -190,6 +290,12 @@ async def classify(client: anthropic.AsyncAnthropic, model: str, sample: Sample,
         betas=["server-side-fallback-2026-07-01"],
         fallbacks="default",
     )
+    if on_usage is not None:
+        for usage in usages(response):
+            try:
+                await on_usage(usage)
+            except Exception:
+                logger.exception("API usage not recorded")
     verdict = parse_verdict(response)
     logger.info("Comment classified: %s %d%%", verdict.category, verdict.confidence)
     return verdict

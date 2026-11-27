@@ -513,7 +513,6 @@ STRINGS: dict[str, str] = {
     "До конца суток (UTC) новые комментарии не проверяю.": "Until the end of the day (UTC) I do not check new comments.",
     "волна спама или очень живое обсуждение": "a spam wave or a very lively discussion",
     "Посмотреть группу обсуждения: нет ли волны спама.": "Look at the discussion group: is there a spam wave.",
-    "Поднять лимит — COMMENTS_DAILY_LIMIT в .env (0 — без лимита).": "Raise the limit — COMMENTS_DAILY_LIMIT in .env (0 — no limit).",
     # The monitors' own lines in that shape
     "порог — {abs} подписчиков или {pct}% за день": "threshold — {abs} followers or {pct}% a day",
     "порог — в {factor} раз больше обычного дневного прироста и не меньше {abs}":
@@ -552,8 +551,16 @@ STRINGS: dict[str, str] = {
     "«{subject}»": '"{subject}"',
     "почтовый воркер на Cloudflare (для продвинутых) — инструкция в документации":
         "a mail worker on Cloudflare (advanced) — see the documentation",
-    "ключ Claude в настройках хостинга и Telegram-канал с группой обсуждения":
-        "a Claude key in the hosting settings and a Telegram channel with a discussion group",
+    "Для разработчика":
+        "For the developer",
+    "упавший деплой, PR от Dependabot и уязвимости в пакетах: исправить это может только владелец кода":
+        "a failed deploy, Dependabot PRs and vulnerabilities in the packages: only whoever owns the code can fix these",
+    "слежение за обновлениями — его выключили в настройках хостинга":
+        "the update watch — it was switched off in the hosting settings",
+    "ключ Claude (🔌 Подключения → 💬 Комментарии) и Telegram-канал с группой обсуждения":
+        "a Claude key (🔌 Connections → 💬 Comments) and a Telegram channel with a discussion group",
+    "Поднять лимит — кнопкой на экране 💬 Комментарии (там же — «без лимита»).":
+        "Raise the limit with the buttons on 💬 Comments (there is «no limit» too).",
 }
 
 PLURALS: dict[str, tuple[str, str]] = {

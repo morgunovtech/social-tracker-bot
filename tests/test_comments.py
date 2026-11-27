@@ -48,7 +48,7 @@ def verdicts(monkeypatch):
     queue: list = []
     samples: list[Sample] = []
 
-    async def fake_classify(client, model, sample, lang="ru"):
+    async def fake_classify(client, model, sample, lang="ru", **kwargs):
         samples.append(sample)
         answer = queue.pop(0)
         if isinstance(answer, Exception):
@@ -246,7 +246,7 @@ async def test_the_daily_limit_stops_the_checks_and_is_said_once(group_bot, conf
         await comments.review(group_bot, limited, db, watch, message("x", message_id=i))
     assert len(verdicts.samples) == 2                                   # the third and fourth were not asked
     assert len(group_bot.messages) == 1 and group_bot.messages[0].startswith("🟠 Комментарии: дневной лимит проверок (2)")
-    assert "COMMENTS_DAILY_LIMIT" in group_bot.messages[0]
+    assert "кнопкой на экране 💬 Комментарии" in group_bot.messages[0] and "limit=2" in group_bot.messages[0]
     unlimited = dataclasses.replace(config, comments_daily_limit=0)
     verdicts.queue.append(Verdict("ok", 90, ""))
     await comments.review(group_bot, unlimited, db, watch, message("x", message_id=9))
@@ -256,7 +256,7 @@ async def test_the_daily_limit_stops_the_checks_and_is_said_once(group_bot, conf
 async def test_classifications_run_a_few_at_a_time(group_bot, config, db, monkeypatch):
     running, peak = [0], [0]
 
-    async def slow_classify(client, model, sample, lang="ru"):
+    async def slow_classify(client, model, sample, lang="ru", **kwargs):
         running[0] += 1
         peak[0] = max(peak[0], running[0])
         await asyncio.sleep(0.01)
@@ -428,10 +428,14 @@ async def test_stats_screen_counts_marks(group_bot, config, db, verdicts):
     assert "🔴 наркотики — 1 · 1 · 0" in screen.text and "🔴 мошенничество — 1 · 0 · 1" in screen.text
     assert "🟠 спам или реклама — 1 · 0 · 0" in screen.text
     assert "Точность по твоим отметкам: 50% (1 из 2)" in screen.text
-    assert buttons(screen.keyboard) == {"mod:comments:cm": "✅ Комментарии", "sec": "← Безопасность"}
+    assert buttons(screen.keyboard) == {
+        "mod:comments:cm": "✅ Комментарии", "cm:key": "✏️ Ключ Claude", "cm:lim:100": "100", "cm:lim:300": "✅ 300",
+        "cm:lim:1000": "1000", "cm:lim:0": "без лимита", "sec": "← Безопасность"}
 
     unconfigured = await ui.comments_screen(db, dataclasses.replace(config, anthropic_api_key=None))
-    assert "Не подключено — нужно: ключ Claude" in unconfigured.text
+    assert "Не подключено: нужен ключ Claude API" in unconfigured.text
+    assert "Около $0,01 за комментарий на Opus 5.5." in unconfigured.text        # the estimate before any data
+    assert buttons(unconfigured.keyboard)["cm:key"] == "🔑 Прислать ключ Claude"
 
 
 # --- the handlers -----------------------------------------------------------

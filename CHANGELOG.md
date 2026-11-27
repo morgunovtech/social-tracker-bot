@@ -2,6 +2,19 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.13.0 — 2026-11-27
+
+The comment check is set up from the chat — the Claude key and the daily limit — and says what it costs. The developer's notices become a monitor that a new install starts without. No new variables or permissions.
+
+**Comments of the channel**
+- «🔑 Прислать ключ Claude» on 💬 Комментарии канала (and 🔌 Подключения → 💬 Комментарии): the message is deleted at once, the key is checked with a free request for the model (`models.retrieve`) — «не принят», «нет доступа», «модель недоступна» or «не смог проверить» — kept out of the backup and the log, and used from the next comment on without a restart. «✏️ Ключ Claude» → «-» forgets it; `ANTHROPIC_API_KEY` still works, the chat wins.
+- The daily limit is four buttons on the same screen: 100 · 300 · 1000 · без лимита. They beat `COMMENTS_DAILY_LIMIT` and count as your change, so an update never reports them back to you.
+- What it costs: after every check the bot adds the billed tokens to the day and the model that answered (with a server-side fallback, every attempt). The screen says «За 7 дней: 212 проверок, ≈ $2,10 (Opus 5.5)» at Anthropic's list prices of 27.11.2026, and before any data «Около $0,01 за комментарий на Opus 5.5». A model without a known price shows its tokens. Kept 90 days, in the backup too (no text, no author).
+- `docs/connect/comments.md` and `.en.md`: the key, a Workspace with a spend limit, the rights in the group, what is sent.
+
+**For the developer**
+- The hourly «Новая версия бота не запустилась» and the Sunday vulnerabilities / waiting PRs are the monitor «Для разработчика» in `/modules`. Only whoever owns the code can act on them; a bot deployed from the Railway template watched someone else's repository. A new install starts with it off; a bot that ran before (yours) keeps it on and is not told about a «new check». `UPDATE_WATCH=0` still turns both off. «🔄 Бот обновился» comes always. The rule is in BOT_PRINCIPLES §6.
+
 ## 1.12.0 — 2026-11-27
 
 A fresh bot says where to start, and its screens no longer speak the developer's language. No new variables, permissions or requests.
