@@ -226,8 +226,10 @@ async def _build_alerts(db: Database, config: Config, outcome: CollectOutcome) -
 
 
 def _report_actions(config: Config) -> tuple[str, ...]:
-    """The row under the report: the screens it leads to."""
-    return (DYNAMICS, SECURITY) + ((CHANNEL,) if BY_ID["telegram"].enabled(config) else ())
+    """The row under the report: the screens it leads to — 🔌 Подключения
+    first while no network is connected (the report then says «кнопка ниже»)."""
+    first = () if config.enabled_platforms else (CONNECTIONS,)
+    return first + (DYNAMICS, SECURITY) + ((CHANNEL,) if BY_ID["telegram"].enabled(config) else ())
 
 
 async def send_alerts(bot: Bot, config: Config, db: Database, outcome: CollectOutcome) -> None:

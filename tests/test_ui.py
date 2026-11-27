@@ -102,7 +102,7 @@ def test_the_legend_is_the_one_icon_dictionary():
     legend = "\n".join(ui.icon_legend())
     for icon in ("🔴", "🟠", "✅", "⚠️", "⏳", "ℹ️", "⬜", "➖", "❓"):
         assert f"\n{icon} " in f"\n{legend}"
-    assert "🚨" not in legend and "похоже на взлом" in legend and "почтовый воркер" in legend
+    assert "🚨" not in legend and "похоже на взлом" in legend and "проверка писем" in legend
 
 
 async def test_security_screen_shows_accounts_advice_and_events(config, db):
@@ -134,3 +134,34 @@ async def test_screens_escape_what_they_quote(config, db):
 def test_noted_escapes_the_note():
     screen = ui.Screen("<b>x</b>").noted("✅ 1 < 2")
     assert screen.text == "✅ 1 &lt; 2\n\n<b>x</b>"
+
+
+@pytest.mark.parametrize(("typed", "zone"), [
+    ("Asia/Tashkent", "Asia/Tashkent"), ("europe/berlin", "Europe/Berlin"),     # a zone name, any case
+    ("Ташкент", "Asia/Tashkent"), ("москва", "Europe/Moscow"),                  # the picker's cities
+    ("tashkent", "Asia/Tashkent"), ("New  York", "America/New_York"),           # any zone's city in English
+    ("Buenos Aires", "America/Buenos_Aires"),   # two zones, one clock: the shorter name under a continent
+    ("Central", "US/Central"),                 # no continent: still one answer, not an error
+    ("UTC", "UTC"), ("Mars", None), ("", None),
+])
+def test_a_zone_from_what_was_typed(typed, zone):
+    assert ui.zone_from_text(typed) == zone
+
+
+async def test_settings_name_the_release_not_the_python(config, db):
+    import dataclasses
+
+    from bot import __version__
+    text = (await ui.settings(db, dataclasses.replace(config, app_commit="abc1234def"))).text
+    assert f"Версия {__version__} · сборка abc1234" in text and "Python" not in text
+
+
+def test_every_guide_link_points_to_a_page_in_the_language_of_the_chat():
+    from bot import i18n
+    assert ui.guide("linkedin").endswith("/docs/connect/linkedin.md")
+    i18n.set_language("en")
+    try:
+        assert ui.guide("linkedin").endswith("/docs/connect/linkedin.en.md")
+        assert "/docs/connect/youtube.en.md" in ui.prompt_text("conn_youtube_key")
+    finally:
+        i18n.set_language("ru")

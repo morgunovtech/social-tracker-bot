@@ -155,7 +155,7 @@ MONITORS: tuple[Monitor, ...] = (
         "новые входы, смена пароля, телефона и 2FA, новые ключи и токены, новый владелец сайта в поиске, коды входа — "
         "из пересланных писем соцсетей, GitHub, Microsoft, Яндекса",
         requires=_has_mail,
-        needs="SECURITY_MAIL_URL и SECURITY_MAIL_TOKEN",
+        needs="почтовый воркер на Cloudflare (для продвинутых) — инструкция в документации",
     ),
     Monitor(
         "rep_google",
@@ -187,7 +187,7 @@ MONITORS: tuple[Monitor, ...] = (
         "Комментарии",
         "запрещённый контент в обсуждении канала: наркотики, порно, экстремизм, мошенничество — карточка с кнопками",
         requires=_has_comments,
-        needs="ANTHROPIC_API_KEY и Telegram-канал с группой обсуждения",
+        needs="ключ Claude в настройках хостинга и Telegram-канал с группой обсуждения",
     ),
 )
 BY_ID: dict[str, Monitor] = {m.id: m for m in MONITORS}

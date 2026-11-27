@@ -303,7 +303,7 @@ async def test_a_cookie_by_button(make_update, make_context, db, monkeypatch):
     monkeypatch.setattr(handlers, "collect_linkedin", collect)
     update, context = make_update(callback="li:cookie"), make_context()
     assert await handlers.input_conv_start(update, context) == handlers.AWAITING_INPUT
-    assert update.callback_query.edits[0].startswith("🔑 Пришли значение cookie") and context.user_data["awaiting"] == "cookie"
+    assert update.callback_query.edits[0].startswith("🔑 Пришли cookie li_at") and context.user_data["awaiting"] == "cookie"
     assert "input:cancel" in buttons(update.callback_query.markups[0])
     value = make_update(text=COOKIE)
     assert await handlers.input_conv_value(value, context) == ConversationHandler.END
@@ -324,7 +324,7 @@ async def test_a_time_zone_by_text(make_update, make_context, db, sched):
     await handlers.input_conv_start(update, context)
     bad = make_update(text="Mars/Olympus")
     assert await handlers.input_conv_value(bad, context) == handlers.AWAITING_INPUT
-    assert bad.message.replies[0].startswith("Не знаю такой часовой пояс")
+    assert bad.message.replies[0].startswith("Не знаю такой пояс")
     good = make_update(text="asia/tashkent")
     assert await handlers.input_conv_value(good, context) == ConversationHandler.END
     assert await db.get_setting("report_tz") == "Asia/Tashkent" and "Ташкент" in good.message.replies[0]

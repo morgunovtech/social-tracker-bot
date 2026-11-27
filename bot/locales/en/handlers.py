@@ -33,12 +33,6 @@ STRINGS: dict[str, str] = {
         "❌ Could not read the days: \"{days}\".\n"
         "Examples: /setday sat, /setday mon,thu, /setday mon-fri, /setday daily",
     "✅ Отчёт: {days}": "✅ Report: {days}",
-    "❌ Не знаю такой часовой пояс: «{tz}».\n"
-    "Нужно название из базы IANA, например /settz Europe/Moscow или /settz Asia/Almaty. "
-    "Частые пояса — кнопками: /settz без названия.":
-        "❌ Unknown time zone: \"{tz}\".\n"
-        "It must be an IANA name, for example /settz Europe/Moscow or /settz Asia/Almaty. "
-        "Common zones are a button away: /settz without a name.",
     "✅ Коротко без изменений: включено": "✅ Short when unchanged: on",
     "✅ Коротко без изменений: выключено": "✅ Short when unchanged: off",
     "🟠 Удалить сообщение с cookie не получилось — удали его из чата вручную.":
@@ -73,8 +67,6 @@ STRINGS: dict[str, str] = {
         "❌ This does not look like a token: the value is too short.",
     "❌ Сначала подключи Instagram: 🔌 Подключения → «➕ Instagram».":
         "❌ Connect Instagram first: 🔌 Connections → «➕ Instagram».",
-    "Убрал то, что было задано в чате. Если сеть есть в .env — действует она.":
-        "Removed what was set in the chat. If the network is in .env, that value is in force.",
     "❌ Нужен @username канала, ссылка t.me/… или его id вида -100…. Пришли ещё раз или нажми «✖️ Отмена».":
         "❌ I need the channel's @username, a t.me/… link or its id like -100…. Send it again or press «✖️ Cancel».",
     "❌ Не вижу канал {channel}. Проверь имя и добавь меня в администраторы канала, потом пришли его ещё раз — или нажми «✖️ Отмена».":
@@ -193,7 +185,6 @@ STRINGS: dict[str, str] = {
     "Пришли её ещё раз или нажми «✖️ Отмена».":
         "❌ It needs an https://… link, e.g. https://hc-ping.com/… from healthchecks.io. "
         "Send it again or press \"✖️ Cancel\".",
-    "⏳ Отмечаюсь пробным пингом…": "⏳ Checking in with a test ping…",
     "❌ Сторож не на связи: {reason}. Проверь, что ссылка скопирована целиком и check не удалён, "
     "и пришли её ещё раз — или нажми «✖️ Отмена».":
         "❌ The watchdog is not reachable: {reason}. Check that the whole link was copied and the check was not "
@@ -222,5 +213,11 @@ STRINGS: dict[str, str] = {
         "the disk fills up, the token is revoked — nobody will tell you. A watchdog is the free healthchecks.io: "
         "I check in with it after every daily collection, and when I miss it, it writes to you. Two minutes, the button below."
     ),
+    "❌ Не знаю такой пояс: «{tz}».\nПришли город по-английски или название пояса, например /settz Berlin или /settz Asia/Almaty. Частые пояса — кнопками: /settz без названия.":
+        "❌ I do not know that zone: «{tz}».\nSend a city in English or a zone name, for example /settz Berlin or /settz Asia/Almaty. Common zones are buttons: /settz without a name.",
+    "⏳ Отмечаюсь у сторожа…":
+        "⏳ Checking in with the watchdog…",
+    "Убрал то, что было задано в чате. Если сеть задана в настройках хостинга — действует она.":
+        "Removed what was set in the chat. If the network is set in the hosting settings, that one is in force.",
 }
 PLURALS: dict[str, tuple[str, str]] = {}

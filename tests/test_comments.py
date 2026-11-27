@@ -431,7 +431,7 @@ async def test_stats_screen_counts_marks(group_bot, config, db, verdicts):
     assert buttons(screen.keyboard) == {"mod:comments:cm": "✅ Комментарии", "sec": "← Безопасность"}
 
     unconfigured = await ui.comments_screen(db, dataclasses.replace(config, anthropic_api_key=None))
-    assert "Не подключено — нужно: ANTHROPIC_API_KEY" in unconfigured.text
+    assert "Не подключено — нужно: ключ Claude" in unconfigured.text
 
 
 # --- the handlers -----------------------------------------------------------

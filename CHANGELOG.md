@@ -2,6 +2,21 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.12.0 — 2026-11-27
+
+A fresh bot says where to start, and its screens no longer speak the developer's language. No new variables, permissions or requests.
+
+**The first five minutes**
+- The first `/start` of a bot without a network adds «С чего начать» to the greeting (🔌 Подключения → «➕», 🌍 Часовой пояс; the watchdog is offered after the first network, as before) and opens 🔌 Подключения with «Начнём: выбери сеть…» instead of an empty report. This works with `ADMIN_CHAT_ID` too.
+- «🧭 Осталось настроить» on the home screen starts with «сеть — пока ни одна не подключена», and every item has its own button: 🔌 Подключить сеть, 🌍 Выбрать часовой пояс, 📸 Токен Instagram, 💼 Первое число LinkedIn. Until a network is connected there is no «🔄 Обновить данные», and the report says «Данных пока нет: сначала подключи сеть — кнопка ниже», with 🔌 Подключения under a scheduled one.
+- Uzbek, Kazakh, Kyrgyz, Tajik and Belarusian Telegram keep the bot Russian (it used to switch to English) and, when no zone was chosen, set Tashkent, Almaty, Bishkek, Dushanbe or Minsk time.
+- A time zone can be sent as a city: «Ташкент», «Berlin», «new york» — in «✏️ Другой пояс…» and with `/settz`. Zone names work as before; `TIMEZONE` in `.env` stays strict.
+
+**Plain language**
+- No variable names, `.env`, «IANA», «DevTools», «user-agent», «heartbeat» or «пинг» on the screens of a fresh install: 🔌 Подключения, ⏱ Сторож (the healthchecks.io steps name its buttons), 🔎 Репутация (it now says it is only for a site of your own), 🧩 Мониторинги («нужно: ключ Claude в настройках хостинга…», «почтовый воркер на Cloudflare (для продвинутых)…»), 📖 Что я умею, ❓ Значки and every «🔑» step. `tests/test_plain_language.py` draws them in Russian and English, with nothing connected and with every network connected from the chat.
+- The long «where to get it» texts of the LinkedIn cookie, the Instagram token, the YouTube key and the three reputation keys are two or three lines with a link to a step-by-step page: `docs/connect/` (linkedin, instagram, youtube, watchdog, reputation), in Russian and English.
+- ⚙️ Настройки ends with «Версия 1.12.0 · сборка abc1234» instead of the build and the Python version; `bot.__version__`, `pyproject.toml` and this file are kept equal by `tests/test_version.py`.
+
 ## 1.11.2 — 2026-11-27
 
 The Railway template asks for one field, and five statements in the documents now match the code. The bot itself behaves the same.

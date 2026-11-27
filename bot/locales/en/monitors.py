@@ -121,12 +121,10 @@ STRINGS: dict[str, str] = {
         "new sign-ins, password, phone and 2FA changes, new keys and tokens, a new owner of the site in search, login "
         "codes — from forwarded emails of the networks, GitHub, Microsoft, Yandex"
     ),
-    "SECURITY_MAIL_URL и SECURITY_MAIL_TOKEN": "SECURITY_MAIL_URL and SECURITY_MAIL_TOKEN",
     "Комментарии": "Comments",
     "запрещённый контент в обсуждении канала: наркотики, порно, экстремизм, мошенничество — карточка с кнопками": (
         "prohibited content in the channel's discussion group: drugs, porn, extremism, fraud — a card with buttons"
     ),
-    "ANTHROPIC_API_KEY и Telegram-канал с группой обсуждения": "ANTHROPIC_API_KEY and a Telegram channel with a discussion group",
     # bot/monitors/comments.py — the cards
     "наркотики": "drugs",
     "порнография": "pornography",
@@ -552,6 +550,10 @@ STRINGS: dict[str, str] = {
     "🟠 Комментарии: проверка не работает {n} раза подряд": "🟠 Comments: the check has failed {n} times in a row",
     "🟠 Комментарии: дневной лимит проверок ({limit}) исчерпан": "🟠 Comments: the daily check limit ({limit}) is used up",
     "«{subject}»": '"{subject}"',
+    "почтовый воркер на Cloudflare (для продвинутых) — инструкция в документации":
+        "a mail worker on Cloudflare (advanced) — see the documentation",
+    "ключ Claude в настройках хостинга и Telegram-канал с группой обсуждения":
+        "a Claude key in the hosting settings and a Telegram channel with a discussion group",
 }
 
 PLURALS: dict[str, tuple[str, str]] = {
