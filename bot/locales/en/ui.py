@@ -338,9 +338,14 @@ STRINGS: dict[str, str] = {
     "<b>🔌 Подключения</b>": "<b>🔌 Connections</b>",
     "Подключения": "Connections",
     "{icon} {label} — не подключено": "{icon} {label} — not connected",
-    "📣 Пришли @username канала, ссылку t.me/… или его id (-100…). Сначала добавь меня в администраторы канала: так я увижу и подписчиков, и вступления с постами. Убрать канал, заданный здесь, — пришли «-».":
-        "📣 Send the channel's @username, a t.me/… link or its id (-100…). Make me an admin of the channel first: "
-        "that is how I see the followers, the joins and the posts. To remove a channel set here, send «-».",
+    "📣 Пришли @username канала или ссылку t.me/…, а если канал закрытый — перешли сюда любой его пост. Сначала добавь меня в администраторы канала: так я увижу и подписчиков, и вступления с постами. Убрать канал, заданный здесь, — пришли «-».":
+        "📣 Send the channel's @username or a t.me/… link; for a private channel, forward any of its posts here. "
+        "Make me an admin of the channel first: that is how I see the followers, the joins and the posts. "
+        "To remove a channel set here, send «-».",
+    "📣 Ты сделал меня администратором канала «{title}». Подключить его? Я буду считать подписчиков и записывать вступления, посты и реакции.":
+        "📣 You made me an admin of the channel «{title}». Connect it? I'll count the subscribers and record "
+        "joins, posts and reactions.",
+    "✅ Подключить канал": "✅ Connect the channel",
     "▶️ Шаг 1 из 2. Пришли id канала YouTube — 24 знака, начинается с UC (studio.youtube.com → Настройки → Канал → Расширенные настройки), или ссылку youtube.com/channel/UC…. Убрать канал, заданный здесь, — пришли «-».":
         "▶️ Step 1 of 2. Send the YouTube channel id — 24 characters, starts with UC "
         "(studio.youtube.com → Settings → Channel → Advanced settings), or a youtube.com/channel/UC… link. "

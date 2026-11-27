@@ -100,6 +100,13 @@ class FakeBot:
     async def get_chat_administrators(self, chat_id):
         return self.admins
 
+    # The bot itself in a channel (platforms.telegram.channel_info).
+    id = 1000
+    member_status = "administrator"
+
+    async def get_chat_member(self, chat_id, user_id):
+        return SimpleNamespace(status=self.member_status)
+
     async def get_file(self, file_id):
         data = self.files[file_id]
 

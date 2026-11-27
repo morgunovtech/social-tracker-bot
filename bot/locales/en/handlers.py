@@ -67,13 +67,20 @@ STRINGS: dict[str, str] = {
         "❌ This does not look like a token: the value is too short.",
     "❌ Сначала подключи Instagram: 🔌 Подключения → «➕ Instagram».":
         "❌ Connect Instagram first: 🔌 Connections → «➕ Instagram».",
-    "❌ Нужен @username канала, ссылка t.me/… или его id вида -100…. Пришли ещё раз или нажми «✖️ Отмена».":
-        "❌ I need the channel's @username, a t.me/… link or its id like -100…. Send it again or press «✖️ Cancel».",
+    "❌ Нужен @username канала или ссылка t.me/…, а у закрытого канала — любой его пост, пересланный сюда. Пришли ещё раз или нажми «✖️ Отмена».":
+        "❌ I need the channel's @username or a t.me/… link, and for a private channel any of its posts forwarded here. "
+        "Send it again or press «✖️ Cancel».",
+    "❌ По ссылке-приглашению я не узнаю, какой это канал. Перешли сюда любой пост из канала — или нажми «✖️ Отмена».":
+        "❌ An invite link doesn't tell me which channel it is. Forward any post from the channel here — or press «✖️ Cancel».",
+    "❌ Не вижу этот канал — я всё ещё его администратор?":
+        "❌ I can't see this channel — am I still its admin?",
     "❌ Не вижу канал {channel}. Проверь имя и добавь меня в администраторы канала, потом пришли его ещё раз — или нажми «✖️ Отмена».":
         "❌ I cannot see the channel {channel}. Check the name and make me an admin of the channel, "
         "then send it again — or press «✖️ Cancel».",
-    "✅ Telegram-канал {channel} подключён: сейчас {count}. Чтобы видеть вступления, посты и реакции, я должен быть его администратором.":
-        "✅ The Telegram channel {channel} is connected: {count} now. To see joins, posts and reactions I must be its admin.",
+    "✅ Telegram-канал {channel} подключён: сейчас {count}.":
+        "✅ The Telegram channel {channel} is connected: {count} now.",
+    "Чтобы видеть вступления, посты и реакции, добавь меня в администраторы канала.":
+        "To see joins, posts and reactions, make me an admin of the channel.",
     "❌ Нужен id канала — 24 знака, начинается с UC (YouTube → Настройки → Расширенные настройки), или ссылка youtube.com/channel/UC…. Пришли ещё раз или нажми «✖️ Отмена».":
         "❌ I need the channel id — 24 characters, starts with UC (YouTube → Settings → Advanced settings), "
         "or a youtube.com/channel/UC… link. Send it again or press «✖️ Cancel».",

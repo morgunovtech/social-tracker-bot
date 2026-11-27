@@ -15,6 +15,7 @@ config like the one from .env.
 
 from __future__ import annotations
 
+import json
 import re
 
 from bot.config import Config
@@ -40,6 +41,7 @@ REMOVE = "-"
 
 _TG_NAME = re.compile(r"^(?:https?://)?(?:t\.me|telegram\.me)/([A-Za-z][A-Za-z0-9_]{3,31})/?$|^@?([A-Za-z][A-Za-z0-9_]{3,31})$")
 _TG_ID = re.compile(r"^-100\d{5,15}$")
+_TG_INVITE = re.compile(r"^(?:https?://)?(?:t\.me|telegram\.me)/(?:\+|joinchat/)\S+$")
 _YT_ID = re.compile(r"(UC[A-Za-z0-9_-]{22})")
 _YT_KEY = re.compile(r"^[A-Za-z0-9_-]{30,60}$")
 _IG_NAME = re.compile(r"^(?:https?://)?(?:www\.)?instagram\.com/([A-Za-z0-9._]{1,30})/?(?:\?.*)?$|^@?([A-Za-z0-9._]{1,30})$")
@@ -54,6 +56,12 @@ def telegram_channel(raw: str) -> str | None:
         return value
     m = _TG_NAME.match(value)
     return f"@{m.group(1) or m.group(2)}" if m else None
+
+
+def invite_link(raw: str) -> bool:
+    """A t.me/+… (or the older t.me/joinchat/…) link: it opens a channel but
+    does not name it — the bot can't tell which channel it is."""
+    return bool(_TG_INVITE.match(raw.strip()))
 
 
 def youtube_channel(raw: str) -> str | None:
@@ -127,3 +135,24 @@ async def remove(config: Config, db: Database, *attrs: str) -> None:
 
 async def from_chat(db: Database, attr: str) -> bool:
     return bool((await db.get_setting(KEYS[attr]) or "").strip())
+
+
+# The channel's title, kept when it is connected from the chat: a private
+# channel is known to the bot only by its -100… id, which says nothing.
+TELEGRAM_TITLE = "telegram_channel_title"
+
+
+async def remember_title(db: Database, channel: str, title: str) -> None:
+    await db.set_setting(TELEGRAM_TITLE, json.dumps({"id": channel, "title": title}, ensure_ascii=False))
+
+
+async def telegram_title(db: Database, config: Config) -> str:
+    """The title kept for the connected channel; "" when another channel is
+    connected now (.env, or an older version of the bot) or none was kept."""
+    try:
+        kept = json.loads(await db.get_setting(TELEGRAM_TITLE) or "{}")
+    except ValueError:
+        return ""
+    if not isinstance(kept, dict) or kept.get("id") != config.telegram_channel_id:
+        return ""
+    return str(kept.get("title") or "")

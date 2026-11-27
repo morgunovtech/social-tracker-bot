@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 import aiohttp
 from telegram import Update
-from telegram.constants import ChatType, ParseMode
+from telegram.constants import ChatMemberStatus, ChatType, MessageOriginType, ParseMode
 from telegram.error import BadRequest, Conflict, NetworkError
 from telegram.ext import (
     ApplicationHandlerStop,
@@ -34,7 +34,7 @@ from bot.monitors import NO_PREVIEW, channel, comments, hygiene
 from bot.platforms import BY_ID, PLATFORM_IDS
 from bot.platforms import instagram as ig
 from bot.platforms.linkedin import collect_linkedin, plausible_count
-from bot.platforms.telegram import collect_telegram
+from bot.platforms.telegram import channel_info, collect_telegram
 from bot.platforms.youtube import collect_youtube
 from bot.reporter import _fmt
 from bot.scheduler import (
@@ -363,8 +363,26 @@ async def on_group_update(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             update=update,
         )
     elif chat.type == ChatType.CHANNEL:
+        if (promoted := getattr(update, "my_chat_member", None)) is not None:
+            await _offer_channel(context, promoted)
         await channel.record(db, config, update)
     raise ApplicationHandlerStop
+
+
+_ADMIN_STATUSES = (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER)
+
+
+async def _offer_channel(context: ContextTypes.DEFAULT_TYPE, change) -> None:
+    """The owner has just made the bot an admin of a channel, and no channel
+    is connected: one message with a button that connects it (ui.channel_offer).
+    A change of rights, someone else's doing or a second channel says nothing."""
+    config, db = _deps(context)
+    promoted = (change.new_chat_member.status in _ADMIN_STATUSES
+                and change.old_chat_member.status not in _ADMIN_STATUSES)
+    by_owner = change.from_user is not None and change.from_user.id == config.admin_chat_id
+    if promoted and by_owner and not config.telegram_channel_id:
+        screen = ui.channel_offer(change.chat.title or str(change.chat.id), change.chat.id)
+        await notifier.send(context.bot, config, db, screen.text, reply_markup=screen.keyboard)
 
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1354,8 +1372,17 @@ async def _cb_channel(press: _Press, context, args: list[str]) -> None:
 
 
 async def _cb_connections(press: _Press, context, args: list[str]) -> None:
+    """conn — the screen; conn:pick:<id> — «✅ Подключить канал» under the
+    offer of a channel the owner has just made the bot an admin of."""
     config, db = _deps(context)
-    await _show(press.query, await ui.connections(db, config))
+    note = None
+    if len(args) == 2 and args[0] == "pick" and connections.telegram_channel(args[1]):
+        note = await _connect_channel(context, args[1])
+        if note is None:
+            await press.answer(t("❌ Не вижу этот канал — я всё ещё его администратор?"))
+            return
+    screen = await ui.connections(db, config)
+    await _show(press.query, screen.noted(note) if note else screen)
 
 
 async def _cb_linkedin(press: _Press, context, args: list[str]) -> None:
@@ -1683,6 +1710,9 @@ async def input_conv_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return ConversationHandler.END
     kind = context.user_data.pop("awaiting", None)
     value = (update.message.text or "").strip()
+    origin = getattr(update.message, "forward_origin", None)
+    if kind == "conn_telegram" and getattr(origin, "type", None) == MessageOriginType.CHANNEL:
+        value = str(origin.chat.id)            # a post forwarded from the channel names it, private or not
     if kind == "cookie":
         await _store_cookie(update, context, value)
     elif kind == "token":
@@ -1729,6 +1759,23 @@ _CONN_ATTRS = {
 }
 
 
+async def _connect_channel(context: ContextTypes.DEFAULT_TYPE, channel: str) -> str | None:
+    """Count the channel's subscribers and connect it: the line that says so,
+    by the channel's title, or None when Telegram doesn't show the bot the channel."""
+    config, db = _deps(context)
+    count = await collect_telegram(context.bot, channel)
+    if count is None:
+        return None
+    title, admin = await channel_info(context.bot, channel)
+    await connections.save(config, db, telegram_channel_id=channel)
+    await connections.remember_title(db, channel, title)
+    note = t("✅ Telegram-канал {channel} подключён: сейчас {count}.").format(
+        channel=f"«{title}»" if title else channel, count=_fmt(count))
+    if not admin:
+        note += " " + t("Чтобы видеть вступления, посты и реакции, добавь меня в администраторы канала.")
+    return note
+
+
 async def _store_connection(update: Update, context: ContextTypes.DEFAULT_TYPE, kind: str, value: str) -> str | None:
     """The message after «➕ <network>» on 🔌 Подключения: the value is
     checked — with a live request where there is one — kept in the database
@@ -1755,17 +1802,23 @@ async def _store_connection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     if kind == "conn_telegram":
         channel = connections.telegram_channel(value)
+        if channel is None and connections.invite_link(value):
+            return await again(t(
+                "❌ По ссылке-приглашению я не узнаю, какой это канал. Перешли сюда любой пост из канала "
+                "— или нажми «✖️ Отмена»."
+            ))
         if channel is None:
-            return await again(t("❌ Нужен @username канала, ссылка t.me/… или его id вида -100…. Пришли ещё раз или нажми «✖️ Отмена»."))
-        count = await collect_telegram(context.bot, channel)
-        if count is None:
+            return await again(t(
+                "❌ Нужен @username канала или ссылка t.me/…, а у закрытого канала — любой его пост, "
+                "пересланный сюда. Пришли ещё раз или нажми «✖️ Отмена»."
+            ))
+        note = await _connect_channel(context, channel)
+        if note is None:
             return await again(t(
                 "❌ Не вижу канал {channel}. Проверь имя и добавь меня в администраторы канала, "
                 "потом пришли его ещё раз — или нажми «✖️ Отмена»."
             ).format(channel=channel))
-        await connections.save(config, db, telegram_channel_id=channel)
-        await done(t("✅ Telegram-канал {channel} подключён: сейчас {count}. Чтобы видеть вступления, посты и реакции, я должен быть его администратором.").format(
-            channel=channel, count=_fmt(count)))
+        await done(note)
     elif kind == "conn_youtube":
         channel = connections.youtube_channel(value)
         if channel is None:
@@ -2044,7 +2097,8 @@ def register_handlers(app, config: Config, db: Database) -> None:
         states={
             AWAITING_INPUT: [
                 MessageHandler(_REPLY_BUTTONS, li_conv_menu),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, input_conv_value),
+                # A post forwarded from the channel («➕ Telegram»): it may carry no text.
+                MessageHandler((filters.TEXT | filters.FORWARDED) & ~filters.COMMAND, input_conv_value),
                 CallbackQueryHandler(input_conv_cancel, pattern=f"^{re.escape(cb.INPUT_CANCEL)}$"),
             ],
         },

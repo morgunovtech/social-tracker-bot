@@ -2,6 +2,22 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.16.0 — 2026-11-27
+
+What a trial install as a newcomer turned up: a private channel could not be connected without its `-100…` id, which no Telegram app shows. Now the bot offers the channel itself.
+
+**A private channel in one tap**
+- When the owner makes the bot an admin of a channel and no channel is connected yet, the bot writes «📣 Ты сделал меня администратором канала «…». Подключить его?» with «✅ Подключить канал». The button checks that the bot sees the channel and connects it. A change of rights, someone else promoting the bot, or a second channel says nothing. The bot already asked Telegram for these updates (`my_chat_member`); nothing handled them.
+- «➕ Telegram» also takes a post forwarded from the channel (with or without text) — that names a private channel too. An invite link `t.me/+…` gets an answer that says what to send instead, not «нужен @username».
+- The ✅ line and 🔌 Подключения name the channel by its title, not by `-100…`; «добавь меня в администраторы» is said only when the bot isn't one.
+
+**Docs and the setup skill** (plugin 1.1.0)
+- `docs/SETUP.md` / `.en.md`, `docs/FEATURES*.md` and the skill's Railway page: the template's buttons as Railway shows them — **Deploy Now** → **Configure** → **Save Config** → **Deploy** — and the service's status **Online**.
+- `docs/connect/telegram*.md` and the skill's channel page: in Telegram Web «Add Admin» is an unlabelled round button; some admin switches may not turn off, and that is fine; the bot's offer is the first way, @username / `t.me/…` / a forwarded post the second.
+
+**Tests**
+- `tests/test_connections.py`: the offer and when it isn't made, the button (and a channel the bot no longer sees), a forwarded photo post, the input step taking a post without text, an invite link, English.
+
 ## 1.15.0 — 2026-11-27
 
 A Claude skill that walks a newcomer through the setup in the browser, installable from a marketplace in this repository or as a zip. The bot itself behaves the same.
