@@ -62,8 +62,8 @@ STRINGS: dict[str, str] = {
     "<b>Что сделать в первую очередь</b>": "<b>What to do first</b>",
     "…и ещё {n} — в чек-листах аккаунтов": "…and {n} more — in the account checklists",
     "<b>Последние события</b>": "<b>Recent events</b>",
-    "Нажми на аккаунт, чтобы отметить пункты. Пароли я не спрашиваю и не храню.":
-        "Tap an account to mark its items. I never ask for or store passwords.",
+    "Нажми на аккаунт, чтобы отметить пункты. Сами пароли чек-листу не нужны.":
+        "Tap an account to mark its items. The checklist doesn't need the passwords themselves.",
     "<b>🛡 {label}: {points} из {max}</b>\n"
     "{account}\n\n"
     "Нажми на пункт, чтобы отметить, как сейчас. Пароль вводить не нужно — только отметки.":
@@ -417,8 +417,8 @@ STRINGS: dict[str, str] = {
     "Сам ничего не удаляю.":
         "• The channel's comments, with a Claude key: a card with buttons for what gets a group blocked. "
         "I delete nothing myself.",
-    "• Чек-лист 2FA и паролей — балл в отчёте. Пароли не спрашиваю и не храню.":
-        "• A 2FA and password checklist — a score in the report. I never ask for or keep a password.",
+    "• Чек-лист 2FA и паролей — балл в отчёте. Сами пароли ему не нужны.":
+        "• A 2FA and password checklist — a score in the report. It doesn't need the passwords themselves.",
     "<b>Сам за собой</b>": "<b>Looking after myself</b>",
     "• По воскресеньям присылаю бэкап базы (и по кнопке «📦 Бэкап сейчас» в настройках). Пришли файл "
     "обратно — верну историю, уже собранное не перезапишется.":
