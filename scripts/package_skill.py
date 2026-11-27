@@ -6,7 +6,6 @@ claude.ai's help asks. Attached to each GitHub Release by hand:
     gh release upload vX.Y.Z dist/install-social-tracker.zip
 """
 
-import sys
 import zipfile
 from pathlib import Path
 
@@ -25,4 +24,4 @@ def package(out_dir: Path) -> Path:
 
 
 if __name__ == "__main__":
-    print(package(Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "dist"))
+    print(package(ROOT / "dist"))
