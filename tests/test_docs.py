@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DOCS = sorted([
     ROOT / "README.md", ROOT / "README.ru.md", ROOT / "SECURITY.md", ROOT / "CONTRIBUTING.md",
     *ROOT.glob("docs/*.md"), *ROOT.glob("docs/connect/*.md"), *ROOT.glob("mail-worker/README*.md"),
+    *ROOT.glob("plugins/**/*.md"),                     # the setup skill quotes the bot's buttons too
 ])
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 QUOTED = re.compile(r"«([^«»\n]{2,60})»")
@@ -101,6 +102,7 @@ def _starts_with_emoji(text: str) -> bool:
 NOT_A_BUTTON = re.compile(
     r"^(✅|🔴|🟠|⚠️|ℹ️|⏳|🔄 Бот обновился|🔄 The bot has been updated|📬|🎯|📈 Всего|📊)"
     r"|\d"                                               # a sample line with numbers
+    r"| …$|<"                                            # a placeholder: «➕ …», «✏️ <network>»
 )
 
 

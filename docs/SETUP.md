@@ -65,6 +65,19 @@
 - **Обновления.** Когда выходит новая версия, Railway предлагает обновить проект прямо в нём — согласитесь, и после перезапуска бот напишет «🔄 Бот обновился».
 - **Как удалить.** Удалите проект на Railway (настройки проекта → удалить; база удалится вместе с ним) и бота у @BotFather командой `/deletebot`. Ключи, которые вы создавали для подключений, удалите там, где создавали, — это сказано на каждой странице `connect/`.
 
+## Помощь Claude
+
+Если не хочется проходить шаги одному, это сделает Claude: skill «install-social-tracker» ведёт по установке прямо в браузере (Claude in Chrome или встроенный браузер Cowork) — говорит, что нажать, и проверяет, что получилось. Входы в аккаунты, оплату и пароли он оставляет вам.
+
+**Claude Code** — две команды в сессии, затем попросите «установи Social Tracker»:
+
+```text
+/plugin marketplace add morgunovtech/social-tracker-bot
+/plugin install social-tracker-setup@social-tracker-bot
+```
+
+**claude.ai и Cowork** — скачайте `install-social-tracker.zip` со страницы [последнего релиза](https://github.com/morgunovtech/social-tracker-bot/releases/latest), затем Customize → Skills → «+» → «Create skill» → «Upload a skill» и выберите архив. Навыкам нужно включённое выполнение кода: Settings → Capabilities → «Code execution and file creation». Путь в меню — по справке Claude на 27.11.2026: если он изменился, ищите загрузку навыка в разделе Skills.
+
 ## Свой сервер
 
 На компьютере или VPS с Docker бот ставится одной командой — она спросит токен, заберёт образ и запустит бота:

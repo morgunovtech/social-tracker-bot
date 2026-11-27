@@ -28,6 +28,8 @@ The bot speaks English or Russian and picks the language from your Telegram at t
 
 Step by step, in clicks: **[docs/SETUP.en.md](docs/SETUP.en.md)** — a bot at @BotFather, the Railway button (one field, `BOT_TOKEN`), `/start`, the first network. Every connection has a page of its own in [docs/connect/](docs/connect/).
 
+**With Claude**: the setup skill walks you through it in the browser — in Claude Code `/plugin install social-tracker-setup --marketplace morgunovtech/social-tracker-bot`, then «set up Social Tracker»; for claude.ai and Cowork, the zip from the latest release: [docs/SETUP.en.md](docs/SETUP.en.md#help-from-claude).
+
 **Railway**: [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/social-tracker-bot?referralCode=7hTMqE) — the button carries my Railway referral code: Railway shares with me a part of what it bills an account created through it; your price stays the same. Without the code: <https://railway.com/deploy/social-tracker-bot>.
 
 **Your own server**, with Docker, in one command — it asks for the token, writes `.env` and `docker-compose.yml` into `~/social-tracker-bot` (another folder: `SOCIAL_TRACKER_DIR=…`) and starts the bot; run it again to update:
