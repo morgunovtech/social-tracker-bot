@@ -21,7 +21,8 @@ Railway redeploys from `main` on every push (project «Social Tacker Bot», serv
 - The channel monitor (`bot/monitors/channel.py`) records what Telegram sends an admin bot — joins and leaves with the invite link, posts, reaction counts — for the 📣 Канал screen and one report line; it alerts nothing, and switched off it records nothing (a join names a person). `chat_member` and `message_reaction_count` arrive only because `handlers.ALLOWED_UPDATES` asks for them: add a new update type there. Views, forwards and citations are not in the Bot API — don't promise them.
 - `scripts/clean_deleted.py` (Telethon, not in the bot's requirements) removes deleted accounts from the channel's subscribers; it runs from the owner's laptop, dry run by default. The Bot API cannot list members, so this never moves into the bot.
 - Alerts are «silent when healthy»: one message when something breaks, one when it recovers, nothing in between.
-- Keep README.md and README.ru.md in step with the code in the same PR.
+- Keep README.md and README.ru.md in step with the code in the same PR — and the guides under `docs/` (each `X.md` has its `X.en.md`, `tests/test_docs.py` checks links, button names and sections).
+- The setup skill (`plugins/social-tracker-setup`, marketplace in `.claude-plugin/marketplace.json`) quotes the bot's buttons and the guides: change it with them, bump `version` in `plugin.json` and the marketplace entry together, check with `claude plugin validate ./ --strict`, and attach `python3 scripts/package_skill.py`'s zip to the release.
 
 ## Outside the repo
 

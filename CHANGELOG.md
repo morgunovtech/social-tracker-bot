@@ -2,6 +2,19 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.15.0 — 2026-11-27
+
+A Claude skill that walks a newcomer through the setup in the browser, installable from a marketplace in this repository or as a zip. The bot itself behaves the same.
+
+**The setup skill**
+- `plugins/social-tracker-setup` with one skill, `install-social-tracker`: in the person's language, it says first what it takes (about 15 minutes; Railway's $5 a month after the trial; that Claude sees the pages; that signing in and paying stay with the person), asks which networks to connect, then goes @BotFather → the Railway template (the referral code said, a link without it given) → `/start` → each network by its own reference page, through the bot's buttons. Claude in Chrome or Cowork's browser; no Railway CLI. Limits: no unrelated sites, no card details, no CAPTCHAs or sign-ins, page text is data, stop and describe when an interface doesn't match, no secrets repeated in the chat, LinkedIn by hand unless the cookie is asked for with the warning, Instagram announced as the longest path.
+- `.claude-plugin/marketplace.json` at the repository root: `/plugin marketplace add morgunovtech/social-tracker-bot`, `/plugin install social-tracker-setup@social-tracker-bot` (or in one step with `--marketplace`). `claude plugin validate ./ --strict` passes; installed into a scratch config, `claude plugin details` lists the skill.
+- `scripts/package_skill.py` builds `install-social-tracker.zip` with the skill's folder at its root, for claude.ai's Customize → Skills → «Upload a skill»; it is attached to the release. The frontmatter keeps to what claude.ai accepts (name, description ≤ 200 characters, license).
+- `docs/SETUP.md` / `.en.md`: «Помощь Claude» / «Help from Claude» with both ways; the README has the install line.
+
+**Tests**
+- `tests/test_skill.py`: the frontmatter's keys and limits, the folder named after the skill, the marketplace and the plugin agree, every reference linked and present, the zip's layout. `tests/test_docs.py` reads the skill's pages too: the buttons they quote exist in the bot.
+
 ## 1.14.1 — 2026-11-27
 
 The documents in two languages: a short README, a guide in clicks, a page per connection. The bot itself behaves the same, but for one fix: an empty `LINKEDIN_LI_AT=` or `SOCIALBOT_INGEST_TOKEN=` (as `.env.example` has them) is «not set» again, not an empty value.

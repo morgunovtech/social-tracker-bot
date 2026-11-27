@@ -65,6 +65,19 @@ Each one is a button in 🔌 Connections; each has a step-by-step page:
 - **Updates.** When a new version is out, Railway offers to update the project right there — accept it, and after the restart the bot says «🔄 The bot has been updated».
 - **How to remove it.** Delete the project on Railway (the project's settings → delete; the database goes with it) and the bot at @BotFather with `/deletebot`. Delete the keys you made for the connections where you made them — each `connect/` page says how.
 
+## Help from Claude
+
+If you'd rather not go through the steps alone, Claude can: the «install-social-tracker» skill walks you through the setup right in the browser (Claude in Chrome or Cowork's built-in browser) — it says what to press and checks what happened. Signing in, paying and passwords stay with you.
+
+**Claude Code** — two commands in a session, then ask «set up Social Tracker»:
+
+```text
+/plugin marketplace add morgunovtech/social-tracker-bot
+/plugin install social-tracker-setup@social-tracker-bot
+```
+
+**claude.ai and Cowork** — download `install-social-tracker.zip` from the [latest release](https://github.com/morgunovtech/social-tracker-bot/releases/latest), then Customize → Skills → «+» → «Create skill» → «Upload a skill» and pick the archive. Skills need code execution on: Settings → Capabilities → «Code execution and file creation». The menu path follows Claude's help as of 27 Nov 2026: if it has moved, look for uploading a skill under Skills.
+
 ## Your own server
 
 On a computer or VPS with Docker the bot is set up with one command — it asks for the token, pulls the image and starts the bot:

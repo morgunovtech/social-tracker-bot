@@ -1,0 +1,13 @@
+{
+  "name": "social-tracker-bot",
+  "description": "Claude plugins for Social Tracker Bot — a self-hosted Telegram bot for your social accounts.",
+  "owner": { "name": "morgunov.tech", "url": "https://github.com/morgunovtech" },
+  "plugins": [
+    {
+      "name": "social-tracker-setup",
+      "source": "./plugins/social-tracker-setup",
+      "description": "Walks you through installing Social Tracker Bot in the browser: @BotFather, the Railway template, /start, the networks.",
+      "version": "1.0.0"
+    }
+  ]
+}

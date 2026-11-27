@@ -28,6 +28,8 @@
 
 По шагам, по кликам: **[docs/SETUP.md](docs/SETUP.md)** — бот у @BotFather, кнопка Railway (одно поле, `BOT_TOKEN`), `/start`, первая сеть. На каждое подключение — своя страница в [docs/connect/](docs/connect/).
 
+**С Claude**: skill проведёт по установке прямо в браузере — в Claude Code `/plugin install social-tracker-setup --marketplace morgunovtech/social-tracker-bot`, затем «установи Social Tracker»; для claude.ai и Cowork — zip из последнего релиза: [docs/SETUP.md](docs/SETUP.md#помощь-claude).
+
 **Railway**: [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/social-tracker-bot?referralCode=7hTMqE) — в кнопке мой реферальный код Railway: Railway делится со мной частью оплаты аккаунта, созданного по ней; для вас цена та же. Без кода: <https://railway.com/deploy/social-tracker-bot>.
 
 **Свой сервер** с Docker — одной командой: она спросит токен, запишет `.env` и `docker-compose.yml` в `~/social-tracker-bot` (другая папка — `SOCIAL_TRACKER_DIR=…`) и запустит бота; повторный запуск обновляет:

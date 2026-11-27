@@ -28,3 +28,6 @@ data/
 
 # Local state of `wrangler dev` (mail-worker); never commit it.
 .wrangler/
+
+# The skill zip for a GitHub Release (scripts/package_skill.py)
+dist/
