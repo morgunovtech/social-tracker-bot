@@ -554,10 +554,53 @@ STRINGS: dict[str, str] = {
         "🔴 here means: looks like a hijack (a new admin or owner, a link in the description, vanished videos or posts, a new sign-in, a changed password, email or 2FA), an unreadable profile, a silent email check, a comment the group gets blocked for. 🟠 — an expired cookie, a rejected token, collection failures, a drop in followers, a new title or avatar.",
     "• Письма безопасности, если они подключены: новый вход, смена пароля, почты или 2FA, код входа.":
         "• Security emails, if they are connected: a new sign-in, a changed password, email or 2FA, a login code.",
+    "Платно: каждый комментарий — запрос к Claude по твоему ключу.":
+        "Paid: every comment is a request to Claude on your key.",
+    "Цену модели {model} я не знаю — после первых проверок покажу израсходованные токены.":
+        "I don't know the price of {model} — after the first checks I will show the tokens spent.",
+    "Около {usd} за комментарий на {model}.":
+        "About {usd} per comment on {model}.",
+    "За {days} дней: {checks}, ≈ {usd} ({models}).":
+        "Last {days} days: {checks}, ≈ {usd} ({models}).",
+    "За {days} дней: {checks}.":
+        "Last {days} days: {checks}.",
+    "{model}: {tokens_in} токенов на входе, {tokens_out} на выходе — цену этой модели я не знаю.":
+        "{model}: {tokens_in} input tokens, {tokens_out} output — I don't know this model's price.",
+    "<i>По ценам Anthropic на {date}; точный счёт — на console.anthropic.com.</i>":
+        "<i>At Anthropic's prices of {date}; the exact bill is on console.anthropic.com.</i>",
+    "Не подключено: нужен ключ Claude API и Telegram-канал с группой обсуждения. Тогда я буду смотреть каждый комментарий в группе обсуждения и присылать карточку с кнопками на запрещённый контент.":
+        "Not connected: it needs a Claude API key and a Telegram channel with a discussion group. Then I look at every comment in the discussion group and send a card with buttons for prohibited content.",
+    "Ключ Claude есть; осталось подключить Telegram-канал с группой обсуждения: 🔌 Подключения → «➕ Telegram».":
+        "The Claude key is there; what is left is a Telegram channel with a discussion group: 🔌 Connections → «➕ Telegram».",
+    "задан в чате":
+        "set in the chat",
+    "из настроек хостинга":
+        "from the hosting settings",
+    "🔑 Ключ Claude: {source}":
+        "🔑 Claude key: {source}",
+    "✏️ Ключ Claude":
+        "✏️ Claude key",
+    "🔑 Прислать ключ Claude":
+        "🔑 Send the Claude key",
+    "Лимит: {n} {checks} в сутки — волна спама не станет счётом.":
+        "Limit: {n} {checks} a day — a spam wave will not become a bill.",
+    "Лимит: нет — каждая проверка оплачивается, сколько бы их ни было.":
+        "Limit: none — every check is paid for, however many there are.",
+    "без лимита":
+        "no limit",
+    "{icon} 💬 Комментарии — ключ Claude задан":
+        "{icon} 💬 Comments — the Claude key is set",
+    "{icon} 💬 Комментарии — нужен ключ Claude (платный)":
+        "{icon} 💬 Comments — needs a Claude key (paid)",
+    "🔑 Пришли ключ Claude API одним сообщением. Где взять: console.anthropic.com → API Keys → Create Key. Совет: заведи для бота отдельное рабочее пространство (Workspace) с лимитом расходов — тогда волна спама не станет счётом. Пошагово: {guide}\nЯ проверю ключ и сразу удалю сообщение. Убрать ключ, заданный здесь, — пришли «-».":
+        "🔑 Send the Claude API key in one message. Where to get it: console.anthropic.com → API Keys → Create Key. Tip: give the bot a Workspace of its own with a spend limit — then a spam wave will not become a bill. Step by step: {guide}\nI will check the key and delete the message right away. To remove a key set here, send «-».",
+    "• После обновления пишу «🔄 Бот обновился». Упавший деплой и уязвимости в пакетах — проверка «Для разработчика» в 🧩 Мониторингах: она для того, кто ведёт код бота.":
+        "• After an update I say «🔄 The bot has been updated». A failed deploy and vulnerabilities in the packages are the check «For the developer» in 🧩 Monitors: it is for whoever maintains the bot's code.",
 }
 
 # Russian singular → (English singular, English plural).
 PLURALS: dict[str, tuple[str, str]] = {
+    "проверка": ("check", "checks"),
     "дн.": ("day", "days"),
     "день": ("day", "days"),
     "час": ("hour", "hours"),

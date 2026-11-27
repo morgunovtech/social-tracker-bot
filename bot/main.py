@@ -19,7 +19,7 @@ from bot.handlers import (
 from bot.i18n import set_language
 from bot.redact import RedactingFormatter
 from bot.scheduler import setup_scheduler
-from bot.updates import SNAPSHOT_KEY, report_startup_changes
+from bot.updates import SNAPSHOT_KEY, adopt_dev_notices, report_startup_changes
 
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 _config: Config | None = None
@@ -84,6 +84,10 @@ async def _post_init(app: Application) -> None:
     # bot behaves (bot/behavior.py); neither may block the start. The second
     # needs to know whether the bot ran before — read before the first writes.
     pending = None
+    try:
+        await adopt_dev_notices(db)   # before the first snapshot is written
+    except Exception:
+        logger.exception("Developer notices switch failed")
     try:
         pending = await behavior.detect(db, config, ran_before=await db.get_setting(SNAPSHOT_KEY) is not None)
     except Exception:

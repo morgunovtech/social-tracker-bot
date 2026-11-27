@@ -185,6 +185,8 @@ STRINGS: dict[str, str] = {
     "аккаунт LinkedIn": "LinkedIn account",
     "Данных пока нет: сначала подключи сеть — кнопка ниже.":
         "No data yet: connect a network first — the button below.",
+    "• Лимит проверок комментариев в сутки: {now} — было {before}":
+        "• Comment checks a day: {now} — was {before}",
 }
 
 # Russian singular → (English singular, English plural).

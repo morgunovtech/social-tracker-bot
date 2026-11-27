@@ -26,7 +26,7 @@ from telegram.ext import (
 )
 
 from bot import callbacks as cb
-from bot import connections, monitors, notifier, platforms, reputation, ui, watchdog
+from bot import classifier, connections, monitors, notifier, platforms, reputation, ui, watchdog
 from bot.config import DEFAULT_TZ, DOW_ORDER, Config, normalize_dow, normalize_tz
 from bot.db import HELD_KEEP_DAYS, Database, utcnow
 from bot.i18n import LANGUAGES, set_language, t
@@ -61,7 +61,8 @@ LI_CONV_TIMEOUT = 120
 # What each entry button asks for.
 INPUT_KINDS = {cb.LI_COOKIE: "cookie", cb.IG_TOKEN: "token", cb.TZ_OTHER: "tz", cb.WD_URL: "watchdog",
                cb.REP_WORDS: "rep_words", **{entry: monitor for monitor, entry in cb.REP_KEYS.items()},
-               **{entry: f"conn_{platform}" for platform, entry in cb.CONN_ADD.items()}}
+               **{entry: f"conn_{platform}" for platform, entry in cb.CONN_ADD.items()},
+               cb.CLAUDE_KEY: "conn_anthropic"}
 # A service-account key file is small; anything bigger is not one.
 KEY_FILE_MAX_BYTES = 20_000
 
@@ -1329,6 +1330,13 @@ async def _cb_comments(press: _Press, context, args: list[str]) -> None:
     if not args:
         await _show(press.query, await ui.comments_screen(db, config))
         return
+    if args[0] == "lim":                  # cm:lim:<n> — the daily limit; 0 — none
+        if len(args) == 2 and args[1].isdigit() and int(args[1]) in comments.LIMIT_CHOICES:
+            limit = int(args[1])
+            await db.set_setting(comments.LIMIT_KEY, str(limit))
+            await press.answer(t("Лимит: {n} в сутки").format(n=limit) if limit else t("Лимит снят"))
+            await _show(press.query, await ui.comments_screen(db, config))
+        return
     if len(args) != 2 or not args[1].isdigit():
         return
     review, note = await comments.act(context.bot, db, int(args[1]), args[0])
@@ -1710,6 +1718,8 @@ async def _store_connection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     async def done(note: str) -> None:
         await _reply(update, (await ui.connections(db, config)).noted(note))
 
+    if kind == "conn_anthropic":
+        return await _store_claude_key(update, context, value)
     if value == connections.REMOVE and kind != "conn_youtube_key":
         await connections.remove(config, db, *_CONN_ATTRS[kind])
         context.user_data.pop("conn_youtube_channel", None)
@@ -1771,6 +1781,53 @@ async def _store_connection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             return await again(t("❌ Нужна ссылка на профиль вида linkedin.com/in/…. Пришли ещё раз или нажми «✖️ Отмена»."))
         await connections.save(config, db, linkedin_profile_url=url)
         await done(t("✅ Профиль LinkedIn записан. Дальше — cookie или число вручную: кнопка «💼 LinkedIn» ниже."))
+    return None
+
+
+# What a failed live check of a Claude key says (classifier.check_key).
+_CLAUDE_KEY_ANSWERS = {
+    classifier.KEY_REFUSED: "❌ Ключ не принят: проверь, что он скопирован целиком и не отозван.",
+    classifier.KEY_NO_ACCESS: "❌ У ключа нет доступа к API: проверь его рабочее пространство на console.anthropic.com.",
+    classifier.KEY_NO_MODEL: "❌ Ключ работает, но модель {model} ему недоступна.",
+    classifier.KEY_UNCHECKED: "⚠️ Не смог проверить ключ: Anthropic сейчас не отвечает. Попробуй через пару минут.",
+}
+
+
+async def _store_claude_key(update: Update, context: ContextTypes.DEFAULT_TYPE, value: str) -> str | None:
+    """The message after «🔑 Прислать ключ Claude» on 💬 Комментарии: out of
+    the chat at once, checked live (reading the model is free), kept as a
+    secret (db._SECRET_SETTINGS) and laid over the config — the next comment
+    is checked with it and the log redactor masks it. «-» forgets the key set
+    here; one in the hosting settings is in force again."""
+    config, db = _deps(context)
+    chat = update.effective_chat
+
+    async def again(note: str) -> str:
+        screen = ui.input_retry(note + "\n" + t("Пришли ключ ещё раз или нажми «✖️ Отмена»."))
+        await chat.send_message(screen.text, **_markup(screen))
+        return "conn_anthropic"
+
+    async def done(note: str) -> None:
+        await _reply(update, (await ui.comments_screen(db, config)).noted(note))
+
+    if value.strip() == connections.REMOVE:
+        await connections.remove(config, db, "anthropic_api_key")
+        await done(t("Убрал ключ, заданный в чате. Если ключ задан в настройках хостинга — действует он."))
+        return None
+    note = ""
+    try:                                  # a secret: out of the chat history before any check
+        await update.message.delete()
+    except Exception:
+        note = "\n" + t("🟠 Удалить сообщение с ключом не получилось — удали его из чата вручную.")
+    key = connections.anthropic_key(value)
+    if key is None:
+        return await again(t("❌ Это не похоже на ключ Claude API: он начинается с sk-ant-.") + note)
+    answer = await classifier.check_key(key, config.comments_model)
+    if answer != classifier.KEY_OK:
+        return await again(t(_CLAUDE_KEY_ANSWERS[answer]).format(model=config.comments_model) + note)
+    await connections.save(config, db, anthropic_api_key=key)
+    await done(t("✅ Ключ Claude принят: модель {model} ему доступна. Проверяю комментарии со следующего.").format(
+        model=config.comments_model) + note)
     return None
 
 

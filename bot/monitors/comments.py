@@ -61,8 +61,11 @@ API_FAIL_SINCE_KEY = "comments_api_fail_since"
 # task of its own, so a spam wave of two hundred messages used to be two
 # hundred parallel API calls with pictures; now three at a time, the rest wait.
 CONCURRENCY = 3
-# The day the owner was told the daily limit (config.comments_daily_limit) is reached.
+# The day the owner was told the daily limit (daily_limit) is reached.
 LIMIT_NOTIFIED_KEY = "comments_limit_notified"
+# The limit chosen with the buttons on 💬 Комментарии; it beats COMMENTS_DAILY_LIMIT.
+LIMIT_KEY = "comments_daily_limit"
+LIMIT_CHOICES = (100, 300, 1000, 0)   # 0 — no limit
 
 # Category → what the card and the table call it (Russian key, t() at render).
 LABELS = {
@@ -91,6 +94,7 @@ class Watch:
     """The bot's view of the discussion group, kept in bot_data between updates."""
 
     client: anthropic.AsyncAnthropic | None = None
+    client_key: str | None = None   # the key the client was made with: a new key from the chat makes a new one
     group_id: int | None = None
     group_title: str = ""
     group_username: str = ""
@@ -351,11 +355,17 @@ async def _api_recovered(bot: Bot, config: Config, db: Database) -> None:
         )
 
 
+async def daily_limit(db: Database, config: Config) -> int:
+    """Checks per UTC day: the buttons on 💬 Комментарии, else COMMENTS_DAILY_LIMIT; 0 — none."""
+    raw = await db.get_setting(LIMIT_KEY)
+    return int(raw) if raw and raw.isdigit() else config.comments_daily_limit
+
+
 async def over_daily_limit(bot: Bot, config: Config, db: Database) -> bool:
-    """COMMENTS_DAILY_LIMIT classifications per UTC day, so a spam wave cannot
-    run up an unbounded API bill; the owner hears once a day when it is reached
-    and the rest of the day's comments go unchecked — said in as many words."""
-    limit = config.comments_daily_limit
+    """daily_limit classifications per UTC day, so a spam wave cannot run up
+    an unbounded API bill; the owner hears once a day when it is reached and
+    the rest of the day's comments go unchecked — said in as many words."""
+    limit = await daily_limit(db, config)
     if not limit:
         return False
     day = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -368,7 +378,7 @@ async def over_daily_limit(bot: Bot, config: Config, db: Database) -> bool:
             bot, config, db,
             humanize.alert(
                 t("🟠 Комментарии: дневной лимит проверок ({limit}) исчерпан").format(limit=limit), "comments_limit",
-                f"COMMENTS_DAILY_LIMIT={limit}",
+                f"limit={limit}",
             ),
             Priority.NORMAL, actions=(callbacks.COMMENTS,), monitor=MONITOR_ID,
         )
@@ -376,8 +386,10 @@ async def over_daily_limit(bot: Bot, config: Config, db: Database) -> bool:
 
 
 def _client(config: Config, watch: Watch) -> anthropic.AsyncAnthropic:
-    if watch.client is None:
+    """One client per key: a key sent in the chat (or removed there) takes effect with the next comment."""
+    if watch.client is None or watch.client_key != config.anthropic_api_key:
         watch.client = classifier.make_client(config.anthropic_api_key)
+        watch.client_key = config.anthropic_api_key
     return watch.client
 
 
@@ -424,7 +436,10 @@ async def review(
             forwarded=comment.forwarded, media=comment.media, image=image,
         )
         try:
-            verdict = await classifier.classify(_client(config, watch), config.comments_model, sample, config.lang)
+            verdict = await classifier.classify(
+                _client(config, watch), config.comments_model, sample, config.lang,
+                on_usage=lambda usage: db.add_api_usage(usage.model, usage.input_tokens, usage.output_tokens),
+            )
         except (anthropic.APIError, ValueError, KeyError, TypeError) as e:
             logger.warning("Comment classification failed: %s", e)
             await _api_failed(bot, config, db, e)

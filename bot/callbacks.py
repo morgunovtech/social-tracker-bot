@@ -61,9 +61,12 @@ REP_WORDS = "rep:words"
 REP_KEYS = {"rep_google": "rep:k:g", "rep_yandex": "rep:k:y", "rep_ai": "rep:k:c"}
 # A network connected from the chat (bot/connections.py): platform id → entry.
 CONN_ADD = {"telegram": "conn:tg", "youtube": "conn:yt", "instagram": "conn:ig", "linkedin": "conn:li"}
+# The comment check's Claude key, sent on 💬 Комментарии; cm:lim:<n> picks the daily limit there.
+CLAUDE_KEY = "cm:key"
+COMMENTS_LIMIT = "cm:lim"
 INPUT_CANCEL = "input:cancel"
 CONVERSATION_ENTRIES = frozenset({LI_ENTER, LI_COOKIE, IG_TOKEN, TZ_OTHER, WD_URL, REP_WORDS, *REP_KEYS.values(),
-                                  *CONN_ADD.values()})
+                                  *CONN_ADD.values(), CLAUDE_KEY})
 
 # The screens an alert or a report may open, with their labels (translated when built).
 SCREEN_LABELS = {

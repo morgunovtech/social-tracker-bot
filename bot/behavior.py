@@ -48,6 +48,10 @@ SCHEDULE_ENV = ("REPORT_HOUR", "REPORT_HOUR_UTC", "REPORT_MINUTE", "REPORT_DOW",
 SCHEDULE_CHAT = ("report_dow", "report_time", "report_tz")
 # The version that made the zone follow the language.
 ZONE_BY_LANGUAGE = "1.5.0"
+# Monitors that are new only as a switch: what they send was sent before
+# (1.13.0 put the deploy watch and the weekly OSV/PR list under one), so a
+# bot that keeps them on is not told about a «new check».
+NOT_NEW = frozenset({monitors.DEV_NOTICES})
 
 
 @dataclass(frozen=True)
@@ -109,6 +113,11 @@ async def current(db: Database, config: Config) -> dict[str, dict]:
             "value": await is_quiet_mode(db, config),
             "inputs": {"env": _env(("QUIET_IF_NO_CHANGE",)), "chat": await db.get_setting("quiet_if_no_change")},
         },
+        # The buttons on 💬 Комментарии beat COMMENTS_DAILY_LIMIT: both are the owner's.
+        "comments_limit": {
+            "value": await comments.daily_limit(db, config),
+            "inputs": {"env": _env(("COMMENTS_DAILY_LIMIT",)), "chat": await db.get_setting(comments.LIMIT_KEY)},
+        },
     }
     for m in monitors.MONITORS:
         items[f"monitor:{m.id}"] = {
@@ -160,7 +169,7 @@ def _changes(previous: dict[str, dict], now: dict[str, dict], pending: Pending) 
         before = previous.get(key)
         if before is None:
             # New in this version: a check that starts working, a mail it starts telling apart.
-            if kind == "monitor" and item["value"]:
+            if kind == "monitor" and item["value"] and name not in NOT_NEW:
                 m = monitors.BY_ID[name]
                 pending.add(t("• Новая проверка включена: {label} — {what}").format(
                     label=t(m.label), what=t(m.description)), callbacks.MONITORS)
@@ -177,6 +186,11 @@ def _changes(previous: dict[str, dict], now: dict[str, dict], pending: Pending) 
         elif key == "quiet_hours":
             pending.add(t("• Тихие часы: {now} — было {before}").format(
                 now=item["value"] or t("выключены"), before=before["value"] or t("выключены")), callbacks.OPEN_WHEN)
+        elif key == "comments_limit":
+            if on.get("comments"):
+                pending.add(t("• Лимит проверок комментариев в сутки: {now} — было {before}").format(
+                    now=item["value"] or t("без лимита"), before=before["value"] or t("без лимита")),
+                    callbacks.COMMENTS)
         elif key == "short_week":
             pending.add(t("• «Коротко без изменений»: {now} — было {before}").format(
                 now=t("включено") if item["value"] else t("выключено"),

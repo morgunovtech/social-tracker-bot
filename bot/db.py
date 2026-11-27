@@ -142,14 +142,28 @@ CREATE TABLE IF NOT EXISTS channel_posts (
 );
 """
 
+# What the comment check spent: per UTC day and model (a fallback may answer
+# with another model), the calls and the tokens Anthropic bills for. No text,
+# no author — the backup may carry it.
+_CREATE_API_USAGE = """
+CREATE TABLE IF NOT EXISTS api_usage (
+    day TEXT NOT NULL,
+    model TEXT NOT NULL,
+    calls INTEGER NOT NULL DEFAULT 0,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, model)
+);
+"""
+
 # Settings that must never leave the server (wiped from off-site backups):
 # the cookie, the token and the watchdog address — whoever has it can ping
 # in the bot's name.
 _SECRET_SETTINGS = ("linkedin_li_at", "instagram_token", "watchdog_url",
                     # the reputation report's read-only keys (bot/reputation/)
                     "rep_google_key", "rep_yandex_token", "rep_cloudflare_token",
-                    # a network connected from the chat (bot/connections.py)
-                    "conn_youtube_api_key")
+                    # keys connected from the chat (bot/connections.py)
+                    "conn_youtube_api_key", "conn_anthropic_api_key")
 # Each secret with the settings that describe it (when it was set, when it dies).
 _SECRET_KEYS: dict[str, tuple[str, ...]] = {
     "linkedin_li_at": ("linkedin_li_at", "linkedin_li_at_set_at"),
@@ -159,6 +173,7 @@ _SECRET_KEYS: dict[str, tuple[str, ...]] = {
     "rep_yandex_token": ("rep_yandex_token",),
     "rep_cloudflare_token": ("rep_cloudflare_token",),
     "conn_youtube_api_key": ("conn_youtube_api_key",),
+    "conn_anthropic_api_key": ("conn_anthropic_api_key",),
 }
 
 # Retention, applied once a day by the scheduler (prune). A join and a flagged
@@ -169,6 +184,7 @@ REVIEW_OK_KEEP_DAYS = 30          # comments the model called fine: only a count
 REVIEW_FLAGGED_KEEP_DAYS = 180    # cards: their buttons keep working for a while
 CHANNEL_EVENTS_KEEP_DAYS = 90     # joins and leaves, with names
 HELD_KEEP_DAYS = 7                # full texts behind a digest's «ℹ️ N»: as long as the longest /mute
+API_USAGE_KEEP_DAYS = 90          # what the comment check spent: 💬 Комментарии reads 7 days
 
 
 def _check_backup(path: str) -> None:
@@ -221,6 +237,7 @@ class Database:
                 await db.execute("ALTER TABLE comment_reviews ADD COLUMN sender_chat_id INTEGER")
             await db.execute(_CREATE_CHANNEL_EVENTS)
             await db.execute(_CREATE_CHANNEL_POSTS)
+            await db.execute(_CREATE_API_USAGE)
             await db.commit()
         logger.info("Database initialized at %s", self._db_path)
 
@@ -309,6 +326,14 @@ class Database:
                             (chat_id, message_id, kind, posted_at, reactions, reactions_json, reacted_at)
                         SELECT chat_id, message_id, kind, posted_at, reactions, reactions_json, reacted_at
                         FROM backup.channel_posts
+                        """
+                    )
+                # What the comment check spent: the live days win, older days come back.
+                if await _scalar(db, "SELECT COUNT(*) FROM backup.sqlite_master WHERE name = 'api_usage'"):
+                    await db.execute(
+                        """
+                        INSERT OR IGNORE INTO api_usage (day, model, calls, input_tokens, output_tokens)
+                        SELECT day, model, calls, input_tokens, output_tokens FROM backup.api_usage
                         """
                     )
                 await db.commit()
@@ -599,12 +624,46 @@ class Database:
             held = await db.execute(
                 "DELETE FROM pending_notifications WHERE shown_at < ?", (before(HELD_KEEP_DAYS),)
             )
+            usage = await db.execute(
+                "DELETE FROM api_usage WHERE day < ?", (before(API_USAGE_KEEP_DAYS)[:10],)
+            )
             await db.commit()
         return {
             "comment_reviews": ok.rowcount + flagged.rowcount,
             "channel_events": events.rowcount,
             "pending_notifications": held.rowcount,
+            "api_usage": usage.rowcount,
         }
+
+    async def add_api_usage(self, model: str, input_tokens: int, output_tokens: int, day: date | None = None) -> None:
+        """One billed call of the comment check, added to its day and model."""
+        key = (day or utcnow().date()).isoformat()
+        async with aiosqlite.connect(self._db_path) as db:
+            await db.execute(
+                """
+                INSERT INTO api_usage (day, model, calls, input_tokens, output_tokens) VALUES (?, ?, 1, ?, ?)
+                ON CONFLICT (day, model) DO UPDATE SET calls = calls + 1,
+                    input_tokens = input_tokens + excluded.input_tokens,
+                    output_tokens = output_tokens + excluded.output_tokens
+                """,
+                (key, model, max(0, input_tokens), max(0, output_tokens)),
+            )
+            await db.commit()
+
+    async def api_usage(self, days: int, today: date | None = None) -> list[dict]:
+        """Per model, the calls and tokens of the last `days` UTC days (today included)."""
+        since = ((today or utcnow().date()) - timedelta(days=days - 1)).isoformat()
+        async with aiosqlite.connect(self._db_path) as db:
+            db.row_factory = aiosqlite.Row
+            rows = await (await db.execute(
+                """
+                SELECT model, SUM(calls) AS calls, SUM(input_tokens) AS input_tokens,
+                       SUM(output_tokens) AS output_tokens
+                FROM api_usage WHERE day >= ? GROUP BY model ORDER BY SUM(calls) DESC, model
+                """,
+                (since,),
+            )).fetchall()
+        return [dict(row) for row in rows]
 
     async def count_author_reviews(self, chat_id: int, user_id: int | None, sender_chat_id: int | None = None) -> int:
         """How many messages of this author the bot has already seen in the

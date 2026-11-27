@@ -108,6 +108,8 @@ class Monitor:
     # A key the owner sends in the chat (🔌 Подключения → 🔎 Репутация), kept
     # in this setting: the monitor is off until it is there.
     secret: str = ""
+    # Whether it is on while the owner never touched its switch.
+    default_on: bool = True
 
 
 def _has_profiles(config: Config) -> bool:
@@ -187,9 +189,24 @@ MONITORS: tuple[Monitor, ...] = (
         "Комментарии",
         "запрещённый контент в обсуждении канала: наркотики, порно, экстремизм, мошенничество — карточка с кнопками",
         requires=_has_comments,
-        needs="ключ Claude в настройках хостинга и Telegram-канал с группой обсуждения",
+        needs="ключ Claude (🔌 Подключения → 💬 Комментарии) и Telegram-канал с группой обсуждения",
+    ),
+    # A failed deploy, the weekly vulnerabilities in the bot's packages and the
+    # Dependabot PRs waiting for a human: only whoever owns the code can act on
+    # them, so a bot deployed from someone else's repository (the Railway
+    # template) starts with it off. A bot that ran before 1.13.0 keeps it on
+    # (updates.adopt_dev_notices). UPDATE_WATCH=0 still switches it all off.
+    # BOT_PRINCIPLES §6, the exception of 2026-11-27.
+    Monitor(
+        "dev_notices",
+        "Для разработчика",
+        "упавший деплой, PR от Dependabot и уязвимости в пакетах: исправить это может только владелец кода",
+        requires=lambda config: config.update_watch,
+        needs="слежение за обновлениями — его выключили в настройках хостинга",
+        default_on=False,
     ),
 )
+DEV_NOTICES = "dev_notices"
 BY_ID: dict[str, Monitor] = {m.id: m for m in MONITORS}
 
 
@@ -200,8 +217,13 @@ def switch_key(monitor_id: str) -> str:
 
 
 async def is_switched_on(db: Database, monitor_id: str) -> bool:
-    """The user's switch alone, regardless of configuration."""
-    return await db.get_setting(switch_key(monitor_id)) != "off"
+    """The user's switch alone, regardless of configuration; the monitor's
+    default while the owner never touched it."""
+    value = await db.get_setting(switch_key(monitor_id))
+    if value is None:
+        monitor = BY_ID.get(monitor_id)
+        return monitor.default_on if monitor else True
+    return value != "off"
 
 
 async def is_connected(db: Database, monitor_id: str) -> bool:

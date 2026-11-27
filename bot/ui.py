@@ -20,11 +20,14 @@ from zoneinfo import ZoneInfo, available_timezones
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
 from bot import __version__, monitors, notifier, platforms, reputation, security_log, tofs_status, watchdog
+from bot import connections as chat_connections
 from bot.callbacks import (
     BACKUP,
     CHANNEL,
     CHART,
+    CLAUDE_KEY,
     COMMENTS,
+    COMMENTS_LIMIT,
     CONN_ADD,
     CONNECTIONS,
     DYNAMICS,
@@ -59,7 +62,7 @@ from bot.platforms import BY_ID, PLATFORMS
 from bot.platforms import instagram as ig
 from bot.platforms.base import Platform
 from bot.platforms.linkedin import COOKIE_AGING_DAYS, get_active_cookie, get_cookie_age_days
-from bot.reporter import _fmt, build_history_all, build_history_table, build_week_report
+from bot.reporter import _decimal, _fmt, build_history_all, build_history_table, build_week_report
 from bot.scheduler import build_stats, get_report_schedule, get_report_tz, is_quiet_mode
 
 # Callback data of the screens and actions: bot/callbacks.py, re-exported here
@@ -529,7 +532,12 @@ async def connections(db: Database, config: Config) -> Screen:
         elif platform.id == "linkedin":
             rows.append([_button("💼 LinkedIn", LINKEDIN)])
     lines += ["", await watchdog_line(db, config)]
+    if config.anthropic_api_key:
+        lines.append(t("{icon} 💬 Комментарии — ключ Claude задан").format(icon=ON))
+    else:
+        lines.append(t("{icon} 💬 Комментарии — нужен ключ Claude (платный)").format(icon=UNAVAILABLE))
     rows.append([_button(t("⏱ Сторож"), WATCHDOG), _button(t("🔎 Репутация"), REPUTATION)])
+    rows.append([_button(t("💬 Комментарии"), COMMENTS)])
     lines += ["", t("«➕» подключает сеть прямо здесь, «✏️» меняет или убирает её.")]
     rows = [add[i:i + 2] for i in range(0, len(add), 2)] + rows + [change[i:i + 2] for i in range(0, len(change), 2)]
     rows.append(_home())
@@ -755,60 +763,127 @@ async def security(db: Database, config: Config, top: int = 5) -> Screen:
 
 
 COMMENTS_STATS_DAYS = 30
+SPENDING_DAYS = 7      # 💬 Комментарии: what the check cost over a week
+
+
+def _usd(value: float) -> str:
+    """$2,10 in Russian, $2.10 in English; a sum under a cent keeps four digits: $0,0003."""
+    digits = 2 if value >= 0.01 or value == 0 else 4
+    return "$" + _decimal(f"{value:.{digits}f}")
+
+
+async def _spending(db: Database, config: Config) -> list[str]:
+    """What the comment check cost over the last days, or what one comment
+    costs while nothing was checked yet (comments.classifier prices)."""
+    price = comments.classifier
+    lines = [t("Платно: каждый комментарий — запрос к Claude по твоему ключу.")]
+    rows = await db.api_usage(SPENDING_DAYS)
+    if not rows:
+        each = price.cost(config.comments_model, price.TYPICAL_INPUT_TOKENS, price.TYPICAL_OUTPUT_TOKENS)
+        if each is None:
+            lines.append(t("Цену модели {model} я не знаю — после первых проверок покажу израсходованные токены.")
+                         .format(model=esc(config.comments_model)))
+        else:
+            lines.append(t("Около {usd} за комментарий на {model}.").format(
+                usd=_usd(each), model=esc(price.model_name(config.comments_model))))
+        return lines
+    calls = sum(row["calls"] for row in rows)
+    known = [row for row in rows if row["model"] in price.PRICES]
+    checks = f"{calls} {plural(calls, 'проверка', 'проверки', 'проверок')}"
+    if known:
+        total = sum(price.cost(row["model"], row["input_tokens"], row["output_tokens"]) for row in known)
+        lines.append(t("За {days} дней: {checks}, ≈ {usd} ({models}).").format(
+            days=SPENDING_DAYS, checks=checks, usd=_usd(total),
+            models=esc(", ".join(price.model_name(row["model"]) for row in known))))
+    else:
+        lines.append(t("За {days} дней: {checks}.").format(days=SPENDING_DAYS, checks=checks))
+    for row in rows:
+        if row["model"] not in price.PRICES:
+            lines.append(t("{model}: {tokens_in} токенов на входе, {tokens_out} на выходе — цену этой модели я не знаю.")
+                         .format(model=esc(row["model"]), tokens_in=_fmt(row["input_tokens"]),
+                                 tokens_out=_fmt(row["output_tokens"])))
+    lines.append(t("<i>По ценам Anthropic на {date}; точный счёт — на console.anthropic.com.</i>").format(
+        date=datetime.fromisoformat(price.PRICES_AS_OF).strftime("%d.%m.%Y")))
+    return lines
 
 
 async def comments_screen(db: Database, config: Config) -> Screen:
-    """What the comment monitor does, and the accuracy table its cards built."""
+    """What the comment monitor does, what it costs, the daily limit, the
+    Claude key (sent here) and the accuracy table its cards built."""
     monitor = monitors.BY_ID[comments.MONITOR_ID]
     lines = [t("<b>💬 Комментарии канала</b>"), ""]
-    if not monitor.requires(config):
+    rows: list[list[InlineKeyboardButton]] = []
+    configured = monitor.requires(config)
+    if not config.anthropic_api_key:
+        lines.append(t("Не подключено: нужен ключ Claude API и Telegram-канал с группой обсуждения. Тогда я буду "
+                       "смотреть каждый комментарий в группе обсуждения и присылать карточку с кнопками на "
+                       "запрещённый контент."))
+    elif not configured:
+        lines.append(t("Ключ Claude есть; осталось подключить Telegram-канал с группой обсуждения: "
+                       "🔌 Подключения → «➕ Telegram»."))
+    if configured:
+        on = await monitors.is_switched_on(db, comments.MONITOR_ID)
         lines.append(
-            t("Не подключено — нужно: {needs}. Тогда я буду смотреть каждый комментарий в группе обсуждения "
-              "и присылать карточку с кнопками на запрещённый контент.").format(needs=esc(t(monitor.needs)))
+            t("Режим: только сообщаю. Каждый комментарий в группе обсуждения смотрит модель; на запрещённый контент "
+              "приходит карточка, а удалить или забанить — кнопкой под ней. Сам я ничего не удаляю.")
         )
-        return Screen("\n".join(lines), InlineKeyboardMarkup([_back(SECURITY, t("Безопасность"))]))
-    on = await monitors.is_switched_on(db, comments.MONITOR_ID)
-    lines.append(
-        t("Режим: только сообщаю. Каждый комментарий в группе обсуждения смотрит модель; на запрещённый контент "
-          "приходит карточка, а удалить или забанить — кнопкой под ней. Сам я ничего не удаляю.")
-    )
-    if config.comments_chat_id is None:
-        lines.append(t("Группа: группа обсуждения канала {channel}, бот должен быть в ней админом с правом удалять "
-                       "сообщения и блокировать участников.").format(channel=esc(config.telegram_channel_id)))
-    else:
-        lines.append(t("Группа: {chat}, бот должен быть в ней админом с правом удалять сообщения и блокировать "
-                       "участников.").format(chat=esc(config.comments_chat_id)))
-    lines.append(t("Модель: {model}").format(model=esc(config.comments_model)))
-    if not on:
-        lines.append(t("⬜ Выключено — комментарии не проверяются. Включить — кнопкой ниже."))
-    stats = await db.review_stats(COMMENTS_STATS_DAYS)
-    lines += ["", t("<b>За {days} дней</b>").format(days=COMMENTS_STATS_DAYS)]
-    lines.append(t("Проверено комментариев: {n}").format(n=stats["checked"]))
-    by_category = stats["categories"]
-    if not by_category:
-        lines.append(t("Помеченных пока нет."))
-    else:
-        lines.append(t("Помечено · подтверждено · ложных:"))
-        confirmed = false_positive = 0
-        for category, row in sorted(by_category.items(), key=lambda kv: -kv[1]["flagged"]):
-            icon = "🔴" if category in comments.classifier.DANGEROUS else "🟠"
-            label = esc(t(comments.LABELS.get(category, category)))
-            lines.append(f"{icon} {label} — {row['flagged']} · {row['confirmed'] or 0} · {row['false_positive'] or 0}")
-            confirmed += row["confirmed"] or 0
-            false_positive += row["false_positive"] or 0
-        judged = confirmed + false_positive
-        if judged:
-            lines.append(
-                t("Точность по твоим отметкам: {pct}% ({confirmed} из {judged})").format(
-                    pct=round(100 * confirmed / judged), confirmed=confirmed, judged=judged
-                )
-            )
+        if config.comments_chat_id is None:
+            lines.append(t("Группа: группа обсуждения канала {channel}, бот должен быть в ней админом с правом удалять "
+                           "сообщения и блокировать участников.").format(channel=esc(config.telegram_channel_id)))
         else:
-            lines.append(t("Отмечай карточки кнопками — из отметок складывается точность."))
-    rows = [
-        [_button(f"{_check(on)} {t(monitor.label)}", f"{MONITORS}:{comments.MONITOR_ID}:{COMMENTS}")],
-        _back(SECURITY, t("Безопасность")),
-    ]
+            lines.append(t("Группа: {chat}, бот должен быть в ней админом с правом удалять сообщения и блокировать "
+                           "участников.").format(chat=esc(config.comments_chat_id)))
+        lines.append(t("Модель: {model}").format(model=esc(config.comments_model)))
+        if not on:
+            lines.append(t("⬜ Выключено — комментарии не проверяются. Включить — кнопкой ниже."))
+        rows.append([_button(f"{_check(on)} {t(monitor.label)}", f"{MONITORS}:{comments.MONITOR_ID}:{COMMENTS}")])
+
+    # The key, the money, the limit: what makes the check safe to leave on.
+    if config.anthropic_api_key:
+        source = t("задан в чате") if await chat_connections.from_chat(db, "anthropic_api_key") \
+            else t("из настроек хостинга")
+        lines += ["", t("🔑 Ключ Claude: {source}").format(source=source)]
+        rows.append([_button(t("✏️ Ключ Claude"), CLAUDE_KEY)])
+    else:
+        rows.append([_button(t("🔑 Прислать ключ Claude"), CLAUDE_KEY)])
+    lines += ["", *await _spending(db, config)]
+    limit = await comments.daily_limit(db, config)
+    if limit:
+        lines.append(t("Лимит: {n} {checks} в сутки — волна спама не станет счётом.").format(
+            n=limit, checks=plural(limit, "проверка", "проверки", "проверок")))
+    else:
+        lines.append(t("Лимит: нет — каждая проверка оплачивается, сколько бы их ни было."))
+    rows.append([
+        _button(_picked(choice == limit, str(choice) if choice else t("без лимита")), f"{COMMENTS_LIMIT}:{choice}")
+        for choice in comments.LIMIT_CHOICES
+    ])
+
+    if configured:
+        stats = await db.review_stats(COMMENTS_STATS_DAYS)
+        lines += ["", t("<b>За {days} дней</b>").format(days=COMMENTS_STATS_DAYS)]
+        lines.append(t("Проверено комментариев: {n}").format(n=stats["checked"]))
+        by_category = stats["categories"]
+        if not by_category:
+            lines.append(t("Помеченных пока нет."))
+        else:
+            lines.append(t("Помечено · подтверждено · ложных:"))
+            confirmed = false_positive = 0
+            for category, row in sorted(by_category.items(), key=lambda kv: -kv[1]["flagged"]):
+                icon = "🔴" if category in comments.classifier.DANGEROUS else "🟠"
+                label = esc(t(comments.LABELS.get(category, category)))
+                lines.append(f"{icon} {label} — {row['flagged']} · {row['confirmed'] or 0} · {row['false_positive'] or 0}")
+                confirmed += row["confirmed"] or 0
+                false_positive += row["false_positive"] or 0
+            judged = confirmed + false_positive
+            if judged:
+                lines.append(
+                    t("Точность по твоим отметкам: {pct}% ({confirmed} из {judged})").format(
+                        pct=round(100 * confirmed / judged), confirmed=confirmed, judged=judged
+                    )
+                )
+            else:
+                lines.append(t("Отмечай карточки кнопками — из отметок складывается точность."))
+    rows.append(_back(SECURITY, t("Безопасность")))
     return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
 
 
@@ -1253,6 +1328,12 @@ INPUT_PROMPTS = {
         "Я проверю его и сразу удалю сообщение."
     ),
     "tz": "🌍 Пришли город или название пояса одним сообщением: Ташкент, Berlin, Asia/Tashkent.",
+    "conn_anthropic": (
+        "🔑 Пришли ключ Claude API одним сообщением. Где взять: console.anthropic.com → API Keys → Create Key. "
+        "Совет: заведи для бота отдельное рабочее пространство (Workspace) с лимитом расходов — тогда волна спама "
+        "не станет счётом. Пошагово: {guide}\n"
+        "Я проверю ключ и сразу удалю сообщение. Убрать ключ, заданный здесь, — пришли «-»."
+    ),
     "watchdog": (
         "🔗 Пришли ссылку сторожа одним сообщением: https://hc-ping.com/… из healthchecks.io или ссылку из "
         "TofsDevOps. Я сразу отмечусь по ней, скажу, дошло ли, и удалю сообщение."
@@ -1262,6 +1343,7 @@ INPUT_PROMPTS = {
 _PROMPT_GUIDES = {
     "cookie": "linkedin", "token": "instagram", "conn_youtube_key": "youtube",
     "rep_google": "reputation", "rep_yandex": "reputation", "rep_ai": "reputation",
+    "conn_anthropic": "comments",
 }
 
 
@@ -1400,7 +1482,8 @@ def about_screen() -> Screen:
         t("<b>Сам за собой</b>"),
         t("• По воскресеньям присылаю бэкап базы (и по кнопке «📦 Бэкап сейчас» в настройках). Пришли файл "
           "обратно — верну историю, уже собранное не перезапишется."),
-        t("• После обновления пишу «🔄 Бот обновился», по воскресеньям — об уязвимостях в своих пакетах."),
+        t("• После обновления пишу «🔄 Бот обновился». Упавший деплой и уязвимости в пакетах — проверка «Для "
+          "разработчика» в 🧩 Мониторингах: она для того, кто ведёт код бота."),
         t("• Если обновление поменяло, когда и как я пишу, а ты — нет, скажу об этом один раз, с кнопкой на настройку."),
         "",
         t("<b>Где что</b>"),

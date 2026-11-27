@@ -13,6 +13,12 @@ cannot say on its own:
   * weekly: known vulnerabilities (OSV) in the running packages, and
     Dependabot PRs that wait for a human (major bumps, or a red CI).
 
+The hourly and the weekly ones are for whoever owns the code — a bot
+deployed from someone else's repository can do nothing about them — so they
+go through the monitor «Для разработчика» (monitors.DEV_NOTICES): off for a
+new install, on for a bot that ran before 1.13.0 (adopt_dev_notices). The
+startup notice is about the bot itself and always comes.
+
 A newer version on PyPI is not news: Dependabot brings it on Saturday.
 """
 
@@ -28,7 +34,7 @@ from importlib import metadata
 import aiohttp
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 
-from bot import notifier
+from bot import monitors, notifier
 from bot.config import Config
 from bot.db import Database
 from bot.i18n import t
@@ -46,6 +52,18 @@ _TIMEOUT = aiohttp.ClientTimeout(total=30)
 SNAPSHOT_KEY = "deps_snapshot"
 DEPLOY_ALERTED_KEY = "deploy_failed_alerted"
 VULNS_ALERTED_KEY = "vulns_alerted"
+
+
+async def adopt_dev_notices(db: Database) -> bool:
+    """At startup, before anything writes SNAPSHOT_KEY: a bot that ran before
+    1.13.0 — it has a snapshot — keeps the deploy watch and the weekly list
+    it always had; a new one starts without them (the monitor's default).
+    True when the switch was written."""
+    key = monitors.switch_key(monitors.DEV_NOTICES)
+    if await db.get_setting(key) is not None or await db.get_setting(SNAPSHOT_KEY) is None:
+        return False
+    await db.set_setting(key, "on")
+    return True
 
 
 class _Unknown(Exception):
@@ -173,7 +191,7 @@ async def failed_deploy(session: aiohttp.ClientSession, config: Config) -> dict 
 async def run_deploy_watch(bot: Bot, config: Config, db: Database) -> None:
     """Say once per commit that the newest version did not deploy: the bot
     keeps working on the old build, so nothing else would ever show it."""
-    if not config.update_watch:
+    if not await monitors.is_on(db, config, monitors.DEV_NOTICES):
         return
     try:
         async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
@@ -267,7 +285,7 @@ async def waiting_prs(session: aiohttp.ClientSession, config: Config) -> list[di
 async def run_dependency_watch(bot: Bot, config: Config, db: Database) -> None:
     """Weekly: alert once when vulnerable packages appear (and once when they
     are gone); remind about PRs that wait for a human while they wait."""
-    if not config.update_watch:
+    if not await monitors.is_on(db, config, monitors.DEV_NOTICES):
         return
     versions = installed_versions()
     async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:

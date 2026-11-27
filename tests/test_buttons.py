@@ -249,7 +249,7 @@ async def test_connections_screen_states(config, db):
     assert "➖ Instagram — не подключено\n" in screen.text
     assert "LinkedIn — https://www.linkedin.com/in/test/ · ✏️ число вручную" in screen.text
     assert buttons(screen.keyboard) == {
-        "conn:ig": "➕ Instagram", "li": "💼 LinkedIn", "wd": "⏱ Сторож", "rep": "🔎 Репутация",
+        "conn:ig": "➕ Instagram", "li": "💼 LinkedIn", "wd": "⏱ Сторож", "rep": "🔎 Репутация", "cm": "💬 Комментарии",
         "conn:tg": "✏️ Telegram", "conn:yt": "✏️ YouTube", "conn:li": "✏️ LinkedIn", "home": "🏠 Главная"}
     await db.set_setting("linkedin_li_at", COOKIE)
     assert "🟠 подтверди первое число" in (await ui.connections(db, config)).text

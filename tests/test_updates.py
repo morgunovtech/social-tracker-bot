@@ -8,7 +8,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestServer
 from telegram.error import NetworkError
 
-from bot import updates
+from bot import monitors, updates
 from bot.updates import (
     DEPLOY_ALERTED_KEY,
     SNAPSHOT_KEY,
@@ -28,6 +28,12 @@ BOT = {"login": "dependabot[bot]", "type": "Bot"}   # what the pulls API returns
 @pytest.fixture
 def watch_config(config):
     return dataclasses.replace(config, update_watch=True, app_commit=RUNNING[:12], repo_slug="me/bot")
+
+
+@pytest.fixture(autouse=True)
+async def developer(db):
+    """The owner's bot: «Для разработчика» is on (a new install starts without it)."""
+    await db.set_setting(monitors.switch_key(monitors.DEV_NOTICES), "on")
 
 
 # --- startup -----------------------------------------------------------------
