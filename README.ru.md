@@ -1,6 +1,6 @@
 # Social Tracker Bot
 
-> Telegram-бот на вашем сервере для ваших соцсетей: подписчики в Telegram, YouTube, Instagram и LinkedIn, жизнь канала и безопасность аккаунтов — признаки угона, письма безопасности, опасные комментарии, — а ещё недельный отчёт о том, как вас находят люди и ИИ-ассистенты. Молчит, пока всё в порядке.
+> Сколько у вас подписчиков в Telegram, YouTube, Instagram и LinkedIn — одним отчётом раз в неделю. Бот сразу предупредит, если аккаунт пытаются угнать или в комментариях появилось то, за что блокируют группу. Пока всё в порядке, молчит.
 
 🇬🇧 [In English](README.md) · [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/social-tracker-bot?referralCode=7hTMqE)
 

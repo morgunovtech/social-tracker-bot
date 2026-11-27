@@ -1,6 +1,6 @@
 # Social Tracker Bot
 
-> A self-hosted Telegram bot for your social accounts: followers on Telegram, YouTube, Instagram and LinkedIn, the life of your channel, and the accounts' security — hijack signs, security emails, comments that get a group blocked — plus a weekly report on how people and AI assistants find you. It stays quiet while things are fine and speaks up the moment something breaks.
+> Your followers on Telegram, YouTube, Instagram and LinkedIn in one weekly report. The bot warns you at once if someone tries to take over an account or a comment appears that can get your group blocked. It stays quiet while all is well.
 
 🇷🇺 [По-русски](README.ru.md) · [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/social-tracker-bot?referralCode=7hTMqE)
 
