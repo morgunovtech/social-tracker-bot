@@ -22,7 +22,7 @@ The bot is modular: connect only the platforms you have, and switch monitors on 
 - **Life of the channel** (Telegram, the bot as a channel admin): who joined and who left for 24 hours, 7 and 30 days, through which invite link they came, every post and the reactions it gathered, the most reacted posts of the month, the latest events with names — the part of TGStat an admin bot can do by itself, on your own server. One line of it in every report. Views, forwards and the citation index are not in the Bot API: those stay in Telegram's own statistics.
 - **Signals, not noise**: milestones (1k, 5k, 10k…) on the day they're crossed, a forecast to the next one, growth speeding up or slowing down, a bot-influx detector (a day's gain of 30 or more that is ×5 the usual daily gain).
 - **Problems arrive at once**: a revoked Instagram token or an expired LinkedIn cookie, collection failing 2+ days in a row, a drop in followers (20 or more, or at least 1%), data that has gone stale.
-- **Self-recovering**: failed platforms are retried hourly (up to 3 times), a run missed while the bot was down is caught up on start, a dead man's switch tells you when the bot itself dies — set from the chat (🔌 Connections → ⏱ Watchdog) with a live test ping that reads the answer, or with `HEALTHCHECK_URL`. Point it at a [TofsDevOps](https://github.com/morgunovtech/Tofs_DevOps_bot) heartbeat address and the ping also carries a line per network («✅ Telegram · 12 340, +18 today», «🔴 LinkedIn · profile unreadable») to TofsDevOps's main screen, next to your sites; refreshed after every profile check.
+- **Self-recovering**: a failed platform is retried hourly, 3 attempts in all, a run missed while the bot was down is caught up on start, a dead man's switch tells you when the bot itself dies — set from the chat (🔌 Connections → ⏱ Watchdog) with a live test ping that reads the answer, or with `HEALTHCHECK_URL`. Point it at a [TofsDevOps](https://github.com/morgunovtech/Tofs_DevOps_bot) heartbeat address and the ping also carries a line per network («✅ Telegram · 12 340, +18 today», «🔴 LinkedIn · profile unreadable») to TofsDevOps's main screen, next to your sites; refreshed after every profile check.
 - **Watches what it sends out, too**: the counts pushed to your site, the lines to TofsDevOps and the watchdog's mark. A day without one that landed is one 🟠 that says where and why («🟠 s.example.com has not accepted the follower counts for 1 d: answers with error 401»), the first one that lands after it one ✅ with how long it did not; ⚙️ Settings → 📤 Deliveries shows when each last landed. A log line alone is not a notification (monitor «Outgoing deliveries» in `/modules`).
 - **Your data stays yours**: SQLite on your volume, a weekly backup sent to your chat (without any stored secret — cookie, tokens, keys, the watchdog address), and `/restore` to merge a backup back without overwriting anything collected since.
 - **Short when unchanged**: a one-liner instead of the full report when nothing changed.
@@ -115,7 +115,7 @@ Logs: `docker compose logs -f`. Stop: `docker compose down`.
 
 The button carries my Railway referral code: Railway shares with me a part of what it bills an account created through it; your price stays the same. The same template without the code: <https://railway.com/deploy/social-tracker-bot>.
 
-Press the button, then **Configure** — the Deploy button stays grey until you do — and paste the token into `BOT_TOKEN`; leave the other fields empty. The template creates the service from this repository with a volume at `/app/data`; the networks are connected in the chat afterwards (🔌 Connections), so there is nothing to fill in under **Variables**.
+Press the button, then **Configure** — the Deploy button stays grey until you do — and paste the token into `BOT_TOKEN`, the only field. The template creates the service from this repository with a volume at `/app/data`; the networks, the watchdog and the reputation report are connected in the chat afterwards (🔌 Connections). Two optional features are still set under **Variables**: the comment check (`ANTHROPIC_API_KEY`, your own paid Claude API key) and the security emails (`SECURITY_MAIL_URL` and `SECURITY_MAIL_TOKEN` of the [mail-worker](mail-worker/README.md)) — [Setup](#setup), steps 5 and 6.
 
 **What it costs.** For the first 30 days Railway gives $5 and asks for no card. After that the account drops to the Free plan with $1 of usage a month, which a bot that runs around the clock can outgrow: when the credit ends the bot stops and nobody is told, and 30 days later Railway deletes the volume with the database. The Hobby plan is $5 a month and includes $5 of usage; it needs a card that works abroad. Railway's terms: [its docs](https://docs.railway.com/reference/pricing/free-trial). The free way is your own server, above.
 
@@ -131,10 +131,10 @@ Everything is a button away. Three buttons live under the input field: «🏠 Ho
 
 ```
 🏠 Home — the follower report, the security score, when the next report goes out
-├── 🔄 Refresh — collect now, the home screen updates in place
+├── 🔄 Refresh data — collect now, the home screen updates in place
 ├── 📈 Trends — this week vs last week
 │   ├── 🖼 30-day chart
-│   └── 📋 Day by day — platform and period switched on the same screen
+│   └── 📋 By day — platform and period switched on the same screen
 ├── 📣 Channel — joins and leaves, where they came from, posts and their reactions
 ├── 🛡 Security — score, each account, what to do first, recent events
 │   ├── an account's checklist → one question at a time, with why it matters
@@ -144,7 +144,7 @@ Everything is a button away. Three buttons live under the input field: «🏠 Ho
 │   ├── ⏱ Watchdog — who tells you when the bot stops: state, the last ping, «🔗 Send the link» (tested live), «🔄 Check again», «⏏ Disconnect»
 │   ├── 🔎 Reputation — the weekly report's sources and brand words, «🔑» per source (tested live), «📨 Report now»
 │   └── 💼 LinkedIn — how the number is collected, the cookie's age, «🔑 Send the cookie», «✏️ Enter count by hand»
-├── ✏️ Enter LinkedIn — only while the number is typed in by hand
+├── ✏️ Enter LinkedIn count — only while the number is typed in by hand
 ├── 🔕 Mute… — for an hour, four, eight or a day, and what still rings; 🔔 Unmute while a mute lasts
 ├── ⚙️ Settings — report days (checkboxes), report hour (a grid) and minutes, time zone (presets or «✏️ Another zone…»), 🗣 Language, short when unchanged, 📦 Backup now; the last line names the running build (commit) and Python
 │   ├── 🔔 When to write — quiet hours (presets), «🔕 Mute» for an hour, four, eight or a day
@@ -266,7 +266,7 @@ The bot keeps itself up to date without touching its own container:
 5. **The bot tells you** what the pipeline can't: «🔄 The bot has been updated: aiohttp 3.14.3 → 3.14.4» after a deploy; within an hour, if the newest commit failed to deploy and it's stuck on an older build; and on Sundays, known vulnerabilities (OSV) in its packages and Dependabot PRs waiting for a human. Silent when there's nothing to do.
 6. **An update that changed how the bot behaves says so once** (`bot/behavior.py`). At every start the bot notes what it actually does — the report's days, time and zone, quiet hours, «Short when unchanged», which checks are on, which security mails ring, the thresholds of its alerts — next to what you set for it in the chat and in `.env`. When a value moved while nothing you set did, the new version moved it: one «ℹ️ Since the update I work differently…» with each change as «now — was before» and buttons to the settings (🌍 Time zone, 🕗 Report time, 🔔 When to write, 🧩 Monitors). A change you made yourself is not told back; a new check that starts on by default is named.
 
-`UPDATE_WATCH=0` turns the notices off. On Railway the commit and the repository come from its own variables; elsewhere set `GITHUB_REPOSITORY` and build with `--build-arg APP_COMMIT=$(git rev-parse HEAD)`. `GITHUB_TOKEN` is optional and only lifts GitHub's anonymous rate limit (60 requests an hour per IP).
+`UPDATE_WATCH=0` turns off the deploy watch and the Sunday message about vulnerabilities and waiting PRs; «🔄 The bot has been updated» after a deploy comes either way. On Railway the commit and the repository come from its own variables; elsewhere set `GITHUB_REPOSITORY` and build with `--build-arg APP_COMMIT=$(git rev-parse HEAD)`. `GITHUB_TOKEN` is optional and only lifts GitHub's anonymous rate limit (60 requests an hour per IP).
 
 ## Deleted accounts among the subscribers
 
