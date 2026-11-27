@@ -20,6 +20,8 @@ You need an account at [console.anthropic.com](https://console.anthropic.com) wi
 
 Comments of the group's admins and your own are never checked.
 
+🔨 deletes this comment and bans its author from the group. Their other messages stay: only the Telegram app can delete everything one member wrote at once, the bot cannot.
+
 ## What the bot sends and where
 
 Every new comment in the discussion group goes to the Claude API (`api.anthropic.com`): the text, the picture or a video / sticker thumbnail, the group's title, and whether it is the author's first message and whether it is a forward. The author's name, @username and id are not sent. At most three comments at a time and no more than the daily limit. Anthropic's API data retention applies to what is sent. The key is kept in the bot's database and never reaches the backup or the log.

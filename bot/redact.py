@@ -1,7 +1,8 @@
 """Secrets out of log lines and error texts: the Bot API token, tokens and
 keys in a URL query, a password in a URL, plus the secret values the bot
-knows (its own token, the mail-worker token, API keys, the LinkedIn cookie,
-the Instagram token, the watchdog and ingest addresses). One formatter covers
+knows, from .env or sent in the chat (its own token, the mail-worker token,
+API keys, the LinkedIn cookie, the Instagram token, the reputation keys, the
+watchdog and ingest addresses). One formatter covers
 the message, its arguments and the traceback of every logger — httpx,
 python-telegram-bot and apscheduler included."""
 

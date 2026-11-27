@@ -214,8 +214,8 @@ STRINGS: dict[str, str] = {
     "/settings — настройки": "/settings — settings",
     "/history [платформа] [дни] — таблица по дням, до 90 дней": "/history [platform] [days] — day-by-day table, up to 90 days",
     "/settime ЧЧ:ММ — время отчёта": "/settime HH:MM — report time",
-    "/setquiet on|off — одна строка вместо отчёта, если за неделю без изменений":
-        "/setquiet on|off — one line instead of the report when a week brought no change",
+    "/setshort on|off — одна строка вместо отчёта, если за неделю без изменений":
+        "/setshort on|off — one line instead of the report when a week brought no change",
     "/connections — подключения: что собирается само, чему нужен токен или cookie":
         "/connections — connections: what is collected by itself, what needs a token or a cookie",
     # 🔔 Когда писать: quiet hours and /mute (bot/ui.py when_to_write, bot/notifier.py)

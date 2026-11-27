@@ -711,7 +711,9 @@ async def cmd_settz(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 @_admin_only
-async def cmd_setquiet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def cmd_setshort(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """«Коротко без изменений» on or off. Not the quiet hours: those are
+    ⚙️ Настройки → 🔔 Когда писать."""
     config, db = _deps(context)
     choice = context.args[0].lower() if context.args else ""
     if choice not in ("on", "off"):
@@ -2081,12 +2083,15 @@ COMMANDS = {
     "settime": cmd_settime,
     "setday": cmd_setday,
     "settz": cmd_settz,
-    "setquiet": cmd_setquiet,
+    "setshort": cmd_setshort,
     "mute": cmd_mute,
     "unmute": cmd_unmute,
     "cookieage": cmd_cookieage,
     "restore": cmd_restore,
 }
+# Old names that keep working without being listed: /setquiet read like the
+# quiet hours, so 1.17.1 named the command after what it switches.
+ALIASES = {"setquiet": "setshort"}
 
 
 def register_handlers(app, config: Config, db: Database) -> None:
@@ -2140,6 +2145,8 @@ def register_handlers(app, config: Config, db: Database) -> None:
 
     for name, handler in COMMANDS.items():
         app.add_handler(CommandHandler(name, handler))
+    for old, name in ALIASES.items():
+        app.add_handler(CommandHandler(old, COMMANDS[name]))
     # A file sent with the caption /restore: CommandHandler only reads message text.
     app.add_handler(MessageHandler(filters.Document.ALL & filters.CaptionRegex(r"^/restore\b"), cmd_restore))
     # Any other file: a backup is offered for a restore, the rest gets a hint.

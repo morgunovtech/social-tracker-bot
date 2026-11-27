@@ -540,8 +540,10 @@ async def act(bot: Bot, db: Database, review_id: int, action: str) -> tuple[dict
             elif review["user_id"] is None:
                 return review, t("Автор неизвестен")
             else:
-                # revoke_messages drops everything the author wrote in the group, this comment included.
-                await bot.ban_chat_member(chat_id=review["chat_id"], user_id=review["user_id"], revoke_messages=True)
+                # Only the ban: a discussion group is a supergroup, where Telegram ignores
+                # revoke_messages, so the author's other messages stay — the Bot API has no
+                # «delete all from this user»; the comment itself goes below.
+                await bot.ban_chat_member(chat_id=review["chat_id"], user_id=review["user_id"])
         except TelegramError as e:
             return review, _rights_note(e)
         await _delete(bot, review)

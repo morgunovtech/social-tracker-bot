@@ -5,9 +5,9 @@ import logging
 from telegram.error import InvalidToken
 from telegram.ext import Application
 
-from bot import behavior, connections, watchdog
+from bot import behavior, connections
 from bot.config import Config
-from bot.db import Database
+from bot.db import Database, known_secrets
 from bot.handlers import (
     ALLOWED_UPDATES,
     collect_lock,
@@ -28,14 +28,17 @@ _config: Config | None = None
 def secret_values() -> list[str]:
     """What must never reach a log line, as the bot knows it right now: read
     at the moment a line is written, so before the config exists only the
-    patterns (bot token, keys in a query, the li_at cookie) mask."""
+    patterns (bot token, keys in a query, the li_at cookie) mask. The config
+    holds what came from .env; the DB's list (db.known_secrets) what was sent
+    in the chat — the Instagram token, the LinkedIn cookie, the watchdog
+    address, the reputation keys, the keys of 🔌 Подключения."""
     c = _config
     if c is None:
         return []
     return [c.bot_token, c.youtube_api_key or "", c.instagram_access_token or "", c.linkedin_li_at or "",
             c.site_ingest_url or "", c.site_ingest_token or "", c.healthcheck_url or "",
             c.github_token or "", c.security_mail_url or "", c.security_mail_token or "",
-            c.anthropic_api_key or "", c.mailbox_password or "", watchdog.known_url() or ""]
+            c.anthropic_api_key or "", c.mailbox_password or "", *known_secrets()]
 
 
 def setup_logging() -> None:
@@ -63,11 +66,10 @@ async def _post_init(app: Application) -> None:
     config: Config = app.bot_data["config"]
     db: Database = app.bot_data["db"]
 
-    await db.init()
+    await db.init()   # also hands the secrets kept in the DB to the log redactor
     await restore_owner(config, db)
     await restore_language(config, db)
     await connections.restore(config, db)   # networks connected from the chat
-    await watchdog.url(db, config)   # an address set in the chat joins the log redactor
 
     scheduler = await setup_scheduler(app.bot, config, db, lock=collect_lock(app.bot_data))
     scheduler.start()

@@ -44,20 +44,12 @@ _REASONS = {
 # check»); an answer that refuses it does (🟠 — fix the address).
 UNCHECKED_REASONS = frozenset({"timeout", "connect", "error"})
 
-# The stored address, read once: the log redactor (bot/main.py) masks it too.
-_known: str | None = None
-
-
-def known_url() -> str | None:
-    return _known
-
-
 async def url(db: Database | None, config: Config) -> str | None:
-    """The address in use: the one set in the chat, else HEALTHCHECK_URL."""
-    global _known
+    """The address in use: the one set in the chat, else HEALTHCHECK_URL.
+    A stored address is a secret setting, so the log redactor masks it
+    (db.known_secrets)."""
     stored = (await db.get_setting(URL_KEY) or "").strip() if db is not None else ""
     if stored:
-        _known = stored
         return stored
     return config.healthcheck_url
 
@@ -125,15 +117,11 @@ async def last(db: Database) -> dict:
 
 async def save(db: Database, address: str) -> None:
     """A checked address from the chat; its ping just landed."""
-    global _known
     await db.set_setting(URL_KEY, address)
     await record(db, None)
-    _known = address
 
 
 async def forget(db: Database) -> None:
     """Switched off in the chat: HEALTHCHECK_URL, if set, takes over again."""
-    global _known
     await db.set_setting(URL_KEY, "")
     await db.set_setting(LAST_KEY, "")
-    _known = None
