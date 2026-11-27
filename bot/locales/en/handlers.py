@@ -239,5 +239,41 @@ STRINGS: dict[str, str] = {
         "Limit: {n} a day",
     "Лимит снят":
         "Limit removed",
+    "Ящик отключён":
+        "The mailbox is disconnected",
+    "Воркер отключён":
+        "The worker is disconnected",
+    "🟠 Удалить сообщение не получилось — удали его из чата вручную.":
+        "🟠 I could not delete the message — delete it from the chat yourself.",
+    "Убрал ящик, заданный в чате.":
+        "Removed the mailbox set in the chat.",
+    "❌ Это не похоже на адрес почты. Пришли его ещё раз или нажми «✖️ Отмена».":
+        "❌ This does not look like an email address. Send it again or press «✖️ Cancel».",
+    "❌ Пока я умею только Gmail и Яндекс: адрес на gmail.com, yandex.ru, ya.ru или yandex.com. Заведи такой ящик для бота и пришли его адрес — или нажми «✖️ Отмена».":
+        "❌ So far I can read only Gmail and Yandex: an address at gmail.com, yandex.ru, ya.ru or yandex.com. Make such a mailbox for the bot and send its address — or press «✖️ Cancel».",
+    "❌ Сначала адрес ящика: нажми «📮 Отдельный ящик» ещё раз.":
+        "❌ The mailbox's address first: press «📮 A separate mailbox» again.",
+    "❌ Ящик {address} не принял пароль. Нужен пароль приложения, а не пароль от почты.":
+        "❌ The mailbox {address} did not take the password. It needs an app password, not the mailbox's own one.",
+    "Яндекс: проверь, что почтовые программы (IMAP) разрешены, и учти, что новый пароль приложения может заработать не сразу — тогда пришли его чуть позже.":
+        "Yandex: check that email clients (IMAP) are allowed, and a new app password may start working only after a while — then send it a bit later.",
+    "⚠️ Не смог достучаться до почтового сервера. Попробуй через пару минут.":
+        "⚠️ I could not reach the mail server. Try again in a couple of minutes.",
+    "Пришли пароль ещё раз или нажми «✖️ Отмена».":
+        "Send the password again or press «✖️ Cancel».",
+    "✅ Ящик {address} подключён: читаю новые письма раз в 5 минут; то, что уже лежит в ящике, не трогаю.":
+        "✅ The mailbox {address} is connected: I read new mail every 5 minutes and leave what is already there alone.",
+    "Убрал воркер, заданный в чате. Если он задан в настройках хостинга — действует он.":
+        "Removed the worker set in the chat. If one is set in the hosting settings, that one is in force.",
+    "❌ Нужен адрес вида https://socialbot-mail.<аккаунт>.workers.dev. Пришли ещё раз или нажми «✖️ Отмена».":
+        "❌ It needs an address like https://socialbot-mail.<account>.workers.dev. Send it again or press «✖️ Cancel».",
+    "❌ Сначала адрес воркера: нажми «☁️ Свой воркер» ещё раз.":
+        "❌ The worker's address first: press «☁️ Your own worker» again.",
+    "❌ Воркер не принял токен. Пришли тот, что задан у воркера, или нажми «✖️ Отмена».":
+        "❌ The worker did not take the token. Send the one the worker has, or press «✖️ Cancel».",
+    "⚠️ Воркер не ответил. Проверь адрес и пришли токен ещё раз — или нажми «✖️ Отмена».":
+        "⚠️ The worker did not answer. Check the address and send the token again — or press «✖️ Cancel».",
+    "✅ Воркер подключён: забираю у него письма раз в 5 минут.":
+        "✅ The worker is connected: I fetch its mail every 5 minutes.",
 }
 PLURALS: dict[str, tuple[str, str]] = {}

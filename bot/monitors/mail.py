@@ -428,29 +428,20 @@ async def _track_reachability(bot: Bot, config: Config, db: Database, error: str
         )
 
 
-async def check(bot: Bot, config: Config, db: Database, session: aiohttp.ClientSession) -> int:
-    """Fetch new mail, alert on each, acknowledge what was handled; returns alerts sent.
+async def handle(bot: Bot, config: Config, db: Database, mails: list[Mail]) -> tuple[int, set[str]]:
+    """Alert on each mail; returns (alerts sent, ids of the mails handled).
 
-    A mail is acknowledged only after its alert went out, so a failed send is
-    retried on the next poll; the security log's uid keeps a mail whose ack
-    was lost from being alerted twice.
-    """
-    events, error = await _fetch(session, config)
-    await _track_reachability(bot, config, db, None if events is not None else error or "?")
-    if not events:
-        return 0
-
-    handled: list[str] = []
+    A mail is handled once its alert went out (or it was handled before:
+    the security log's uid keeps it from being alerted twice); the caller
+    acknowledges or marks only those, so a failed send is retried next poll.
+    The mail-worker's events and the separate mailbox (bot/mailbox.py) both
+    come here."""
+    handled: set[str] = set()
     sent = 0
-    for raw in events:
-        try:
-            mail = Mail.from_json(raw)
-        except (KeyError, TypeError):
-            logger.warning("Malformed mail event skipped: %r", raw)
-            continue
+    for mail in mails:
         uid = f"mail:{mail.id}"
         if await db.has_event(uid):
-            handled.append(mail.id)
+            handled.add(mail.id)
             continue
         text, kind, network, platform_id = describe(mail)
         if kind is not None and kind.id == "password_changed" and platform_id:
@@ -464,14 +455,30 @@ async def check(bot: Bot, config: Config, db: Database, session: aiohttp.ClientS
             logger.exception("Mail alert send failed — will retry on the next poll")
             continue
         sent += 1
-        handled.append(mail.id)
+        handled.add(mail.id)
         # Every handled mail is logged, so none is alerted twice; "info" ones
         # (unrecognized, Gmail's confirmation) stay out of /security's events.
         # The log keeps the headline before translation (bot/security_log.py).
         await db.add_event(uid, network, kind.id if kind else "info", humanize.dump(headline(mail)))
         if kind is not None and kind.id == "password_changed" and platform_id:
             await hygiene.mark_password_changed(db, platform_id, utcnow().date())
+    return sent, handled
 
+
+async def check(bot: Bot, config: Config, db: Database, session: aiohttp.ClientSession) -> int:
+    """Fetch the mail-worker's new mail, alert on each, acknowledge what was
+    handled; returns alerts sent."""
+    events, error = await _fetch(session, config)
+    await _track_reachability(bot, config, db, None if events is not None else error or "?")
+    if not events:
+        return 0
+    mails = []
+    for raw in events:
+        try:
+            mails.append(Mail.from_json(raw))
+        except (KeyError, TypeError):
+            logger.warning("Malformed mail event skipped: %r", raw)
+    sent, handled = await handle(bot, config, db, mails)
     if handled:
-        await _ack(session, config, handled)
+        await _ack(session, config, [m.id for m in mails if m.id in handled])
     return sent

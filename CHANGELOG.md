@@ -2,6 +2,24 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.14.0 — 2026-11-27
+
+Security emails without Cloudflare: a separate mailbox read over IMAP, connected from the chat; the mail-worker is connected from the chat too. No new variables or dependencies.
+
+**A separate mailbox**
+- 🔌 Подключения → ✉️ Письма безопасности → «📮 Отдельный ящик (просто)»: the address of a Gmail or Yandex box made for the bot, then its app password (spaces dropped). The message with the password is deleted first; the bot signs in (`LOGIN`, `SELECT INBOX`) to check it and reads only mail that arrives after that — what is already in the box is the owner's past. Other providers are told plainly: «пока умею Gmail и Яндекс». Hosts checked live on 27.11.2026: `imap.gmail.com:993`, `imap.yandex.ru:993` and `imap.ya.ru:993` (Yandex's host for connections from abroad, tried second); Yandex signs in by the part of the address before @.
+- Every 5 minutes, with the worker's schedule: the mails with a UID above the last one seen, read with `BODY.PEEK[]` and the standard `email` parser (text/plain, else the HTML turned into text in one pass, as the mail-worker does since 1.10.2), handed to the same alerts as the worker's, then marked `\Seen`. A mail whose alert did not go out is read again next time. A new UIDVALIDITY starts over from the newest mail.
+- Only mail the box's provider vouched for: the topmost `Authentication-Results` must say `dkim=pass` with `header.d`/`header.i` equal to the `From` domain, its parent or its subdomain (not a bare top level); SPF is not asked for, it fails on every forward. And only from the senders the bot knows (or Gmail's forwarding confirmation, which is relayed as before). Anything else stays unread in the box and raises nothing — a forged «security alert» to the box's address included.
+- A box that refuses the password twice in a row: one 🟠 «ящик не принимает пароль приложения — создай новый и пришли» with a button to the screen, one ✅ when it takes one again. A server silent for ~30 minutes: one ⚠️ «не смог проверить» (the mail waits in the box), one line when it answers.
+- The app password is a secret: not in the backup, masked in the logs; «⏏ Отключить ящик» (asked first) forgets it and where reading stopped.
+
+**The mail-worker from the chat**
+- «☁️ Свой воркер на Cloudflare (для продвинутых)»: its address, then its token (deleted at once), checked live with `GET /events` — 200 is taken, 401 is «токен не подходит». `SECURITY_MAIL_URL` and `SECURITY_MAIL_TOKEN` stay as the fallback; the chat wins. The «worker is silent» alert no longer suggests a plain `npx wrangler deploy`, which would empty `ALLOWED_SENDERS`: it points at `sh mail-worker/update.sh`.
+
+**Screens and docs**
+- ✉️ Письма безопасности shows both ways and their state (checked at…, refused, could not check; the worker answering or not); 🔌 Подключения has its line and button; 🧩 Мониторинги says «нужно: почта — 🔌 Подключения → ✉️ Письма безопасности».
+- `docs/connect/mail.md` and `.en.md`: the separate box and its app password on Gmail and Yandex, the forwarding filter in the main box with the senders' list, what is read. The README (both languages): Setup step 5, the privacy table (the mailbox row), nothing left to fill in under Variables. `SECURITY.md`: the app password and the chat-sent keys among the secrets, and why the box is a separate one.
+
 ## 1.13.0 — 2026-11-27
 
 The comment check is set up from the chat — the Claude key and the daily limit — and says what it costs. The developer's notices become a monitor that a new install starts without. No new variables or permissions.

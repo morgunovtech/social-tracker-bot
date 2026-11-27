@@ -26,7 +26,7 @@ from telegram.ext import (
 )
 
 from bot import callbacks as cb
-from bot import classifier, connections, monitors, notifier, platforms, reputation, ui, watchdog
+from bot import classifier, connections, mailbox, monitors, notifier, platforms, reputation, ui, watchdog
 from bot.config import DEFAULT_TZ, DOW_ORDER, Config, normalize_dow, normalize_tz
 from bot.db import HELD_KEEP_DAYS, Database, utcnow
 from bot.i18n import LANGUAGES, set_language, t
@@ -62,7 +62,7 @@ LI_CONV_TIMEOUT = 120
 INPUT_KINDS = {cb.LI_COOKIE: "cookie", cb.IG_TOKEN: "token", cb.TZ_OTHER: "tz", cb.WD_URL: "watchdog",
                cb.REP_WORDS: "rep_words", **{entry: monitor for monitor, entry in cb.REP_KEYS.items()},
                **{entry: f"conn_{platform}" for platform, entry in cb.CONN_ADD.items()},
-               cb.CLAUDE_KEY: "conn_anthropic"}
+               cb.CLAUDE_KEY: "conn_anthropic", cb.MAIL_BOX: "mail_box", cb.MAIL_WORKER: "mail_worker"}
 # A service-account key file is small; anything bigger is not one.
 KEY_FILE_MAX_BYTES = 20_000
 
@@ -1412,6 +1412,26 @@ async def _cb_watchdog(press: _Press, context, args: list[str]) -> None:
     await _show(press.query, screen)
 
 
+async def _cb_mail(press: _Press, context, args: list[str]) -> None:
+    """mail — the screen; mail:off:<box|wk> — asked first; mail:off:<box|wk>:yes — off."""
+    config, db = _deps(context)
+    if not args:
+        screen = await ui.mail_screen(db, config)
+    elif len(args) == 2 and args[0] == "off" and args[1] in ("box", "wk"):
+        screen = ui.mail_off_confirm(args[1])
+    elif args == ["off", "box", "yes"]:
+        await mailbox.disconnect(config, db)
+        await press.answer(t("Ящик отключён"))
+        screen = await ui.mail_screen(db, config)
+    elif args == ["off", "wk", "yes"]:
+        await connections.remove(config, db, "security_mail_url", "security_mail_token")
+        await press.answer(t("Воркер отключён"))
+        screen = await ui.mail_screen(db, config)
+    else:
+        return
+    await _show(press.query, screen)
+
+
 async def _cb_instagram(press: _Press, context, args: list[str]) -> None:
     config, db = _deps(context)
     await _show(press.query, await ui.instagram(db, config))
@@ -1438,6 +1458,7 @@ async def _screen(context, screen_id: str) -> ui.Screen | None:
         cb.CONNECTIONS: lambda: ui.connections(db, config),
         cb.WATCHDOG: lambda: ui.watchdog_screen(db, config),
         cb.REPUTATION: lambda: ui.reputation_screen(db, config),
+        cb.MAIL: lambda: ui.mail_screen(db, config),
         cb.SETTINGS: lambda: ui.settings(db, config),
         cb.MONITORS: lambda: ui.monitors_screen(db, config),
         cb.OPEN_TIME: lambda: ui.report_time(db, config),
@@ -1542,6 +1563,7 @@ _ROUTES: dict[str, Route] = {
     cb.CONNECTIONS: _cb_connections,
     cb.WATCHDOG: _cb_watchdog,
     cb.REPUTATION: _cb_reputation,
+    cb.MAIL: _cb_mail,
     cb.OPEN: _cb_open,
     cb.DIGEST: _cb_digest,
     cb.MUTE: _cb_mute,
@@ -1689,6 +1711,11 @@ async def input_conv_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         if again:
             context.user_data["awaiting"] = again
             return AWAITING_INPUT
+    elif kind is not None and kind.startswith("mail_"):
+        again = await _store_mail(update, context, kind, value)
+        if again:
+            context.user_data["awaiting"] = again
+            return AWAITING_INPUT
     return ConversationHandler.END
 
 
@@ -1831,9 +1858,123 @@ async def _store_claude_key(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     return None
 
 
+async def _worker_answers(url: str, token: str) -> str:
+    """A live check of a mail-worker: «ok», «token» (401) or «unreachable»."""
+    try:
+        async with aiohttp.ClientSession() as session, session.get(
+            f"{url}/events", headers={"Authorization": f"Bearer {token}"}, timeout=aiohttp.ClientTimeout(total=20)
+        ) as resp:
+            if resp.status == 200:
+                return "ok"
+            return "token" if resp.status in (401, 403) else "unreachable"
+    except Exception as e:
+        logger.warning("Mail worker check failed: %s", type(e).__name__)
+        return "unreachable"
+
+
+async def _store_mail(update: Update, context: ContextTypes.DEFAULT_TYPE, kind: str, value: str) -> str | None:
+    """The steps after «📮 Отдельный ящик» (address, then the app password)
+    and «☁️ Свой воркер» (address, then the token) on ✉️ Письма безопасности.
+    The secret's message leaves the chat first; each pair is checked live —
+    an IMAP sign-in, a request to the worker — before it is kept and laid over
+    the config. Returns the step to keep asking for, None when it is over."""
+    config, db = _deps(context)
+    chat = update.effective_chat
+    step = context.user_data
+
+    async def again(note: str, next_kind: str = kind) -> str:
+        screen = ui.input_retry(note) if next_kind == kind else ui.input_prompt(next_kind)
+        if next_kind != kind and note:
+            screen = screen.noted(note)
+        await chat.send_message(screen.text, **_markup(screen))
+        return next_kind
+
+    async def done(note: str) -> None:
+        await _reply(update, (await ui.mail_screen(db, config)).noted(note))
+
+    async def out_of_chat() -> str:
+        try:
+            await update.message.delete()
+            return ""
+        except Exception:
+            return "\n" + t("🟠 Удалить сообщение не получилось — удали его из чата вручную.")
+
+    if kind == "mail_box":
+        if value.strip() == connections.REMOVE:
+            await mailbox.disconnect(config, db)
+            await done(t("Убрал ящик, заданный в чате."))
+            return None
+        address = mailbox.address(value)
+        if address is None:
+            return await again(t("❌ Это не похоже на адрес почты. Пришли его ещё раз или нажми «✖️ Отмена»."))
+        if mailbox.servers_for(address) is None:
+            return await again(t(
+                "❌ Пока я умею только Gmail и Яндекс: адрес на gmail.com, yandex.ru, ya.ru или yandex.com. "
+                "Заведи такой ящик для бота и пришли его адрес — или нажми «✖️ Отмена»."))
+        step["mailbox_address"] = address
+        return await again("", "mail_box_pw")
+    if kind == "mail_box_pw":
+        address = step.get("mailbox_address") or config.mailbox_address
+        note = await out_of_chat()
+        if not address:
+            return await again(t("❌ Сначала адрес ящика: нажми «📮 Отдельный ящик» ещё раз.") + note)
+        password = mailbox.app_password(value)
+        try:
+            validity, top = await asyncio.to_thread(mailbox.probe, address, password)
+        except mailbox.MailboxError as e:
+            if e.kind == mailbox.AUTH:
+                why = t("❌ Ящик {address} не принял пароль. Нужен пароль приложения, а не пароль от почты.").format(
+                    address=address)
+                if mailbox.is_yandex(address):
+                    why += " " + t("Яндекс: проверь, что почтовые программы (IMAP) разрешены, и учти, что новый "
+                                   "пароль приложения может заработать не сразу — тогда пришли его чуть позже.")
+            else:
+                why = t("⚠️ Не смог достучаться до почтового сервера. Попробуй через пару минут.")
+            return await again(why + " " + t("Пришли пароль ещё раз или нажми «✖️ Отмена».") + note)
+        step.pop("mailbox_address", None)
+        await connections.save(config, db, mailbox_address=address, mailbox_password=password)
+        await mailbox.start_at(db, validity, top)
+        for key in (mailbox.ERROR_KEY, mailbox.AUTH_STREAK, mailbox.NET_STREAK, mailbox.AUTH_ALERTED):
+            await db.set_setting(key, "")
+        await done(t("✅ Ящик {address} подключён: читаю новые письма раз в 5 минут; то, что уже лежит в ящике, "
+                     "не трогаю.").format(address=address) + note)
+        return None
+    if kind == "mail_worker":
+        if value.strip() == connections.REMOVE:
+            await connections.remove(config, db, "security_mail_url", "security_mail_token")
+            await done(t("Убрал воркер, заданный в чате. Если он задан в настройках хостинга — действует он."))
+            return None
+        url = connections.worker_url(value)
+        if url is None:
+            return await again(t("❌ Нужен адрес вида https://socialbot-mail.<аккаунт>.workers.dev. Пришли ещё раз "
+                                 "или нажми «✖️ Отмена»."))
+        step["mail_worker_url"] = url
+        return await again("", "mail_worker_token")
+    if kind == "mail_worker_token":
+        url = step.get("mail_worker_url") or config.security_mail_url
+        note = await out_of_chat()
+        token = value.strip()
+        if not url or not token:
+            return await again(t("❌ Сначала адрес воркера: нажми «☁️ Свой воркер» ещё раз.") + note)
+        answer = await _worker_answers(url, token)
+        if answer == "token":
+            return await again(t("❌ Воркер не принял токен. Пришли тот, что задан у воркера, или нажми «✖️ Отмена».")
+                               + note)
+        if answer != "ok":
+            return await again(t("⚠️ Воркер не ответил. Проверь адрес и пришли токен ещё раз — или нажми «✖️ Отмена».")
+                               + note)
+        step.pop("mail_worker_url", None)
+        await connections.save(config, db, security_mail_url=url, security_mail_token=token)
+        await done(t("✅ Воркер подключён: забираю у него письма раз в 5 минут.") + note)
+        return None
+    return None
+
+
 async def input_conv_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.pop("awaiting", None)
     context.user_data.pop("conn_youtube_channel", None)
+    context.user_data.pop("mailbox_address", None)
+    context.user_data.pop("mail_worker_url", None)
     return await li_conv_cancel(update, context)
 
 

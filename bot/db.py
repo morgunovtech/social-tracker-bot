@@ -163,7 +163,8 @@ _SECRET_SETTINGS = ("linkedin_li_at", "instagram_token", "watchdog_url",
                     # the reputation report's read-only keys (bot/reputation/)
                     "rep_google_key", "rep_yandex_token", "rep_cloudflare_token",
                     # keys connected from the chat (bot/connections.py)
-                    "conn_youtube_api_key", "conn_anthropic_api_key")
+                    "conn_youtube_api_key", "conn_anthropic_api_key", "conn_mailbox_password",
+                    "conn_security_mail_token")
 # Each secret with the settings that describe it (when it was set, when it dies).
 _SECRET_KEYS: dict[str, tuple[str, ...]] = {
     "linkedin_li_at": ("linkedin_li_at", "linkedin_li_at_set_at"),
@@ -174,6 +175,8 @@ _SECRET_KEYS: dict[str, tuple[str, ...]] = {
     "rep_cloudflare_token": ("rep_cloudflare_token",),
     "conn_youtube_api_key": ("conn_youtube_api_key",),
     "conn_anthropic_api_key": ("conn_anthropic_api_key",),
+    "conn_mailbox_password": ("conn_mailbox_password",),
+    "conn_security_mail_token": ("conn_security_mail_token",),
 }
 
 # Retention, applied once a day by the scheduler (prune). A join and a flagged

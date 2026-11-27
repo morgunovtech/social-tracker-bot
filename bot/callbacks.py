@@ -34,6 +34,7 @@ COMMENTS = "cm"
 CHANNEL = "ch"
 WATCHDOG = "wd"          # ⏱ Сторож: wd | wd:test | wd:off[:yes]
 REPUTATION = "rep"       # 🔎 Репутация: rep | rep:now
+MAIL = "mail"            # ✉️ Письма безопасности: mail | mail:off:<box|wk>[:yes]
 # Settings screens an alert may open (open:<id>); inside the menu they are set:time, set:tz, set:when.
 OPEN_TIME = "rtime"      # 🕗 Время отчёта
 OPEN_TZ = "rtz"          # 🌍 Часовой пояс
@@ -64,9 +65,12 @@ CONN_ADD = {"telegram": "conn:tg", "youtube": "conn:yt", "instagram": "conn:ig",
 # The comment check's Claude key, sent on 💬 Комментарии; cm:lim:<n> picks the daily limit there.
 CLAUDE_KEY = "cm:key"
 COMMENTS_LIMIT = "cm:lim"
+# Security emails (bot/mailbox.py): a separate mailbox, or one's own mail-worker.
+MAIL_BOX = "mail:box"
+MAIL_WORKER = "mail:wk"
 INPUT_CANCEL = "input:cancel"
 CONVERSATION_ENTRIES = frozenset({LI_ENTER, LI_COOKIE, IG_TOKEN, TZ_OTHER, WD_URL, REP_WORDS, *REP_KEYS.values(),
-                                  *CONN_ADD.values(), CLAUDE_KEY})
+                                  *CONN_ADD.values(), CLAUDE_KEY, MAIL_BOX, MAIL_WORKER})
 
 # The screens an alert or a report may open, with their labels (translated when built).
 SCREEN_LABELS = {
@@ -78,6 +82,7 @@ SCREEN_LABELS = {
     CONNECTIONS: "🔌 Подключения",
     WATCHDOG: "⏱ Сторож",
     REPUTATION: "🔎 Репутация",
+    MAIL: "✉️ Письма безопасности",
     SETTINGS: "⚙️ Настройки",
     MONITORS: "🧩 Мониторинги",
     OPEN_TIME: "🕗 Время отчёта",

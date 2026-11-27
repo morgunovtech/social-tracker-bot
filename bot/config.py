@@ -241,6 +241,11 @@ class Config:
     comments_model: str
     comments_chat_id: int | None
     comments_daily_limit: int  # checks per UTC day, 0 = no limit
+    # Security emails from a separate mailbox over IMAP (bot/mailbox.py): set
+    # in the chat only (🔌 Подключения → ✉️ Письма безопасности) and laid
+    # over the config by bot/connections.py; the password is an app password.
+    mailbox_address: str | None = None
+    mailbox_password: str | None = None
 
     @classmethod
     def from_env(cls) -> Config:

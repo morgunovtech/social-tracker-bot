@@ -498,12 +498,6 @@ STRINGS: dict[str, str] = {
         "If the bot was removed from the admins — add it back (no special rights needed).",
     "Пока воркер молчит, о новом входе или смене пароля я не узнаю.":
         "While the worker is silent, I will not hear about a new sign-in or a changed password.",
-    "сменился SECURITY_MAIL_TOKEN, воркер удалён или не задеплоен, сбой Cloudflare":
-        "SECURITY_MAIL_TOKEN changed, the worker was deleted or not deployed, a Cloudflare failure",
-    "Проверить SECURITY_MAIL_URL и SECURITY_MAIL_TOKEN — у бота и у воркера они одни.":
-        "Check SECURITY_MAIL_URL and SECURITY_MAIL_TOKEN — the bot and the worker share them.",
-    "Задеплоить воркер заново: cd mail-worker && npx wrangler deploy.":
-        "Deploy the worker again: cd mail-worker && npx wrangler deploy.",
     "Новые комментарии сейчас никто не смотрит — опасный я пропущу.":
         "Nobody is looking at new comments right now — I will miss a dangerous one.",
     "кончился баланс API, ключ отозван, или сбой у Anthropic": "the API balance ran out, the key was revoked, or a failure at Anthropic",
@@ -549,8 +543,6 @@ STRINGS: dict[str, str] = {
     "🟠 Комментарии: проверка не работает {n} раза подряд": "🟠 Comments: the check has failed {n} times in a row",
     "🟠 Комментарии: дневной лимит проверок ({limit}) исчерпан": "🟠 Comments: the daily check limit ({limit}) is used up",
     "«{subject}»": '"{subject}"',
-    "почтовый воркер на Cloudflare (для продвинутых) — инструкция в документации":
-        "a mail worker on Cloudflare (advanced) — see the documentation",
     "Для разработчика":
         "For the developer",
     "упавший деплой, PR от Dependabot и уязвимости в пакетах: исправить это может только владелец кода":
@@ -561,6 +553,40 @@ STRINGS: dict[str, str] = {
         "a Claude key (🔌 Connections → 💬 Comments) and a Telegram channel with a discussion group",
     "Поднять лимит — кнопкой на экране 💬 Комментарии (там же — «без лимита»).":
         "Raise the limit with the buttons on 💬 Comments (there is «no limit» too).",
+    "✅ Ящик {address} снова принимает пароль приложения":
+        "✅ The mailbox {address} takes the app password again",
+    "✅ Ящик {address} снова отвечает, письма прочитаны":
+        "✅ The mailbox {address} answers again, the mail is read",
+    "Не отвечал":
+        "Did not answer for",
+    "🟠 Ящик {address} не принимает пароль приложения — письма безопасности не читаются":
+        "🟠 The mailbox {address} does not take the app password — security emails are not read",
+    "⚠️ Не смог проверить ящик {address} ~30 мин: сервер не отвечает":
+        "⚠️ Could not check the mailbox {address} for ~30 min: the server does not answer",
+    "Пока ящик не пускает, письма о новом входе или смене пароля лежат в нём непрочитанными — я о них не знаю.":
+        "While the mailbox refuses me, mail about a new sign-in or a changed password lies there unread — I don't know about it.",
+    "отозванный или удалённый пароль приложения; Gmail отзывает их сам при смене пароля аккаунта; у Яндекса — выключенный доступ почтовых программ":
+        "a revoked or deleted app password; Gmail revokes them itself when the account's password changes; on Yandex — email clients not allowed",
+    "Создать новый пароль приложения для этого ящика и прислать его: 🔌 Подключения → ✉️ Письма безопасности → «📮 Отдельный ящик».":
+        "Create a new app password for this mailbox and send it: 🔌 Connections → ✉️ Security emails → «📮 A separate mailbox».",
+    "Яндекс: проверить, что в настройках почты разрешены почтовые программы (IMAP).":
+        "Yandex: check that the mail settings allow email clients (IMAP).",
+    "Письма не теряются — они ждут в ящике, и я прочитаю их, когда сервер ответит.":
+        "The mail is not lost — it waits in the mailbox, and I will read it when the server answers.",
+    "сбой у почтового сервиса или у хостинга бота":
+        "an outage at the mail service or at the bot's hosting",
+    "Ничего делать не нужно, если это ненадолго.":
+        "Nothing to do if it is short.",
+    "Если так весь день — проверить, открывается ли ящик в браузере.":
+        "If it lasts all day — check that the mailbox opens in a browser.",
+    "сменился токен воркера, воркер удалён или не задеплоен, сбой Cloudflare":
+        "the worker's token changed, the worker was deleted or not deployed, a Cloudflare outage",
+    "Проверить адрес и токен воркера — у бота (🔌 Подключения → ✉️ Письма безопасности) и у воркера они одни.":
+        "Check the worker's address and token — the bot's (🔌 Connections → ✉️ Security emails) and the worker's are the same.",
+    "Обновить воркер: sh mail-worker/update.sh, потом с --deploy (mail-worker/README.md).":
+        "Update the worker: sh mail-worker/update.sh, then with --deploy (mail-worker/README.md).",
+    "почта — 🔌 Подключения → ✉️ Письма безопасности":
+        "email — 🔌 Connections → ✉️ Security emails",
 }
 
 PLURALS: dict[str, tuple[str, str]] = {

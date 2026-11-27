@@ -596,6 +596,66 @@ STRINGS: dict[str, str] = {
         "🔑 Send the Claude API key in one message. Where to get it: console.anthropic.com → API Keys → Create Key. Tip: give the bot a Workspace of its own with a spend limit — then a spam wave will not become a bill. Step by step: {guide}\nI will check the key and delete the message right away. To remove a key set here, send «-».",
     "• После обновления пишу «🔄 Бот обновился». Упавший деплой и уязвимости в пакетах — проверка «Для разработчика» в 🧩 Мониторингах: она для того, кто ведёт код бота.":
         "• After an update I say «🔄 The bot has been updated». A failed deploy and vulnerabilities in the packages are the check «For the developer» in 🧩 Monitors: it is for whoever maintains the bot's code.",
+    "{icon} ✉️ Письма безопасности — подключены":
+        "{icon} ✉️ Security emails — connected",
+    "{icon} ✉️ Письма безопасности — не подключены":
+        "{icon} ✉️ Security emails — not connected",
+    "✉️ Письма безопасности":
+        "✉️ Security emails",
+    "{icon} не принимает пароль приложения":
+        "{icon} does not take the app password",
+    "{icon} не смог проверить ({when})":
+        "{icon} could not check ({when})",
+    "{icon} проверен {when}":
+        "{icon} checked {when}",
+    "{icon} первая проверка — в течение 5 минут":
+        "{icon} first check within 5 minutes",
+    "{icon} не отвечает":
+        "{icon} not answering",
+    "{icon} не ответил на последний опрос":
+        "{icon} did not answer the last poll",
+    "{icon} отвечает":
+        "{icon} answering",
+    "<b>✉️ Письма безопасности</b>":
+        "<b>✉️ Security emails</b>",
+    "Письма «новый вход», «пароль изменён», «добавлен ключ» от соцсетей, GitHub, Microsoft и Яндекса — сюда, в течение 5 минут. Тревожные звонят даже ночью.":
+        "«New sign-in», «password changed», «key added» emails from the social networks, GitHub, Microsoft and Yandex — here, within 5 minutes. The alarming ones ring even at night.",
+    "📮 Ящик: {address} — {state}":
+        "📮 Mailbox: {address} — {state}",
+    "✏️ Ящик":
+        "✏️ Mailbox",
+    "{icon} 📮 Отдельный ящик — не подключён":
+        "{icon} 📮 A separate mailbox — not connected",
+    "📮 Отдельный ящик (просто)":
+        "📮 A separate mailbox (simple)",
+    "☁️ Воркер: {host} — {state}":
+        "☁️ Worker: {host} — {state}",
+    "✏️ Воркер":
+        "✏️ Worker",
+    "{icon} ☁️ Свой воркер на Cloudflare — не подключён":
+        "{icon} ☁️ Your own Cloudflare worker — not connected",
+    "☁️ Свой воркер на Cloudflare (для продвинутых)":
+        "☁️ Your own Cloudflare worker (advanced)",
+    "⬜ Проверка писем выключена: ⚙️ Настройки → 🧩 Мониторинги.":
+        "⬜ The email check is switched off: ⚙️ Settings → 🧩 Monitors.",
+    "Как это устроено: заведи отдельный ящик только для бота, в основном ящике настрой фильтр, который пересылает туда уведомления безопасности, а мне дай пароль приложения от отдельного ящика. Пошагово: {guide}":
+        "How it works: make a separate mailbox just for the bot, set a filter in your main mailbox that forwards the security notifications there, and give me an app password of the separate one. Step by step: {guide}",
+    "⏏ Отключить ящик":
+        "⏏ Disconnect the mailbox",
+    "⏏ Отключить воркер":
+        "⏏ Disconnect the worker",
+    "<b>⏏ Отключить ящик?</b>\n\nЯ перестану читать отдельный ящик и забуду пароль приложения. Сам пароль удали в настройках аккаунта (Gmail: myaccount.google.com/apppasswords; Яндекс: id.yandex.ru → Безопасность → Пароли приложений), а фильтр пересылки — в основном ящике.":
+        "<b>⏏ Disconnect the mailbox?</b>\n\nI will stop reading the separate mailbox and forget the app password. Delete the password itself in the account's settings (Gmail: myaccount.google.com/apppasswords; Yandex: id.yandex.ru → Security → App passwords), and the forwarding filter in your main mailbox.",
+    "<b>⏏ Отключить воркер?</b>\n\nЯ перестану забирать письма у воркера, заданного в чате. Если воркер задан в настройках хостинга — буду забирать у него.":
+        "<b>⏏ Disconnect the worker?</b>\n\nI will stop fetching mail from the worker set in the chat. If a worker is set in the hosting settings, I will fetch from that one.",
+    "📮 Шаг 1 из 2. Пришли адрес отдельного ящика для бота — Gmail или Яндекс, например my.alerts.bot@gmail.com. Заведи новый, не основной: пароль приложения даёт доступ ко всему ящику. Пошагово: {guide}\nУбрать ящик, заданный здесь, — пришли «-».":
+        "📮 Step 1 of 2. Send the address of a separate mailbox for the bot — Gmail or Yandex, for example my.alerts.bot@gmail.com. Make a new one, not your main one: an app password opens the whole mailbox. Step by step: {guide}\nTo remove a mailbox set here, send «-».",
+    "📮 Шаг 2 из 2. Пришли пароль приложения от этого ящика одним сообщением.\nGmail: включи двухэтапную проверку → myaccount.google.com/apppasswords → создай пароль.\nЯндекс: id.yandex.ru → Безопасность → Пароли приложений → Почта, и в настройках почты разреши почтовые программы (IMAP).\nЯ проверю вход и сразу удалю сообщение.":
+        "📮 Step 2 of 2. Send an app password of this mailbox in one message.\nGmail: turn on 2-Step Verification → myaccount.google.com/apppasswords → create a password.\nYandex: id.yandex.ru → Security → App passwords → Mail, and allow email clients (IMAP) in the mail settings.\nI will check the sign-in and delete the message right away.",
+    "☁️ Шаг 1 из 2. Пришли адрес своего почтового воркера на Cloudflare, вида https://socialbot-mail.<аккаунт>.workers.dev. Это путь для продвинутых: нужен свой домен в Cloudflare. Пошагово: {guide}\nУбрать воркер, заданный здесь, — пришли «-».":
+        "☁️ Step 1 of 2. Send the address of your own mail worker on Cloudflare, like https://socialbot-mail.<account>.workers.dev. This is the advanced way: it needs a domain of your own on Cloudflare. Step by step: {guide}\nTo remove a worker set here, send «-».",
+    "🔑 Шаг 2 из 2. Пришли токен, который ты задал воркеру при установке, одним сообщением — я проверю его запросом к воркеру и сразу удалю сообщение.":
+        "🔑 Step 2 of 2. Send the token you gave the worker when you set it up, in one message — I will check it with a request to the worker and delete the message right away.",
 }
 
 # Russian singular → (English singular, English plural).
