@@ -2,6 +2,20 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.11.2 — 2026-11-27
+
+The Railway template asks for one field, and five statements in the documents now match the code. The bot itself behaves the same.
+
+**Railway**
+- The template's Configure form has one field, `BOT_TOKEN`; the seven optional variables and `DB_PATH` are gone. The networks, the watchdog and the reputation report are connected in the chat since 1.10.0, and the database already lands on the volume without `DB_PATH` (`data/followers.db` under `/app` is `/app/data/followers.db`). A project deployed before keeps its variables.
+- The listing (`docs/RAILWAY_TEMPLATE.md`) says what this is — a personal tool, shared as is — what needs more than the token (the paid Claude key for the comment check, the setup of the security emails) and what Railway costs after the trial.
+
+**Docs**
+- `UPDATE_WATCH=0` turns off the deploy watch and the Sunday message about vulnerabilities and waiting PRs; «🔄 Бот обновился» comes either way. The README (both languages) and `.env.example` said the variable turned every notice off.
+- A failed collection is tried 3 times in all, not retried 3 times (README).
+- The English menu tree names the buttons as the bot does: «🔄 Refresh data», «📋 By day», «✏️ Enter LinkedIn count».
+- The README (both languages) no longer says there is nothing to fill in under Variables: the comment check and the security emails are still set there. `CONTRIBUTING.md` lists what is a variable only.
+
 ## 1.11.1 — 2026-11-25
 
 The Sunday list of Dependabot PRs that wait for you reads only Dependabot's own PRs. No new variables, permissions or requests.

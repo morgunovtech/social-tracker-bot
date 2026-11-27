@@ -5,7 +5,12 @@
      (the listing); the service icon inside the template is
      docs/images/template-icon-transparent.svg.
      Description (25–75 characters):
-     Followers + account security for Telegram, YouTube, Instagram, LinkedIn. -->
+     A personal tool, shared as is: followers + account security in Telegram
+     The service has one variable, BOT_TOKEN, and a volume at /app/data. The
+     variable's description:
+     The token from @BotFather: digits, a colon and about 35 letters (123456789:AAH…). The only field you fill in — the networks are connected in the chat.
+     DB_PATH is not a variable: the default, data/followers.db under WORKDIR
+     /app, is already the volume. -->
 
 ---
 
@@ -13,9 +18,15 @@
 
 Social Tracker Bot is a self-hosted Telegram bot for your own social accounts: followers on Telegram, YouTube, Instagram and LinkedIn, the life of your channel, and the accounts' security — hijack signs, security emails, risky comments — plus a weekly report on how people and AI assistants find you. It stays quiet while things are fine.
 
+It is a personal tool, shared as is: free and open source (MIT), and its author uses it every day. It is not a supported service — you set it up yourself, and the repository has a step-by-step guide for that. If enough people need it, a hosted version with nothing to install may follow.
+
 ## About Hosting Social Tracker Bot
 
-The template deploys one service built from the open-source repository, with a volume at `/app/data` for its SQLite database. You fill in one field: the bot token from @BotFather. Then you send the bot `/start` in Telegram — the first person to do so becomes its owner, and the bot answers nobody else. Every platform is optional: connect only the ones you have. Every network, the watchdog and the reputation report are connected in the chat with buttons — the bot checks each value and starts collecting without a restart, so there is nothing more to fill in under Variables. The bot speaks English or Russian and picks the language from your Telegram at the first `/start`. It needs no public domain and no other services.
+The template deploys one service built from the open-source repository, with a volume at `/app/data` for its SQLite database. You fill in one field: the bot token from @BotFather. Then you send the bot `/start` in Telegram — the first person to do so becomes its owner, and the bot answers nobody else. Every network is optional and is connected in the chat with buttons: the bot checks each value and starts collecting without a restart. The bot speaks English or Russian and picks the language from your Telegram at the first `/start`. It needs no public domain.
+
+Two parts need more than the token: the comment check uses your own Claude API key, billed by Anthropic for every comment it checks, and the security-email alerts need a separate setup described in the guide.
+
+What it costs: Railway's trial gives $5 for 30 days without a card; after that the Hobby plan is $5 a month with $5 of usage included and needs a payment card. The same bot runs for free on your own server from the Docker image below.
 
 ## Common Use Cases
 
@@ -27,13 +38,13 @@ The template deploys one service built from the open-source repository, with a v
 
 ## Dependencies for Social Tracker Bot Hosting
 
-- A Telegram bot token from [@BotFather](https://t.me/BotFather) — the only required variable
+- A Telegram bot token from [@BotFather](https://t.me/BotFather) — the only field you fill in
 - A Railway volume at `/app/data` (already in the template) — without it the history is lost on every deploy
 
 ### Deployment Dependencies
 
-- Source code, changelog, privacy and security notes: [github.com/morgunovtech/social-tracker-bot](https://github.com/morgunovtech/social-tracker-bot)
-- Optional keys, each explained in the [README](https://github.com/morgunovtech/social-tracker-bot#setup): a YouTube Data API key, an Instagram token of your own Meta app, a LinkedIn cookie, an Anthropic API key for the comment check
+- Source code, the setup guide, changelog, privacy and security notes: [github.com/morgunovtech/social-tracker-bot](https://github.com/morgunovtech/social-tracker-bot)
+- Optional, connected later from the chat or explained in the [README](https://github.com/morgunovtech/social-tracker-bot#setup): a YouTube Data API key, an Instagram token of your own Meta app, the LinkedIn count typed in by hand, a Claude API key for the comment check (paid)
 - Prefer your own server? The same bot runs from a published Docker image: `ghcr.io/morgunovtech/social-tracker-bot`
 
 ### Implementation Details
