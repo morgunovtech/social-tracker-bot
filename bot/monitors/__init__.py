@@ -117,7 +117,10 @@ def _has_profiles(config: Config) -> bool:
 
 
 def _has_mail(config: Config) -> bool:
-    return bool(config.security_mail_url and config.security_mail_token)
+    """A mail-worker, a separate mailbox (bot/mailbox.py), or both."""
+    return bool(config.security_mail_url and config.security_mail_token) or bool(
+        config.mailbox_address and config.mailbox_password
+    )
 
 
 def _has_channel(config: Config) -> bool:
@@ -157,7 +160,7 @@ MONITORS: tuple[Monitor, ...] = (
         "новые входы, смена пароля, телефона и 2FA, новые ключи и токены, новый владелец сайта в поиске, коды входа — "
         "из пересланных писем соцсетей, GitHub, Microsoft, Яндекса",
         requires=_has_mail,
-        needs="почтовый воркер на Cloudflare (для продвинутых) — инструкция в документации",
+        needs="почта — 🔌 Подключения → ✉️ Письма безопасности",
     ),
     Monitor(
         "rep_google",

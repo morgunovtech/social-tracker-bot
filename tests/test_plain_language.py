@@ -60,6 +60,9 @@ async def _screens(db, config) -> dict[str, ui.Screen]:
         "about": ui.about_screen(),
         "icons": ui.icons_screen(),
         "watchdog off": ui.watchdog_off_confirm(),
+        "security emails": await ui.mail_screen(db, config),
+        "mailbox off": ui.mail_off_confirm("box"),
+        "worker off": ui.mail_off_confirm("wk"),
         **{f"prompt {kind}": ui.input_prompt(kind) for kind in ui.INPUT_PROMPTS},
     }
 

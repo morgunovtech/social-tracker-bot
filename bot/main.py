@@ -35,7 +35,7 @@ def secret_values() -> list[str]:
     return [c.bot_token, c.youtube_api_key or "", c.instagram_access_token or "", c.linkedin_li_at or "",
             c.site_ingest_url or "", c.site_ingest_token or "", c.healthcheck_url or "",
             c.github_token or "", c.security_mail_url or "", c.security_mail_token or "",
-            c.anthropic_api_key or "", watchdog.known_url() or ""]
+            c.anthropic_api_key or "", c.mailbox_password or "", watchdog.known_url() or ""]
 
 
 def setup_logging() -> None:

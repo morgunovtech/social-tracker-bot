@@ -29,6 +29,12 @@ KEYS = {
     "linkedin_profile_url": "conn_linkedin_profile_url",
     # The Claude key of the comment check (💬 Комментарии): a secret, like the YouTube key.
     "anthropic_api_key": "conn_anthropic_api_key",
+    # Security emails (✉️ Письма безопасности): a separate mailbox and its app
+    # password (a secret), or one's own mail-worker and its token (a secret).
+    "mailbox_address": "conn_mailbox_address",
+    "mailbox_password": "conn_mailbox_password",
+    "security_mail_url": "conn_security_mail_url",
+    "security_mail_token": "conn_security_mail_token",
 }
 REMOVE = "-"
 
@@ -71,6 +77,12 @@ def anthropic_key(raw: str) -> str | None:
     """A Claude API key as the Console shows it (sk-ant-…); spaces a copy brought along are dropped."""
     value = "".join(raw.split())
     return value if _ANTHROPIC_KEY.match(value) else None
+
+
+def worker_url(raw: str) -> str | None:
+    """The mail-worker's https:// address, without a trailing slash."""
+    value = raw.strip().rstrip("/")
+    return value if re.match(r"^https://[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?:/[^\s?#]*)?$", value) else None
 
 
 def linkedin_url(raw: str) -> str | None:

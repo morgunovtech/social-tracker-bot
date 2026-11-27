@@ -15,11 +15,22 @@ import functools
 import html
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, available_timezones
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
-from bot import __version__, monitors, notifier, platforms, reputation, security_log, tofs_status, watchdog
+from bot import (
+    __version__,
+    mailbox,
+    monitors,
+    notifier,
+    platforms,
+    reputation,
+    security_log,
+    tofs_status,
+    watchdog,
+)
 from bot import connections as chat_connections
 from bot.callbacks import (
     BACKUP,
@@ -39,6 +50,9 @@ from bot.callbacks import (
     LI_COOKIE,
     LI_ENTER,
     LINKEDIN,
+    MAIL,
+    MAIL_BOX,
+    MAIL_WORKER,
     MONITORS,
     MUTE,
     MUTE_OFF,
@@ -58,6 +72,7 @@ from bot.config import DOW_ORDER, Config, normalize_tz
 from bot.db import HELD_KEEP_DAYS, Database, parse_utc, utcnow
 from bot.i18n import language, plural, t
 from bot.monitors import channel, comments, hygiene, outgoing
+from bot.monitors import mail as mail_monitor
 from bot.platforms import BY_ID, PLATFORMS
 from bot.platforms import instagram as ig
 from bot.platforms.base import Platform
@@ -536,8 +551,12 @@ async def connections(db: Database, config: Config) -> Screen:
         lines.append(t("{icon} 💬 Комментарии — ключ Claude задан").format(icon=ON))
     else:
         lines.append(t("{icon} 💬 Комментарии — нужен ключ Claude (платный)").format(icon=UNAVAILABLE))
+    if monitors.BY_ID["mail"].requires(config):
+        lines.append(t("{icon} ✉️ Письма безопасности — подключены").format(icon=ON))
+    else:
+        lines.append(t("{icon} ✉️ Письма безопасности — не подключены").format(icon=UNAVAILABLE))
     rows.append([_button(t("⏱ Сторож"), WATCHDOG), _button(t("🔎 Репутация"), REPUTATION)])
-    rows.append([_button(t("💬 Комментарии"), COMMENTS)])
+    rows.append([_button(t("💬 Комментарии"), COMMENTS), _button(t("✉️ Письма безопасности"), MAIL)])
     lines += ["", t("«➕» подключает сеть прямо здесь, «✏️» меняет или убирает её.")]
     rows = [add[i:i + 2] for i in range(0, len(add), 2)] + rows + [change[i:i + 2] for i in range(0, len(change), 2)]
     rows.append(_home())
@@ -650,6 +669,87 @@ async def reputation_screen(db: Database, config: Config) -> Screen:
         rows.append([_button(t("📨 Отчёт сейчас"), f"{REPUTATION}:now")])
     rows.append(_back(CONNECTIONS, t("Подключения")))
     return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
+
+
+async def _mailbox_state(db: Database, config: Config) -> str:
+    error = await db.get_setting(mailbox.ERROR_KEY)
+    when = _local(await db.get_setting(mailbox.CHECKED_KEY), await get_report_tz(db, config))
+    if error == mailbox.AUTH:
+        return t("{icon} не принимает пароль приложения").format(icon=monitors.WARNING)
+    if error == mailbox.NETWORK:
+        return t("{icon} не смог проверить ({when})").format(icon=monitors.UNCHECKED, when=when or "—")
+    if when:
+        return t("{icon} проверен {when}").format(icon=ON, when=when)
+    return t("{icon} первая проверка — в течение 5 минут").format(icon=monitors.PENDING)
+
+
+async def _worker_state(db: Database) -> str:
+    fails = int(await db.get_setting("mail_fail_streak") or "0")
+    if fails >= mail_monitor.UNREACHABLE_AFTER:
+        return t("{icon} не отвечает").format(icon=monitors.CRITICAL)
+    if fails:
+        return t("{icon} не ответил на последний опрос").format(icon=monitors.UNCHECKED)
+    return t("{icon} отвечает").format(icon=ON)
+
+
+async def mail_screen(db: Database, config: Config) -> Screen:
+    """✉️ Письма безопасности: a separate mailbox (the simple way) or one's own
+    mail-worker on Cloudflare (for the advanced), each with its state."""
+    lines = [
+        t("<b>✉️ Письма безопасности</b>"),
+        "",
+        t("Письма «новый вход», «пароль изменён», «добавлен ключ» от соцсетей, GitHub, Microsoft и Яндекса — "
+          "сюда, в течение 5 минут. Тревожные звонят даже ночью."),
+        "",
+    ]
+    rows: list[list[InlineKeyboardButton]] = []
+    if mailbox.connected(config):
+        lines.append(t("📮 Ящик: {address} — {state}").format(
+            address=esc(config.mailbox_address), state=await _mailbox_state(db, config)))
+        rows.append([_button(t("✏️ Ящик"), MAIL_BOX)])
+    else:
+        lines.append(t("{icon} 📮 Отдельный ящик — не подключён").format(icon=UNAVAILABLE))
+        rows.append([_button(t("📮 Отдельный ящик (просто)"), MAIL_BOX)])
+    if config.security_mail_url and config.security_mail_token:
+        lines.append(t("☁️ Воркер: {host} — {state}").format(
+            host=esc(urlparse(config.security_mail_url).hostname or "?"), state=await _worker_state(db)))
+        rows.append([_button(t("✏️ Воркер"), MAIL_WORKER)])
+    else:
+        lines.append(t("{icon} ☁️ Свой воркер на Cloudflare — не подключён").format(icon=UNAVAILABLE))
+        rows.append([_button(t("☁️ Свой воркер на Cloudflare (для продвинутых)"), MAIL_WORKER)])
+    if monitors.BY_ID["mail"].requires(config) and not await monitors.is_switched_on(db, "mail"):
+        lines += ["", t("⬜ Проверка писем выключена: ⚙️ Настройки → 🧩 Мониторинги.")]
+    lines += [
+        "",
+        t("Как это устроено: заведи отдельный ящик только для бота, в основном ящике настрой фильтр, который "
+          "пересылает туда уведомления безопасности, а мне дай пароль приложения от отдельного ящика. "
+          "Пошагово: {guide}").format(guide=guide("mail")),
+    ]
+    off = []
+    if await chat_connections.from_chat(db, "mailbox_address"):
+        off.append(_button(t("⏏ Отключить ящик"), f"{MAIL}:off:box"))
+    if await chat_connections.from_chat(db, "security_mail_url"):
+        off.append(_button(t("⏏ Отключить воркер"), f"{MAIL}:off:wk"))
+    if off:
+        rows.append(off)
+    rows.append(_back(CONNECTIONS, t("Подключения")))
+    return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
+
+
+def mail_off_confirm(which: str) -> Screen:
+    """Removing is asked first (BOT_PRINCIPLES §5): the mailbox or the worker set in the chat."""
+    if which == "box":
+        text = t(
+            "<b>⏏ Отключить ящик?</b>\n\nЯ перестану читать отдельный ящик и забуду пароль приложения. Сам пароль "
+            "удали в настройках аккаунта (Gmail: myaccount.google.com/apppasswords; Яндекс: id.yandex.ru → "
+            "Безопасность → Пароли приложений), а фильтр пересылки — в основном ящике."
+        )
+    else:
+        text = t(
+            "<b>⏏ Отключить воркер?</b>\n\nЯ перестану забирать письма у воркера, заданного в чате. Если воркер "
+            "задан в настройках хостинга — буду забирать у него."
+        )
+    return Screen(text, InlineKeyboardMarkup([[_button(t("✅ Да, отключить"), f"{MAIL}:off:{which}:yes"), _cancel(MAIL)]]))
 
 
 def watchdog_off_confirm(fallback: bool = False) -> Screen:
@@ -1328,6 +1428,28 @@ INPUT_PROMPTS = {
         "Я проверю его и сразу удалю сообщение."
     ),
     "tz": "🌍 Пришли город или название пояса одним сообщением: Ташкент, Berlin, Asia/Tashkent.",
+    "mail_box": (
+        "📮 Шаг 1 из 2. Пришли адрес отдельного ящика для бота — Gmail или Яндекс, например my.alerts.bot@gmail.com. "
+        "Заведи новый, не основной: пароль приложения даёт доступ ко всему ящику. Пошагово: {guide}\n"
+        "Убрать ящик, заданный здесь, — пришли «-»."
+    ),
+    "mail_box_pw": (
+        "📮 Шаг 2 из 2. Пришли пароль приложения от этого ящика одним сообщением.\n"
+        "Gmail: включи двухэтапную проверку → myaccount.google.com/apppasswords → создай пароль.\n"
+        "Яндекс: id.yandex.ru → Безопасность → Пароли приложений → Почта, и в настройках почты разреши почтовые "
+        "программы (IMAP).\n"
+        "Я проверю вход и сразу удалю сообщение."
+    ),
+    "mail_worker": (
+        "☁️ Шаг 1 из 2. Пришли адрес своего почтового воркера на Cloudflare, вида "
+        "https://socialbot-mail.<аккаунт>.workers.dev. Это путь для продвинутых: нужен свой домен в Cloudflare. "
+        "Пошагово: {guide}\n"
+        "Убрать воркер, заданный здесь, — пришли «-»."
+    ),
+    "mail_worker_token": (
+        "🔑 Шаг 2 из 2. Пришли токен, который ты задал воркеру при установке, одним сообщением — я проверю его "
+        "запросом к воркеру и сразу удалю сообщение."
+    ),
     "conn_anthropic": (
         "🔑 Пришли ключ Claude API одним сообщением. Где взять: console.anthropic.com → API Keys → Create Key. "
         "Совет: заведи для бота отдельное рабочее пространство (Workspace) с лимитом расходов — тогда волна спама "
@@ -1344,6 +1466,7 @@ _PROMPT_GUIDES = {
     "cookie": "linkedin", "token": "instagram", "conn_youtube_key": "youtube",
     "rep_google": "reputation", "rep_yandex": "reputation", "rep_ai": "reputation",
     "conn_anthropic": "comments",
+    "mail_box": "mail", "mail_worker": "mail",
 }
 
 

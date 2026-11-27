@@ -16,7 +16,7 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 from telegram import Bot
 
-from bot import monitors, notifier, platforms, reputation, tofs_status, watchdog
+from bot import mailbox, monitors, notifier, platforms, reputation, tofs_status, watchdog
 from bot.callbacks import CHANNEL, CONNECTIONS, DYNAMICS, SECURITY, WATCHDOG
 from bot.chart import render_chart
 from bot.config import DOW_ORDER, Config, normalize_tz
@@ -530,16 +530,24 @@ async def _profile_job(bot: Bot, config: Config, db: Database) -> None:
 
 
 async def _mail_job(bot: Bot, config: Config, db: Database) -> None:
-    """Poll the mail worker every mail.POLL_INTERVAL; each security email is alerted at once."""
+    """Poll the mail-worker and the separate mailbox (whichever is connected)
+    every mail.POLL_INTERVAL; each security email is alerted at once."""
     if not await monitors.is_on(db, config, "mail"):
         return
-    try:
-        async with aiohttp.ClientSession() as session:
-            sent = await mail.check(bot, config, db, session)
-        if sent:
-            logger.info("Sent %d security mail alert(s)", sent)
-    except Exception:
-        logger.exception("Mail check failed")
+    sent = 0
+    if config.security_mail_url and config.security_mail_token:
+        try:
+            async with aiohttp.ClientSession() as session:
+                sent += await mail.check(bot, config, db, session)
+        except Exception:
+            logger.exception("Mail worker check failed")
+    if mailbox.connected(config):
+        try:
+            sent += await mailbox.check(bot, config, db)
+        except Exception:
+            logger.exception("Mailbox check failed")
+    if sent:
+        logger.info("Sent %d security mail alert(s)", sent)
 
 
 async def get_report_schedule(db: Database, config: Config) -> tuple[str, int, int]:

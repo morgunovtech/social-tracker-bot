@@ -407,7 +407,7 @@ async def test_monitors_screen_and_toggle(make_update, make_context, db):
     await handlers.cmd_modules(update, make_context())
     text = update.message.replies[0]
     assert "✅ Telegram — @test_channel" in text
-    assert "➖ Письма безопасности — нужно: почтовый воркер" in text
+    assert "➖ Письма безопасности — нужно: почта — 🔌 Подключения → ✉️ Письма безопасности" in text
     assert "mod:mail" not in buttons(update.message.markups[0])          # unavailable: no switch
 
     query = await press(make_update, make_context, "mod:profile")
