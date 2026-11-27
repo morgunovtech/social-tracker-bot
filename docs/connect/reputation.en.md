@@ -1,6 +1,6 @@
 # 🔎 Reputation report
 
-🇷🇺 [По-русски](reputation.md) · [All connections](../../README.md#setup)
+🇷🇺 [По-русски](reputation.md) · [All connections](../SETUP.en.md#the-other-connections)
 
 Once a week, one report: how often people searched Google and Yandex for you and your products, and how often ChatGPT, Claude, Perplexity and other assistants opened your pages. **It is only for a site of your own** — verified in Google Search Console or Yandex Webmaster, or served through Cloudflare. Without a site you can skip this.
 

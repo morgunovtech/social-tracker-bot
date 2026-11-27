@@ -78,5 +78,5 @@ fi
 
 say ""
 say "✓ The bot is running. Open it in Telegram and send /start — the first /start becomes the owner."
-say "  Networks are connected in the chat: the «Connections» button on the home screen."
+say "  Send the bot /start: a bot without networks opens «🔌 Подключения» (🔌 Connections in English) right away."
 say "  Folder: $DIR    Logs: docker compose logs -f    Update: run this command again."

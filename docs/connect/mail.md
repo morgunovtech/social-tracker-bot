@@ -1,6 +1,6 @@
 # ✉️ Письма безопасности
 
-🇬🇧 [In English](mail.en.md) · [Все подключения](../../README.ru.md#настройка)
+🇬🇧 [In English](mail.en.md) · [Все подключения](../SETUP.md#остальные-подключения)
 
 Письма «новый вход», «пароль изменён», «добавлен ключ» от соцсетей, GitHub, Microsoft и Яндекса приходят в Telegram в течение 5 минут, тревожные — со звуком даже ночью. Для этого бот читает **отдельный ящик**, куда ваш основной ящик пересылает уведомления безопасности.
 
@@ -38,7 +38,7 @@ no-reply@accounts.google.com OR security-noreply@linkedin.com OR security@mail.i
 noreply@github.com OR account-security-noreply@accountprotection.microsoft.com OR noreply@id.yandex.ru
 ```
 
-Из Search Console — только письмо о новом владельце сайта, не ежемесячную статистику: «От» `sc-noreply@google.com`, «Содержит слова» `"new owner" OR "новый владелец" OR WNC-627102`. Чтобы проверить точный адрес отправителя, откройте недавнее письмо безопасности. Какие письма бот распознаёт — таблица в [mail-worker/README.md](../../mail-worker/README.md).
+Из Search Console — только письмо о новом владельце сайта, не ежемесячную статистику: «От» `sc-noreply@google.com`, «Содержит слова» `"new owner" OR "новый владелец" OR WNC-627102`. Чтобы проверить точный адрес отправителя, откройте недавнее письмо безопасности. Какие письма бот распознаёт — таблица в [mail-worker/README.ru.md](../../mail-worker/README.ru.md).
 
 ## Что бот читает и куда это уходит
 
@@ -46,7 +46,7 @@ noreply@github.com OR account-security-noreply@accountprotection.microsoft.com O
 
 ## Для продвинутых: свой воркер на Cloudflare
 
-Если у вас есть свой домен в Cloudflare, вместо ящика можно развернуть почтовый воркер — инструкция в [mail-worker/README.md](../../mail-worker/README.md). Потом: ✉️ Письма безопасности → «☁️ Свой воркер на Cloudflare» → адрес воркера и его токен; бот проверит их запросом к воркеру.
+Если у вас есть свой домен в Cloudflare, вместо ящика можно развернуть почтовый воркер — инструкция в [mail-worker/README.ru.md](../../mail-worker/README.ru.md). Потом: ✉️ Письма безопасности → «☁️ Свой воркер на Cloudflare» → адрес воркера и его токен; бот проверит их запросом к воркеру.
 
 ## Как отключить и удалить
 

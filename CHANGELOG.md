@@ -2,6 +2,22 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.14.1 — 2026-11-27
+
+The documents in two languages: a short README, a guide in clicks, a page per connection. The bot itself behaves the same, but for one fix: an empty `LINKEDIN_LI_AT=` or `SOCIALBOT_INGEST_TOKEN=` (as `.env.example` has them) is «not set» again, not an empty value.
+
+**Docs**
+- `README.md` and `README.ru.md` are short: what this is — a personal tool, shared as is — what you get in plain words, the two ways to install, the cost, privacy in five lines, a table of the documents, what the project creates outside the repo.
+- `docs/SETUP.md` / `.en.md`: BotFather → the Railway button → `/start` → the first network, in clicks; what it costs (Railway's trial and Hobby, checked 27.11.2026; why to sign in with GitHub); what to do when the bot says «Это личный бот», is silent (`Bot ready` in the logs) or stopped after the trial; updates and removal; your own server.
+- `docs/WHY.md` / `.en.md`: what it protects from, what it saves, how it behaves, what it costs, what it doesn't do.
+- `docs/connect/telegram.md` / `.en.md` joins the pages of 1.12.0–1.14.0. `docs/connect/instagram*`: the steps as Meta's dashboard shows them on 27.11.2026 («Manage messaging & content on Instagram» → «API setup with Unified login» → «2. Generate access tokens»), and the token is no longer called «never expires»: Meta's documentation gives Instagram-login tokens 60 days.
+- `docs/FEATURES.md` / `.en.md`: the old detailed README, corrected against the code — the menu tree as `bot/ui.py` lays it out, «-» removes only what the chat set, the language is not taken from Telegram with `ADMIN_CHAT_ID` and switching it leaves the zone, «📤 Отправки» is a block of lines, a silent card arrives at once and waits only for quiet hours or `/mute`, milestones start at 100, the old «📊 Меню» key, `/cancel` only inside a step, the backup file never waits, and what was in the code only (stale updates dropped after 10 minutes, the site push waits for every network, the bot-influx fallback). The two languages now say the same things.
+- `mail-worker/README.ru.md`: the worker's README in Russian, both marked as the advanced way; the English one quotes the English bot.
+- `SECURITY.md`: what leaves the server (the watchdog address from the chat, the backup to the chat), what runs before an owner exists, English labels. `CONTRIBUTING.md`: what has no switch. `CLAUDE.md`: the checks CI runs. `.env.example` and `scripts/install.sh`: the bot's real button names.
+
+**Tests**
+- `tests/test_docs.py` (ported from TofsDevOps): relative links and anchors lead somewhere; a screen or button quoted with its emoji exists in the bot (Russian or English); no token-shaped strings; every Russian page has an English twin with as many `##` sections; `cp .env.example .env` changes nothing but the token — which found the empty-variable bug above.
+
 ## 1.14.0 — 2026-11-27
 
 Security emails without Cloudflare: a separate mailbox read over IMAP, connected from the chat; the mail-worker is connected from the chat too. No new variables or dependencies.

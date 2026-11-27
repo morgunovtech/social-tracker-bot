@@ -1,6 +1,6 @@
 # ✉️ Security emails
 
-🇷🇺 [По-русски](mail.md) · [All connections](../../README.md#setup)
+🇷🇺 [По-русски](mail.md) · [All connections](../SETUP.en.md#the-other-connections)
 
 «New sign-in», «password changed» and «key added» emails from the social networks, GitHub, Microsoft and Yandex reach Telegram within 5 minutes, the alarming ones with a sound even at night. For that the bot reads a **separate mailbox** that your main mailbox forwards the security notifications to.
 
