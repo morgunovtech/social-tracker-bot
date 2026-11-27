@@ -168,10 +168,22 @@ STRINGS: dict[str, str] = {
     "🟠 Токена нет: без него число не собирается.": "🟠 No token: without it the count is not collected.",
     "🟠 Instagram отклонил токен: отозван или истёк — пришли новый через /igtoken.":
         "🟠 Instagram rejected the token: revoked or expired — send a new one with /igtoken.",
-    "✅ Число собирается само по токену. Он задан {age} {d} назад и бессрочный: "
-    "если Meta его отзовёт, я скажу.":
-        "✅ The count is collected automatically with the token. It was set {age} {d} ago and does not expire: "
-        "if Meta revokes it, I will tell you.",
+    "🟠 Токен истекает {date}: продлить его сам я не могу. Нажми «Generate token» в кабинете Meta "
+    "и пришли новый через «🔑 Прислать токен».":
+        "🟠 The token expires on {date}: I cannot renew it myself. Press «Generate token» in Meta's dashboard "
+        "and send the new one with «🔑 Send the token».",
+    "✅ Число собирается само по токену. Он задан {age} {d} назад.":
+        "✅ The count is collected automatically with the token. It was set {age} {d} ago.",
+    "По данным Meta, срока у токена нет: если Meta его отзовёт, я скажу.":
+        "Meta says the token does not expire: if Meta revokes it, I will tell you.",
+    "Действует до {date}: срок задан в настройках приложения Meta, продлить токен сам я не могу. "
+    "За неделю до срока напомню.":
+        "It works until {date}: the term is set in the Meta app's settings, and I cannot renew the token myself. "
+        "I will remind you a week before.",
+    "Срок токена Meta мне не сообщила: он задаётся в настройках приложения, по умолчанию токен "
+    "бессрочный. Если Meta его отклонит, я скажу.":
+        "Meta did not tell me the token's term: it is set in the app's settings, and by default the token "
+        "does not expire. If Meta rejects it, I will tell you.",
     "<i>Это официальный API: бот читает только публичные данные своего аккаунта.</i>":
         "<i>This is the official API: the bot reads only its own account's public data.</i>",
     # Manual LinkedIn input
@@ -358,6 +370,7 @@ STRINGS: dict[str, str] = {
         "To remove a profile set here, send «-».",
     "🟠 нужен токен": "🟠 a token is needed",
     "🟠 токен отклонён": "🟠 the token was rejected",
+    "🟠 токен истекает {date}": "🟠 the token expires on {date}",
     "🟠 cookie отклонён, число вручную": "🟠 the cookie was rejected, the number by hand",
     "✏️ число вручную": "✏️ the number by hand",
     "🟠 подтверди первое число": "🟠 confirm the first number",

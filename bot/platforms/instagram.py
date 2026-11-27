@@ -2,9 +2,18 @@
 
 A professional (Business or Creator) account, a Meta app with the Instagram
 use case and a business portfolio: the app dashboard («API setup with Unified
-login» → Generate token) issues a system-user access token for your own
-account, no OAuth flow needed. The token does not expire: Meta revokes it
-only when the account leaves the business portfolio or the app is removed.
+login» → Generate token) issues a Business Integration System User access
+token for your own account, no OAuth flow needed.
+
+How long it lives is chosen in the app's login configuration: Meta's default
+is never, and it can be 60 days. The bot cannot renew a 60-day one: Meta
+renews system-user tokens only with the app secret (Token Management API with
+appsecret_proof, or fb_exchange_token with client_secret), which the bot never
+asks for; graph.instagram.com/refresh_access_token is for Instagram-login
+tokens, a different path that new apps no longer get. So the bot reads the
+real expiry from debug_token, shows it on the 📸 Instagram screen and says
+once, a week ahead, that a new token is due. Meta also revokes the token when
+the account leaves the business portfolio or the app is removed.
 
 Requests go to graph.facebook.com by the Instagram account's id: with this
 token /me is the system user, not the account, so the id is looked up once
@@ -14,6 +23,8 @@ among the accounts the token was granted (/me/assigned_instagram_accounts).
 from __future__ import annotations
 
 import logging
+import math
+from datetime import UTC, datetime
 
 import aiohttp
 
@@ -33,7 +44,13 @@ TOKEN_SET_AT_KEY = "instagram_token_set_at"
 USER_ID_KEY = "instagram_user_id"
 # Whose account USER_ID_KEY is: a changed INSTAGRAM_USERNAME must not keep collecting the old one.
 USERNAME_KEY = "instagram_username"
-TOKEN_KEYS = (TOKEN_KEY, TOKEN_SET_AT_KEY, USER_ID_KEY, USERNAME_KEY)
+# When the token stops working, by debug_token: NEVER, an ISO time, or empty when Meta did not say.
+EXPIRES_KEY = "instagram_token_expires_at"
+NEVER = "never"
+TOKEN_KEYS = (TOKEN_KEY, TOKEN_SET_AT_KEY, USER_ID_KEY, USERNAME_KEY, EXPIRES_KEY)
+# The 🟠 «a new token is due» comes this many days before the expiry, once per token.
+EXPIRY_WARN_DAYS = 7
+EXPIRY_ALERTED_KEY = "instagram_expiry_alerted"
 
 # `website` — the link under the bio, the first thing a hijacker replaces; a
 # documented public field of the IG User node, same permission as biography.
@@ -94,6 +111,67 @@ async def fetch_user(session: aiohttp.ClientSession, token: str, user_id: str) -
     """The account: username, name, biography, website, followers_count, media_count.
     Raises InstagramAuthError for a dead token."""
     return await _get(session, user_id, {"fields": _PROFILE_FIELDS, "access_token": token})
+
+
+async def token_expiry(session: aiohttp.ClientSession, token: str) -> str | None:
+    """When the token stops working, by Meta's debug_token: NEVER, an ISO
+    time, or None when Meta did not say. The earlier of expires_at and
+    data_access_expires_at counts (0 is «no limit»). Never raises: the date is
+    a courtesy, a dead token is the collect's to report. debug_token is
+    documented for an app token or an app developer's token; a token Meta
+    does not let inspect itself leaves the date unknown, not the token dead."""
+    try:
+        async with session.get(
+            f"{_GRAPH_URL}/debug_token", params={"input_token": token, "access_token": token}, timeout=_TIMEOUT
+        ) as resp:
+            status = resp.status
+            try:
+                data = await resp.json(content_type=None)
+            except ValueError:
+                data = {}
+    except Exception as e:
+        logger.info("Instagram debug_token unreachable: %s", type(e).__name__)
+        return None
+    info = data.get("data") if isinstance(data, dict) else None
+    if not isinstance(info, dict) or info.get("is_valid") is not True or "expires_at" not in info:
+        error = data.get("error") if isinstance(data, dict) else None
+        code = error.get("code") if isinstance(error, dict) else None
+        logger.info("Instagram debug_token gave no expiry (status %d, code %s)", status, code)
+        return None
+    stamps = []
+    for key in ("expires_at", "data_access_expires_at"):
+        try:
+            value = int(info.get(key) or 0)
+        except (TypeError, ValueError):
+            value = 0
+        if value > 0:
+            stamps.append(value)
+    return datetime.fromtimestamp(min(stamps), UTC).isoformat() if stamps else NEVER
+
+
+async def refresh_expiry(db: Database, session: aiohttp.ClientSession, token: str) -> str | None:
+    """Ask Meta again and keep the answer: a date it no longer gives is not kept."""
+    expiry = await token_expiry(session, token)
+    await db.set_setting(EXPIRES_KEY, expiry or "")
+    return expiry
+
+
+async def get_expiry(db: Database) -> datetime | str | None:
+    """The stored expiry: NEVER, a UTC datetime, or None when unknown."""
+    raw = await db.get_setting(EXPIRES_KEY)
+    if not raw:
+        return None
+    if raw == NEVER:
+        return NEVER
+    try:
+        return parse_utc(raw)
+    except (ValueError, TypeError):
+        return None
+
+
+def days_left(expires: datetime) -> int:
+    """Whole days until the expiry, rounded up: a token that dies in an hour has 1 day left."""
+    return max(0, math.ceil((expires - utcnow()).total_seconds() / 86400))
 
 
 async def collect_instagram(
@@ -173,6 +251,7 @@ async def get_token_age_days(db: Database) -> int | None:
 async def store_token(db: Database, token: str, user_id: str, username: str | None = None) -> None:
     await db.set_setting(TOKEN_KEY, token)
     await db.set_setting(TOKEN_SET_AT_KEY, utcnow().isoformat())
+    await db.set_setting(EXPIRES_KEY, "")  # the old token's date is not this one's
     await db.set_setting(USER_ID_KEY, user_id)
     if username:
         await db.set_setting(USERNAME_KEY, username.lower())
@@ -230,7 +309,15 @@ class Instagram(Platform):
         count, source = await collect_instagram(ctx.session, token, user_id)
         if source == "token_expired":
             return Snapshot(None, flags={"instagram_token_expired": True})
-        return Snapshot(count, source or "api", error=count is None)
+        flags: dict[str, bool | int] = {}
+        if count is not None:
+            # Once a day with the collect: an env token never passes /igtoken.
+            expiry = await refresh_expiry(ctx.db, ctx.session, token)
+            if expiry and expiry != NEVER:
+                left = days_left(parse_utc(expiry))
+                if left <= EXPIRY_WARN_DAYS:
+                    flags["instagram_token_expiring"] = max(left, 1)
+        return Snapshot(count, source or "api", error=count is None, flags=flags)
 
     async def fetch_profile(self, ctx: Context) -> dict[str, str] | None:
         token = await get_active_token(ctx.db, ctx.config)

@@ -536,6 +536,10 @@ async def connections(db: Database, config: Config) -> Screen:
                 state = t("🟠 нужен токен")
             elif await db.get_setting("instagram_token_alerted") == "1":
                 state = t("🟠 токен отклонён")
+            elif isinstance(expiry := await ig.get_expiry(db), datetime) and ig.days_left(expiry) <= ig.EXPIRY_WARN_DAYS:
+                state = t("🟠 токен истекает {date}").format(
+                    date=expiry.astimezone(await get_report_tz(db, config)).strftime("%d.%m")
+                )
         elif platform.id == "linkedin":
             if await db.get_setting("cookie_expired_alerted") == "1":
                 state = t("🟠 cookie отклонён, число вручную")
@@ -1352,19 +1356,42 @@ async def instagram(db: Database, config: Config) -> Screen:
 
     token = await ig.get_active_token(db, config)
     age = await ig.get_token_age_days(db)
+    expiry = await ig.get_expiry(db)
     if not token:
         lines.append(t("🟠 Токена нет: без него число не собирается."))
     elif await db.get_setting("instagram_token_alerted") == "1":
         lines.append(t("🟠 Instagram отклонил токен: отозван или истёк — пришли новый через /igtoken."))
-    elif age is None:
-        lines.append(t("✅ Число собирается само по токену из настроек хостинга."))
-    else:
+    elif isinstance(expiry, datetime) and ig.days_left(expiry) <= ig.EXPIRY_WARN_DAYS:
+        date = expiry.astimezone(await get_report_tz(db, config)).strftime("%d.%m.%Y")
         lines.append(
             t(
-                "✅ Число собирается само по токену. Он задан {age} {d} назад и бессрочный: "
-                "если Meta его отзовёт, я скажу."
-            ).format(age=age, d=_days(age))
+                "🟠 Токен истекает {date}: продлить его сам я не могу. Нажми «Generate token» в кабинете Meta "
+                "и пришли новый через «🔑 Прислать токен»."
+            ).format(date=date)
         )
+    else:
+        lines.append(
+            t("✅ Число собирается само по токену из настроек хостинга.")
+            if age is None
+            else t("✅ Число собирается само по токену. Он задан {age} {d} назад.").format(age=age, d=_days(age))
+        )
+        if expiry == ig.NEVER:
+            lines.append(t("По данным Meta, срока у токена нет: если Meta его отзовёт, я скажу."))
+        elif isinstance(expiry, datetime):
+            date = expiry.astimezone(await get_report_tz(db, config)).strftime("%d.%m.%Y")
+            lines.append(
+                t(
+                    "Действует до {date}: срок задан в настройках приложения Meta, продлить токен сам я не могу. "
+                    "За неделю до срока напомню."
+                ).format(date=date)
+            )
+        else:
+            lines.append(
+                t(
+                    "Срок токена Meta мне не сообщила: он задаётся в настройках приложения, по умолчанию токен "
+                    "бессрочный. Если Meta его отклонит, я скажу."
+                )
+            )
     lines += [
         "",
         t(

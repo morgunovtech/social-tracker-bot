@@ -168,7 +168,8 @@ _SECRET_SETTINGS = ("linkedin_li_at", "instagram_token", "watchdog_url",
 # Each secret with the settings that describe it (when it was set, when it dies).
 _SECRET_KEYS: dict[str, tuple[str, ...]] = {
     "linkedin_li_at": ("linkedin_li_at", "linkedin_li_at_set_at"),
-    "instagram_token": ("instagram_token", "instagram_token_set_at", "instagram_user_id", "instagram_username"),
+    "instagram_token": ("instagram_token", "instagram_token_set_at", "instagram_user_id", "instagram_username",
+                        "instagram_token_expires_at"),
     "watchdog_url": ("watchdog_url", "watchdog_last"),
     "rep_google_key": ("rep_google_key",),
     "rep_yandex_token": ("rep_yandex_token",),

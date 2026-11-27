@@ -902,10 +902,13 @@ async def _store_token(update: Update, context: ContextTypes.DEFAULT_TYPE, token
 
     await chat.send_message(t("⏳ Проверяю токен…"))
 
+    expiry = None
     async with aiohttp.ClientSession() as session:
         try:
             user_id = await ig.resolve_account(session, token, config.instagram_username)
             user = await ig.fetch_user(session, token, user_id) if user_id else None
+            # How long it lives, for the screen below; never raises, None when Meta won't say.
+            expiry = await ig.token_expiry(session, token) if user else None
         except ig.InstagramAuthError:
             user_id = user = None
             reason = t("Instagram отклонил токен")
@@ -934,7 +937,9 @@ async def _store_token(update: Update, context: ContextTypes.DEFAULT_TYPE, token
 
     username = str(user.get("username") or config.instagram_username)
     await ig.store_token(db, token, user_id, config.instagram_username)
-    await db.set_setting("instagram_token_alerted", "0")  # a fresh token re-arms the alert
+    await db.set_setting(ig.EXPIRES_KEY, expiry or "")
+    await db.set_setting("instagram_token_alerted", "0")  # a fresh token re-arms the alerts
+    await db.set_setting(ig.EXPIRY_ALERTED_KEY, "0")
     try:
         count = int(user["followers_count"])
     except (KeyError, TypeError, ValueError):

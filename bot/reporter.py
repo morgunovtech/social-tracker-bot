@@ -4,7 +4,7 @@ import math
 from datetime import date, datetime, timedelta
 
 from bot.db import Database, parse_utc, utcnow
-from bot.i18n import language, t
+from bot.i18n import language, plural, t
 from bot.platforms import BY_ID, LABELS, PLATFORM_IDS
 
 # Crossed when count moves up through one of these.
@@ -147,6 +147,10 @@ async def build_report(
         lines += ["", t("🟠 Instagram подключён, но токена нет — пришли его через /igtoken")]
     elif errors.get("instagram_token_expired"):
         lines += ["", t("🟠 Instagram отклонил токен — пришли новый через /igtoken")]
+    elif errors.get("instagram_token_expiring"):
+        left = errors["instagram_token_expiring"]
+        lines += ["", t("🟠 Токен Instagram истекает через {left} {d} — пришли новый через /igtoken").format(
+            left=left, d=plural(left, "дн.", "дн.", "дн."))]
 
     total_current = 0
     total_yesterday: int | None = 0

@@ -29,7 +29,8 @@ which priority:
               emails (a login code, a generic alert), ℹ️ unrecognised mail
               and Gmail's forwarding confirmation; collection alerts —
               🟠 follower drop, 🟠 bot inflow, 🎯 milestone, 🟠 expired cookie,
-              rejected or missing token, 🟠 failure streak and its end;
+              rejected or missing token, an Instagram token that expires
+              within a week, 🟠 failure streak and its end;
               🟠 a deploy that failed; 🟠 a profile link that does not open
               and its ✅; 🟠 a day of outgoing deliveries that
               did not land (the site, TofsDevOps, the watchdog) and its ✅;

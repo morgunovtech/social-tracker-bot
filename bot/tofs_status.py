@@ -89,6 +89,11 @@ async def _item(db: Database, config: Config, platform, errors: dict) -> dict:
         return {"name": name, "level": "warning", "text": t("{head} — свежие данные собрать не удаётся").format(head=head)}
     if errors.get(platform.id):
         return {"name": name, "level": "warning", "text": t("{head} — сегодня собрать не удалось").format(head=head)}
+    if platform.id == "instagram" and errors.get("instagram_token_expiring"):
+        return {"name": name, "level": "warning",
+                "text": t("{head} — токен истекает через {days} {d}").format(
+                    head=head, days=errors["instagram_token_expiring"],
+                    d=plural(errors["instagram_token_expiring"], "дн.", "дн.", "дн."))}
     if platform.id == "linkedin" and errors.get("linkedin_cookie_aging"):
         return {"name": name, "level": "warning",
                 "text": t("{head} — cookie живёт {days} дн., пора обновить").format(

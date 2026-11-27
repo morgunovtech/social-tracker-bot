@@ -2,6 +2,21 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.17.0 — 2026-11-27
+
+The 📸 Instagram screen called the token «бессрочный», and the guides said «may live 60 days». Per Meta's documentation, both are partly true. «API setup with Unified login» → «Generate token» issues a Business Integration System User access token. Its term is chosen in the app's login configuration: never by default, sometimes 60 days. The bot can't renew a 60-day one: Meta renews system-user tokens only with the app secret, which the bot never asks for. `graph.instagram.com/refresh_access_token` is for Instagram-login tokens, a path new apps no longer get. So the bot now reads the real term from Meta and says it, instead of promising one.
+
+**The token's term**
+- The daily collect and `/igtoken` ask Meta's `debug_token` when the token stops working (the earlier of `expires_at` and `data_access_expires_at`; 0 means no term) and keep the answer next to the token (`instagram_token_expires_at`, not a secret, restored from a backup only together with a live token). If Meta won't say, the date is unknown, not the token dead: that stays the collect's to report.
+- 📸 Instagram says what Meta said: «По данным Meta, срока у токена нет», «Действует до DD.MM.YYYY… продлить токен сам я не могу. За неделю до срока напомню», or that Meta didn't tell the term and that it's set in the app's settings (no term by default). In the last week it shows «🟠 Токен истекает DD.MM.YYYY…» with what to do, and 🔌 Подключения shows «🟠 токен истекает DD.MM».
+- A week before the end, one silent 🟠 «Токен Instagram истекает через N дн. — пришли новый через /igtoken» goes through the notifier, with the steps and the date. It's said once per token: a new token that works past the week re-arms it. The daily report and the TofsDevOps line carry the same until a new token arrives. A token that has already expired is still the «отклонил токен» alert, whose cause now names the configuration's term.
+
+**Docs and the setup skill** (plugin 1.1.2)
+- `docs/connect/instagram.md` / `.en.md`: which token «Generate token» issues, who sets its term, what the bot shows and says, why it can't renew it; step 2 suggests keeping the token without a term when the configuration offers a choice. `docs/FEATURES*.md`, `.env.example` and the skill's Instagram page say the same.
+
+**Tests**
+- `tests/test_instagram.py`: `debug_token` on the local Graph server (no term, a date, data access ending first, Meta refusing to inspect, a dead or odd answer, Meta unreachable — never an auth error, the token never in the log), the collect keeping the date and flagging the last week, a new token forgetting the old date, the once-per-token alert and its re-arming, every state of the screen and the 🔌 chip, `/igtoken` showing the date, the report and TofsDevOps lines. `tests/test_i18n.py` renders all of it in English.
+
 ## 1.16.1 — 2026-11-27
 
 Two things a fresh install got slightly wrong, found in the second trial run.

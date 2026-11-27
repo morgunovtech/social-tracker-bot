@@ -1,5 +1,5 @@
 """Collection health: failure streaks per platform, the LinkedIn cookie and
-the Instagram token.
+the Instagram token (missing, rejected, or expiring within a week).
 
 Each problem is an alert of its own in the one shape (bot/humanize.py), said
 once until it is fixed; a failure streak that was alerted ends with one
@@ -14,8 +14,9 @@ from zoneinfo import ZoneInfo
 
 from bot import humanize
 from bot.db import Database, parse_utc, utcnow
-from bot.i18n import t
+from bot.i18n import plural, t
 from bot.platforms import PLATFORMS
+from bot.platforms import instagram as ig
 from bot.reporter import _fmt
 
 if TYPE_CHECKING:
@@ -73,6 +74,7 @@ async def alert_lines(db: Database, outcome: CollectOutcome, tz: ZoneInfo = _ZON
     - cookie expiry: alerted once until the cookie works again;
     - a first LinkedIn number read by cookie: alerted once until the owner confirms it;
     - a missing or dead Instagram token: alerted once until a token works;
+    - an Instagram token that expires within a week: alerted once per token;
     - failure streaks: alerted at 2 consecutive days, then weekly while
       broken; an alerted streak ends with a ✅ that says how long it lasted.
 
@@ -124,6 +126,21 @@ async def alert_lines(db: Database, outcome: CollectOutcome, tz: ZoneInfo = _ZON
                 ))
     elif "instagram" in outcome.collected:
         await db.set_setting("instagram_token_alerted", "0")
+
+    # A token with a date: said once a week ahead, re-armed by a token that works past the window.
+    left = outcome.errors.get("instagram_token_expiring")
+    if left:
+        if await db.get_setting(ig.EXPIRY_ALERTED_KEY) != "1":
+            await db.set_setting(ig.EXPIRY_ALERTED_KEY, "1")
+            expiry = await ig.get_expiry(db)
+            date = expiry.astimezone(tz).strftime("%d.%m.%Y") if isinstance(expiry, datetime) else "?"
+            alerts.append(humanize.alert(
+                t("🟠 Токен Instagram истекает через {left} {d} — пришли новый через /igtoken").format(
+                    left=left, d=plural(left, "дн.", "дн.", "дн.")),
+                "token_expiring", t("debug_token: действует до {date}").format(date=date),
+            ))
+    elif "instagram" in outcome.collected:
+        await db.set_setting(ig.EXPIRY_ALERTED_KEY, "0")
 
     for platform in PLATFORMS:
         streak_key, since_key = f"fail_streak_{platform.id}", f"fail_since_{platform.id}"

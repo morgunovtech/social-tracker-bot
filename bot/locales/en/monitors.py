@@ -368,6 +368,10 @@ STRINGS: dict[str, str] = {
     "🟠 LinkedIn cookie истёк или отклонён — обнови через /setcookie": (
         "🟠 The LinkedIn cookie has expired or was rejected — update it with /setcookie"
     ),
+    # Also the report's line (bot/reporter.py): one text, one entry.
+    "🟠 Токен Instagram истекает через {left} {d} — пришли новый через /igtoken":
+        "🟠 The Instagram token expires in {left} {d} — send a new one with /igtoken",
+    "debug_token: действует до {date}": "debug_token: works until {date}",
     "🟠 Instagram отклонил токен: истёк или отозван — пришли новый через /igtoken": (
         "🟠 Instagram rejected the token: expired or revoked — send a new one with /igtoken"
     ),
@@ -459,8 +463,16 @@ STRINGS: dict[str, str] = {
     "Или вводить число вручную.":
         "Send it: 🔌 Connections → 💼 LinkedIn → \"🔑 Send the cookie\" or /setcookie. Or enter the number by hand.",
     "Число Instagram и проверка профиля остановились.": "The Instagram number and the profile check have stopped.",
-    "Meta отозвала токен: сменили пароль, удалили приложение или тестировщика; реже — сбой у Meta":
-        "Meta revoked the token: the password was changed, the app or the tester removed; less often a failure at Meta",
+    "истёк срок токена, заданный в настройках приложения Meta, или Meta его отозвала: удалили приложение "
+    "или тестировщика; реже — сбой у Meta":
+        "the token's term set in the Meta app's settings ran out, or Meta revoked it: the app or the tester was "
+        "removed; less often a failure at Meta",
+    "Через несколько дней Instagram перестанет принимать токен — число и проверка профиля остановятся.":
+        "In a few days Instagram will stop taking the token — the number and the profile check will stop.",
+    "срок токена, заданный в настройках приложения Meta (бывает 60 дней); продлить такой токен без секрета "
+    "приложения бот не может":
+        "the token's term set in the Meta app's settings (it can be 60 days); the bot cannot renew such a token "
+        "without the app secret",
     "developers.facebook.com → приложение → API setup with Unified login → Generate token.":
         "developers.facebook.com → the app → API setup with Unified login → Generate token.",
     "Прислать его: 🔌 Подключения → 📸 Instagram → «🔑 Прислать токен» или /igtoken.":
