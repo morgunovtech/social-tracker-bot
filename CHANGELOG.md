@@ -17,6 +17,18 @@ The 📸 Instagram screen called the token «бессрочный», and the gui
 **Tests**
 - `tests/test_instagram.py`: `debug_token` on the local Graph server (no term, a date, data access ending first, Meta refusing to inspect, a dead or odd answer, Meta unreachable — never an auth error, the token never in the log), the collect keeping the date and flagging the last week, a new token forgetting the old date, the once-per-token alert and its re-arming, every state of the screen and the 🔌 chip, `/igtoken` showing the date, the report and TofsDevOps lines. `tests/test_i18n.py` renders all of it in English.
 
+## 1.16.2 — 2026-11-27
+
+The pre-launch check: the documents and two lines of the bot say exactly what the code does. No behaviour changes.
+
+**Passwords, said precisely**
+- The 🛡 Безопасность screen and «📖 Что я умею» said «Пароли я не спрашиваю и не храню». Since 1.14.0 the bot does keep one: the app password of a separate mailbox made for security emails. They now say what is true of the checklist, «Сами пароли чек-листу не нужны».
+- README (both languages), SECURITY.md and FEATURES: the bot never asks for the passwords of your accounts. The one password it takes is that mailbox's app password, kept out of the backup and the logs.
+
+**README**
+- The icon legend from `~/BOT_PRINCIPLES.md` §1 — 🔴 act now, it rings; 🟠 act, but not today, silent; ⚠️ couldn't check — is in both READMEs, as it is in «❓ Значки».
+- The Claude Code install shows the commands checked today: `/plugin marketplace add …` and `/plugin install social-tracker-setup@social-tracker-bot`, or in a terminal `claude plugin install social-tracker-setup --marketplace morgunovtech/social-tracker-bot` (installed into a scratch config: 1.1.1, enabled).
+
 ## 1.16.1 — 2026-11-27
 
 Two things a fresh install got slightly wrong, found in the second trial run.

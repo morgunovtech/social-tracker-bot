@@ -20,7 +20,7 @@ A personal tool, shared as is: free and open source (MIT), and I use it every da
 - **Comments that get a group blocked.** Drugs, scams, porn in your channel's discussion group: a card with «delete» and «ban» buttons. It never deletes anything by itself, and it shows what the check costs (your own Claude key).
 - **The life of your channel.** Who joined and left and through which invite link, every post and its reactions.
 - **A security checklist and a reputation report.** 2FA and password age per account; for site owners, how often people and AI assistants find you.
-- **Quiet while all is well.** One message when something breaks, one when it is fixed; only what can't wait rings. Everything is a button; a message carrying a key is deleted at once.
+- **Quiet while all is well.** One message when something breaks, one when it is fixed; only what can't wait rings. The icons are the same everywhere: 🔴 act now — it rings, even at night; 🟠 act, but not today — silent; ⚠️ couldn't check. Everything is a button; a message carrying a key is deleted at once.
 
 The bot speaks English or Russian and picks the language from your Telegram at the first `/start`. Every feature, the menu and the commands: [docs/FEATURES.en.md](docs/FEATURES.en.md). Why it exists: [docs/WHY.en.md](docs/WHY.en.md).
 
@@ -28,7 +28,7 @@ The bot speaks English or Russian and picks the language from your Telegram at t
 
 Step by step, in clicks: **[docs/SETUP.en.md](docs/SETUP.en.md)** — a bot at @BotFather, the Railway button (one field, `BOT_TOKEN`), `/start`, the first network. Every connection has a page of its own in [docs/connect/](docs/connect/).
 
-**With Claude**: the setup skill walks you through it in the browser — in Claude Code `/plugin install social-tracker-setup --marketplace morgunovtech/social-tracker-bot`, then «set up Social Tracker»; for claude.ai and Cowork, the zip from the latest release: [docs/SETUP.en.md](docs/SETUP.en.md#help-from-claude).
+**With Claude**: the setup skill walks you through it in the browser — in Claude Code `/plugin marketplace add morgunovtech/social-tracker-bot` and `/plugin install social-tracker-setup@social-tracker-bot` (or in a terminal: `claude plugin install social-tracker-setup --marketplace morgunovtech/social-tracker-bot`), then «set up Social Tracker»; for claude.ai and Cowork, the zip from the latest release: [docs/SETUP.en.md](docs/SETUP.en.md#help-from-claude).
 
 **Railway**: [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/social-tracker-bot?referralCode=7hTMqE) — the button carries my Railway referral code: Railway shares with me a part of what it bills an account created through it; your price stays the same. Without the code: <https://railway.com/deploy/social-tracker-bot>.
 
@@ -64,7 +64,7 @@ The bot is free. Railway: a 30-day trial with $5 of credit and no card, then $5 
 ## Privacy
 
 - Everything stays on your server: the history, the channel's events, the security log — in SQLite on your volume. No analytics.
-- The bot reads only public data of your own accounts, through official APIs where they exist; it never asks for a password.
+- The bot reads only public data of your own accounts, through official APIs where they exist, and never asks for their passwords. The one password it takes is the app password of a separate mailbox made for it, if you choose that way to security emails — kept out of the backup and the logs.
 - Keys and tokens sent in the chat are deleted from it at once, never shown or logged, and left out of the weekly backup the bot sends you.
 - Comments go to the Claude API without the author's name or id, and only if you connect the check.
 - What exactly goes where, request by request: [the full table](docs/FEATURES.en.md#privacy). Security notes: [SECURITY.md](SECURITY.md).
