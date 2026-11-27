@@ -26,7 +26,7 @@ from telegram.ext import (
 )
 
 from bot import callbacks as cb
-from bot import connections, monitors, notifier, reputation, ui, watchdog
+from bot import connections, monitors, notifier, platforms, reputation, ui, watchdog
 from bot.config import DEFAULT_TZ, DOW_ORDER, Config, normalize_dow, normalize_tz
 from bot.db import HELD_KEEP_DAYS, Database, utcnow
 from bot.i18n import LANGUAGES, set_language, t
@@ -229,20 +229,44 @@ async def _switch_language(config: Config, db: Database, lang: str) -> None:
     set_language(lang)
 
 
-async def adopt_owner_language(code: str | None, config: Config, db: Database) -> bool:
+# Telegram languages whose speakers read Russian far more often than English
+# (until the bot speaks them): the bot stays Russian, and a schedule nobody set
+# moves to the country's zone instead of Moscow's.
+RUSSIAN_READERS = {
+    "uz": "Asia/Tashkent",
+    "kk": "Asia/Almaty",
+    "ky": "Asia/Bishkek",
+    "tg": "Asia/Dushanbe",
+    "be": "Europe/Minsk",
+}
+
+
+async def _zone_chosen(db: Database) -> bool:
+    return bool((os.getenv("TIMEZONE") or os.getenv("REPORT_TZ") or "").strip() or await db.get_setting("report_tz"))
+
+
+async def adopt_owner_language(code: str | None, config: Config, db: Database) -> tuple[bool, bool]:
     """The bot was just claimed and nobody chose a language — BOT_LANG is empty
     and the chat never set one: the owner's Telegram decides. Russian stays
-    Russian, any other language becomes English, and a schedule nobody set
-    moves to the English default zone (UTC). True when the bot switched."""
+    Russian; Uzbek, Kazakh, Kyrgyz, Tajik and Belarusian stay Russian too and
+    a schedule nobody set moves to that country's zone (RUSSIAN_READERS); any
+    other language becomes English, and a schedule nobody set moves to the
+    English default zone (UTC). Returns (the language switched, the zone was set)."""
     if (os.getenv("BOT_LANG") or "").strip() or await db.get_setting(LANG_SETTING):
-        return False
-    if not code or code.lower().split("-")[0] == "ru":
-        return False
+        return False, False
+    base = (code or "ru").lower().split("-")[0]
+    if base == "ru":
+        return False, False
+    if base in RUSSIAN_READERS:
+        if await _zone_chosen(db):
+            return False, False
+        await db.set_setting("report_tz", RUSSIAN_READERS[base])
+        return False, True
     await _switch_language(config, db, "en")
-    zone_chosen = (os.getenv("TIMEZONE") or os.getenv("REPORT_TZ") or "").strip() or await db.get_setting("report_tz")
-    if not zone_chosen:
-        await db.set_setting("report_tz", DEFAULT_TZ["en"])
-    return True
+    if await _zone_chosen(db):
+        return True, False
+    await db.set_setting("report_tz", DEFAULT_TZ["en"])
+    return True, True
 
 
 async def _answer(query, text: str | None = None, show_alert: bool = False) -> None:
@@ -464,18 +488,26 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await db.set_setting(OWNER_SETTING, str(update.effective_user.id))
         logger.info("Owner claimed by the first /start")
         claimed = True
-        adopted = await adopt_owner_language(getattr(update.effective_user, "language_code", None), config, db)
-        if adopted:
+        adopted, zone_set = await adopt_owner_language(
+            getattr(update.effective_user, "language_code", None), config, db
+        )
+        if adopted or zone_set:
             await _apply_schedule(context)
     if not _is_admin(update, config):
         await update.message.reply_text(t("Это личный бот: он отвечает только своему владельцу."))
         return
     # Two messages: a message carries either the persistent keyboard or inline buttons.
-    await update.message.reply_text(ui.welcome(claimed), reply_markup=ui.persistent_keyboard())
+    # A bot without a network says where to start and opens 🔌 Подключения
+    # instead of an empty report — also when ADMIN_CHAT_ID made the claim needless.
+    fresh = not platforms.enabled(config)
+    await update.message.reply_text(ui.welcome(claimed, fresh), reply_markup=ui.persistent_keyboard())
     await db.set_setting(KEYBOARD_SETTING, KEYBOARD_VERSION)
     if adopted:
         await _reply(update, ui.language_note())
-    await _reply(update, await ui.home(db, config))
+    if fresh:
+        await _reply(update, (await ui.connections(db, config)).noted(t(ui.FIRST_NETWORK)))
+    else:
+        await _reply(update, await ui.home(db, config))
 
 
 @_admin_only
@@ -647,15 +679,12 @@ async def cmd_settz(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
         await _reply(update, await ui.timezone(db, config))
         return
-    try:
-        if len(context.args) != 1:
-            raise ValueError
-        name = normalize_tz(context.args[0])
-    except ValueError:
+    name = ui.zone_from_text(" ".join(context.args))
+    if name is None:
         await update.message.reply_text(
             t(
-                "❌ Не знаю такой часовой пояс: «{tz}».\n"
-                "Нужно название из базы IANA, например /settz Europe/Moscow или /settz Asia/Almaty. "
+                "❌ Не знаю такой пояс: «{tz}».\n"
+                "Пришли город по-английски или название пояса, например /settz Berlin или /settz Asia/Almaty. "
                 "Частые пояса — кнопками: /settz без названия."
             ).format(tz=" ".join(context.args))
         )
@@ -923,7 +952,7 @@ async def _store_watchdog(update: Update, context: ContextTypes.DEFAULT_TYPE, te
         )
         await chat.send_message(screen.text, **_markup(screen))
         return False
-    await chat.send_message(t("⏳ Отмечаюсь пробным пингом…"))
+    await chat.send_message(t("⏳ Отмечаюсь у сторожа…"))
     error = await watchdog.probe(address)
     if error is not None:
         screen = ui.input_retry(
@@ -1363,7 +1392,7 @@ async def _cb_watchdog(press: _Press, context, args: list[str]) -> None:
         await press.answer(t("✅ Сторож на связи") if error is None else watchdog.reason(error))
         screen = await ui.watchdog_screen(db, config)
     elif args == ["off"]:
-        screen = ui.watchdog_off_confirm()
+        screen = ui.watchdog_off_confirm(fallback=bool(config.healthcheck_url))
     elif args == ["off", "yes"]:
         await watchdog.forget(db)
         await press.answer(t("Сторож отключён"))
@@ -1629,9 +1658,8 @@ async def input_conv_value(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     elif kind == "token":
         await _store_token(update, context, value)
     elif kind == "tz":
-        try:
-            name = normalize_tz(value)
-        except ValueError:
+        name = ui.zone_from_text(value)
+        if name is None:
             context.user_data["awaiting"] = "tz"
             await _reply(update, ui.input_retry_tz())
             return AWAITING_INPUT
@@ -1685,7 +1713,7 @@ async def _store_connection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     if value == connections.REMOVE and kind != "conn_youtube_key":
         await connections.remove(config, db, *_CONN_ATTRS[kind])
         context.user_data.pop("conn_youtube_channel", None)
-        await done(t("Убрал то, что было задано в чате. Если сеть есть в .env — действует она."))
+        await done(t("Убрал то, что было задано в чате. Если сеть задана в настройках хостинга — действует она."))
         return None
 
     if kind == "conn_telegram":
@@ -1708,7 +1736,7 @@ async def _store_connection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         context.user_data["conn_youtube_channel"] = channel
         if config.youtube_api_key:        # the key is already there (.env or an earlier step): check the pair now
             return await _store_connection(update, context, "conn_youtube_key", config.youtube_api_key)
-        return await again(t(ui.INPUT_PROMPTS["conn_youtube_key"]), "conn_youtube_key")
+        return await again(ui.prompt_text("conn_youtube_key"), "conn_youtube_key")
     elif kind == "conn_youtube_key":
         channel = context.user_data.get("conn_youtube_channel") or config.youtube_channel_id
         typed = value != config.youtube_api_key

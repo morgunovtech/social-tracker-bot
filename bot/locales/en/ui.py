@@ -81,7 +81,6 @@ STRINGS: dict[str, str] = {
         "Tip: {advice}.\n\n"
         "Now: {current}",
     # Settings
-    "сборка {commit} · ": "build {commit} · ",
     "<b>⚙️ Настройки</b>": "<b>⚙️ Settings</b>",
     "📅 Отчёт: {days}, в {time}": "📅 Report: {days}, at {time}",
     "🌍 Часовой пояс: {tz}": "🌍 Time zone: {tz}",
@@ -92,7 +91,6 @@ STRINGS: dict[str, str] = {
     "выключен": "off",
     "Когда включено, неделя без изменений — это одна строка вместо отчёта.":
         "When it is on, a week without changes is a single line instead of a report.",
-    "<i>Версия: {build}Python {python}</i>": "<i>Version: {build}Python {python}</i>",
     "🧩 Мониторинги": "🧩 Monitors",
     "📅 Дни отчёта": "📅 Report days",
     "🕗 Время отчёта": "🕗 Report time",
@@ -159,12 +157,6 @@ STRINGS: dict[str, str] = {
         "✅ The count is collected automatically via cookie, but I cannot see how long it lives. "
         "Send the cookie with /setcookie and I will remind you when to renew it.",
     "✏️ Число вводится вручную: cookie не задан.": "✏️ The count is entered by hand: no cookie is set.",
-    "<b>Автосбор</b>: нажми «🔑 Прислать cookie» и пришли значение cookie li_at "
-    "(linkedin.com → DevTools → Application → Cookies); то же — командой /setcookie. "
-    "Я проверю его и сразу удалю сообщение.":
-        "<b>Automatic collection</b>: press \"🔑 Send the cookie\" and send the value of the li_at cookie "
-        "(linkedin.com → DevTools → Application → Cookies); the /setcookie command does the same. "
-        "I will check it and delete the message right away.",
     "🔑 Прислать cookie": "🔑 Send the cookie",
     "🔑 Прислать токен": "🔑 Send the token",
     "<i>LinkedIn запрещает автоматический доступ, так что автосбор — на твой риск.</i>":
@@ -176,24 +168,10 @@ STRINGS: dict[str, str] = {
     "🟠 Токена нет: без него число не собирается.": "🟠 No token: without it the count is not collected.",
     "🟠 Instagram отклонил токен: отозван или истёк — пришли новый через /igtoken.":
         "🟠 Instagram rejected the token: revoked or expired — send a new one with /igtoken.",
-    "✅ Число собирается само по токену из переменных окружения.":
-        "✅ The count is collected automatically with the token from the environment variables.",
     "✅ Число собирается само по токену. Он задан {age} {d} назад и бессрочный: "
     "если Meta его отзовёт, я скажу.":
         "✅ The count is collected automatically with the token. It was set {age} {d} ago and does not expire: "
         "if Meta revokes it, I will tell you.",
-    "<b>Как подключить</b>: аккаунт должен быть профессиональным (Автор или Бизнес). "
-    "На developers.facebook.com создай приложение с вариантом «Instagram API», открой "
-    "«API setup with Unified login», добавь свой аккаунт как Instagram Tester, прими приглашение "
-    "в Instagram (Настройки → Website permissions → Tester invitations) и нажми «Generate token». "
-    "Потом нажми «🔑 Прислать токен» и пришли его одним сообщением (то же — командой /igtoken) — "
-    "я проверю его и сразу удалю сообщение.":
-        "<b>How to connect</b>: the account must be professional (Creator or Business). "
-        "On developers.facebook.com create an app of the \"Instagram API\" kind, open "
-        "\"API setup with Unified login\", add your account as an Instagram Tester, accept the invitation "
-        "in Instagram (Settings → Website permissions → Tester invitations) and press \"Generate token\". "
-        "Then press \"🔑 Send the token\" and send it in one message (the /igtoken command does the same) — "
-        "I will check it and delete the message right away.",
     "<i>Это официальный API: бот читает только публичные данные своего аккаунта.</i>":
         "<i>This is the official API: the bot reads only its own account's public data.</i>",
     # Manual LinkedIn input
@@ -218,17 +196,6 @@ STRINGS: dict[str, str] = {
     "жду первой проверки": "waiting for the first check",
     "факт, который не проблема": "a fact, not a problem",
     "пункт чек-листа без ответа": "a checklist item without an answer",
-    (
-        "🔴 у меня — это: похоже на взлом (новый админ или владелец, ссылка в описании, пропавшие видео "
-        "или публикации, новый вход, смена пароля, почты или 2FA), профиль не читается, почтовый воркер "
-        "молчит, комментарий, за который блокируют группу. 🟠 — истёкший cookie, отклонённый токен, сбои "
-        "сбора, падение подписчиков, смена названия или аватарки."
-    ): (
-        "🔴 here means: looks like a hijack (a new admin or owner, a link in the description, vanished videos "
-        "or posts, a new sign-in, a changed password, email or 2FA), an unreadable profile, a silent mail "
-        "worker, a comment the group gets blocked for. 🟠 — an expired cookie, a rejected token, collection "
-        "failures, a drop in followers, a new title or avatar."
-    ),
     "/now — обновить данные": "/now — refresh data",
     "/week — динамика за неделю и график": "/week — the week's trends and a chart",
     "/security — безопасность аккаунтов": "/security — account security",
@@ -324,20 +291,6 @@ STRINGS: dict[str, str] = {
         "/channel — life of the channel: joins and leaves, where they came from, posts and reactions"
     ),
     # the text-input conversations and the restore prompt
-    "🔑 Пришли значение cookie li_at одним сообщением "
-    "(linkedin.com → DevTools → Application → Cookies → li_at → Value). "
-    "Я проверю его и сразу удалю сообщение.":
-        "🔑 Send the value of the li_at cookie in one message "
-        "(linkedin.com → DevTools → Application → Cookies → li_at → Value). "
-        "I will check it and delete the message right away.",
-    "🔑 Пришли токен Instagram одним сообщением "
-    "(developers.facebook.com → приложение → API setup with Unified login → Generate token). "
-    "Я проверю его и сразу удалю сообщение.":
-        "🔑 Send the Instagram token in one message "
-        "(developers.facebook.com → your app → API setup with Unified login → Generate token). "
-        "I will check it and delete the message right away.",
-    "🌍 Пришли название часового пояса из базы IANA одним сообщением, например Asia/Kolkata или America/Chicago.":
-        "🌍 Send the name of the time zone from the IANA database in one message, e.g. Asia/Kolkata or America/Chicago.",
     "✅ Восстановить": "✅ Restore",
     # the reply keyboard, the home screen, 🔌 Подключения
     "🔄 Обновить": "🔄 Refresh",
@@ -359,16 +312,8 @@ STRINGS: dict[str, str] = {
     "{icon} Брендовые слова не заданы — без них поиски не считаются":
         "{icon} No brand words yet — without them searches are not counted",
     "🏷 Брендовые слова": "🏷 Brand words",
-    '🔑 Ключ сервисного аккаунта Google, только на чтение:\n1. console.cloud.google.com → новый проект → APIs & Services → включи «Google Search Console API».\n2. IAM & Admin → Service Accounts → Create; роли не нужны. Keys → Add key → JSON — скачается файл.\n3. В Search Console у каждого ресурса: Настройки → Пользователи и разрешения → Добавить пользователя → e-mail сервисного аккаунта (client_email в файле), разрешение «Ограниченный»; если ключ не увидит ресурс — «Полный».\nПришли файл или его текст одним сообщением — я проверю ключ и сразу удалю сообщение.':
-        "🔑 A Google service account key, read-only:\n1. console.cloud.google.com → a new project → APIs & Services → enable «Google Search Console API».\n2. IAM & Admin → Service Accounts → Create; no roles needed. Keys → Add key → JSON — a file is downloaded.\n3. In Search Console, for each property: Settings → Users and permissions → Add user → the service account's e-mail (client_email in the file), permission «Restricted»; if the key does not see the property — «Full».\nSend the file or its text in one message — I'll check the key and delete the message at once.",
-    '🔑 OAuth-токен Яндекс.Вебмастера, только на чтение:\n1. oauth.yandex.ru/client/new → «Веб-сервисы», Redirect URI https://oauth.yandex.ru/verification_code, доступ «Яндекс.Вебмастер: получение информации о сайтах» (webmaster:hostinfo).\n2. Открой https://oauth.yandex.ru/authorize?response_type=token&client_id=<ClientID приложения> и скопируй токен.\nТокен живёт полгода — когда истечёт, отчёт скажет. Пришли его одним сообщением — я проверю и сразу удалю.':
-        "🔑 A Yandex.Webmaster OAuth token, read-only:\n1. oauth.yandex.ru/client/new → «Web services», Redirect URI https://oauth.yandex.ru/verification_code, access «Yandex.Webmaster: getting site information» (webmaster:hostinfo).\n2. Open https://oauth.yandex.ru/authorize?response_type=token&client_id=<the app's ClientID> and copy the token.\nThe token lives six months — when it expires, the report says so. Send it in one message — I'll check it and delete it at once.",
-    '🔑 API-токен Cloudflare, только на чтение:\ndash.cloudflare.com → My Profile → API Tokens → Create Token → Custom token. Права: Zone → Zone → Read и Zone → Analytics → Read; Zone Resources — твои зоны.\nПришли токен одним сообщением — я проверю его пробным запросом и сразу удалю сообщение.':
-        "🔑 A Cloudflare API token, read-only:\ndash.cloudflare.com → My Profile → API Tokens → Create Token → Custom token. Permissions: Zone → Zone → Read and Zone → Analytics → Read; Zone Resources — your zones.\nSend the token in one message — I'll check it with a test query and delete the message at once.",
     "Search Console — брендовые запросы": "Search Console — brand queries",
     "Вебмастер — брендовые запросы": "Yandex.Webmaster — brand queries",
-    "Cloudflare — запросы ИИ-ассистентов (по user-agent: ChatGPT-User, Claude-User, Perplexity-User…)":
-        "Cloudflare — AI assistant requests (by user agent: ChatGPT-User, Claude-User, Perplexity-User…)",
     "Последний отчёт: {when}": "Last report: {when}",
     "Отчёта ещё не было.": "No report yet.",
     "📨 Отчёт сейчас": "📨 Report now",
@@ -400,10 +345,6 @@ STRINGS: dict[str, str] = {
         "▶️ Step 1 of 2. Send the YouTube channel id — 24 characters, starts with UC "
         "(studio.youtube.com → Settings → Channel → Advanced settings), or a youtube.com/channel/UC… link. "
         "To remove a channel set here, send «-».",
-    "🔑 Шаг 2 из 2. Ключ YouTube Data API: console.cloud.google.com → проект → APIs & Services → включи «YouTube Data API v3» → Credentials → Create credentials → API key. Пришли ключ одним сообщением — я проверю его на твоём канале и сразу удалю сообщение.":
-        "🔑 Step 2 of 2. A YouTube Data API key: console.cloud.google.com → a project → APIs & Services → enable "
-        "«YouTube Data API v3» → Credentials → Create credentials → API key. "
-        "Send the key in one message — I will check it on your channel and delete the message at once.",
     "📸 Пришли @username Instagram (аккаунт должен быть профессиональным: Creator или Business). Токен попрошу следующим шагом. Убрать аккаунт, заданный здесь, — пришли «-».":
         "📸 Send your Instagram @username (the account must be professional: Creator or Business). "
         "I will ask for the token as the next step. To remove an account set here, send «-».",
@@ -440,9 +381,6 @@ STRINGS: dict[str, str] = {
         "command, \"{icons}\" — what the icons mean and what rings.",
     "Это не похоже на число. Пришли только цифры, например 4520, или нажми «✖️ Отмена».":
         "That does not look like a number. Send digits only, e.g. 4520, or press \"✖️ Cancel\".",
-    "Не знаю такой часовой пояс. Нужно название из базы IANA, например Europe/Moscow, или нажми «✖️ Отмена».":
-        "I do not know that time zone. It needs a name from the IANA database, e.g. Europe/Moscow, "
-        "or press \"✖️ Cancel\".",
     # «🔕 Помолчать…» on the home screen
     "🔕 Помолчать…": "🔕 Mute…",
     "<b>🔕 Помолчать</b>": "<b>🔕 Mute</b>",
@@ -470,9 +408,6 @@ STRINGS: dict[str, str] = {
     "число видео и публикаций.":
         "• Every 30 minutes I compare the profile: the title, the description and its links, the avatar, "
         "the admins and the owner, the number of videos and posts.",
-    "• Письма безопасности, если подключён почтовый воркер: новый вход, смена пароля, почты или 2FA, код входа.":
-        "• Security emails, with the mail worker connected: a new sign-in, a changed password, email or 2FA, "
-        "a login code.",
     "• Комментарии канала, если есть ключ Claude: карточка с кнопками на то, за что блокируют группу. "
     "Сам ничего не удаляю.":
         "• The channel's comments, with a Claude key: a card with buttons for what gets a group blocked. "
@@ -526,8 +461,6 @@ STRINGS: dict[str, str] = {
         "\"⚙️ Stop sending these\" under an alert switches such notifications off.",
     "/icons — значки: что значат и что звонит": "/icons — the icons: what they mean and what rings",
     # ⏱ Сторож (bot/watchdog.py, bot/ui.py)
-    "«➕» подключает сеть прямо здесь, «✏️» меняет или убирает её; то, что задано в чате, сильнее .env.":
-        "«➕» connects a network right here, «✏️» changes or removes it; what is set in the chat wins over .env.",
     "⏱ Сторож": "⏱ Watchdog",
     "{icon} ⏱ Сторож — не подключён: если я остановлюсь, никто не скажет":
         "{icon} ⏱ Watchdog — not connected: if I stop, nobody will tell you",
@@ -538,42 +471,89 @@ STRINGS: dict[str, str] = {
     "<b>⏱ Сторож</b>": "<b>⏱ Watchdog</b>",
     "Ссылка задана здесь, в чате; адрес я не показываю — по нему можно отмечаться за меня.":
         "The link was set here, in the chat; I do not show the address — it lets anyone ping in my name.",
-    "Ссылка — из HEALTHCHECK_URL в .env. Пришли другую — она заменит переменную.":
-        "The link comes from HEALTHCHECK_URL in .env. Send another one — it takes the variable's place.",
     "Если я остановлюсь — упадёт сервер, кончится место, отзовут токен бота — написать об этом я уже не смогу. "
     "Сторож — сервис, у которого я отмечаюсь после каждого ежедневного сбора; не отметился вовремя — он пишет тебе сам.":
         "If I stop — the server goes down, the disk fills up, the bot token is revoked — I can no longer tell you. "
         "A watchdog is a service I check in with after every daily collection; when I miss it, it writes to you itself.",
     "<b>Как подключить</b> (бесплатно, 2 минуты):": "<b>How to connect it</b> (free, 2 minutes):",
-    "1. На healthchecks.io создай check: период — 1 день, grace — 3 часа.":
-        "1. On healthchecks.io create a check: period — 1 day, grace — 3 hours.",
-    "2. Скопируй его ссылку вида https://hc-ping.com/… и нажми «🔗 Прислать ссылку».":
-        "2. Copy its link, https://hc-ping.com/…, and press \"🔗 Send the link\".",
-    "3. Я сразу отмечусь пробным пингом и прочитаю ответ: если check не найден, скажу.":
-        "3. I check in with a test ping at once and read the answer: if the check is not found, I say so.",
-    "Адрес heartbeat из TofsDevOps тоже подходит — тогда на его главном экране появятся строки по сетям.":
-        "A TofsDevOps heartbeat address works too — then its home screen gets a line per network.",
     "🔗 Прислать ссылку": "🔗 Send the link",
     "🔄 Проверить снова": "🔄 Check again",
     "⏏ Отключить": "⏏ Disconnect",
     "✅ Да, отключить": "✅ Yes, disconnect",
-    "<b>⏏ Отключить сторожа?</b>\n\nЯ перестану отмечаться по ссылке из чата; если задан HEALTHCHECK_URL — "
-    "буду отмечаться по нему. Сам check на healthchecks.io поставь на паузу, иначе он напишет, что я пропал.":
-        "<b>⏏ Disconnect the watchdog?</b>\n\nI will stop checking in with the link from the chat; if HEALTHCHECK_URL "
-        "is set, I will use it. Pause the check on healthchecks.io itself, or it will write that I am gone.",
-    (
-        "🔗 Пришли ссылку сторожа одним сообщением: https://hc-ping.com/… из healthchecks.io или адрес heartbeat "
-        "из TofsDevOps. Я отмечусь по ней пробным пингом и сразу удалю сообщение."
-    ): (
-        "🔗 Send the watchdog link in one message: https://hc-ping.com/… from healthchecks.io or a TofsDevOps "
-        "heartbeat address. I check in with a test ping and delete the message at once."
-    ),
     "check не найден — удалён или ссылка скопирована не целиком": "check not found — deleted, or the link was copied in part",
     "отвечает ошибкой {status}": "answers with error {status}",
     "не ответил за 10 с": "did not answer within 10 s",
     "не удаётся подключиться — сеть или DNS": "cannot connect — network or DNS",
     "не отвечает": "does not answer",
     "TofsDevOps не принял отметку": "TofsDevOps did not take the ping",
+    "С чего начать:\n1. 🔌 Подключения → «➕» у своей сети.\n2. 🌍 Часовой пояс — чтобы отчёт приходил в твоё утро.\n3. ⏱ Сторож — после первой сети я предложу его сам: он скажет, если я остановлюсь.":
+        "Where to start:\n1. 🔌 Connections → «➕» next to your network.\n2. 🌍 Time zone — so the report comes in your morning.\n3. ⏱ Watchdog — I will offer it myself after the first network: it tells you if I stop.",
+    "Начнём: выбери сеть, которую подключить первой. Проще всего — Telegram-канал: достаточно сделать меня его админом.":
+        "Let's start: pick the network to connect first. The easiest is a Telegram channel: just make me its admin.",
+    "сеть — пока ни одна не подключена":
+        "a network — none is connected yet",
+    "🔌 Подключить сеть":
+        "🔌 Connect a network",
+    "📸 Токен Instagram":
+        "📸 Instagram token",
+    "💼 Первое число LinkedIn":
+        "💼 First LinkedIn count",
+    "«➕» подключает сеть прямо здесь, «✏️» меняет или убирает её.":
+        "«➕» connects a network right here, «✏️» changes or removes it.",
+    "Ссылка задана в настройках хостинга (HEALTHCHECK_URL). Пришли другую — она её заменит.":
+        "The link is set in the hosting settings (HEALTHCHECK_URL). Send another one and it replaces it.",
+    "1. Зарегистрируйся на healthchecks.io и нажми «Add Check».":
+        "1. Sign up at healthchecks.io and press «Add Check».",
+    "2. В «Period» поставь 1 day, в «Grace Time» — 3 hours: сторож подождёт 3 часа после пропущенной отметки и только потом напишет тебе.":
+        "2. Set «Period» to 1 day and «Grace Time» to 3 hours: the watchdog waits 3 hours after a missed check-in and only then writes to you.",
+    "3. Скопируй ссылку вида https://hc-ping.com/… и нажми «🔗 Прислать ссылку» — я сразу отмечусь по ней и скажу, дошло ли.":
+        "3. Copy the link that looks like https://hc-ping.com/… and press «🔗 Send the link» — I check in on it at once and tell you whether it got through.",
+    "Ссылка из TofsDevOps (задача «раз в сутки») тоже подходит — тогда на его главном экране появятся строки по сетям.":
+        "A link from TofsDevOps (a «once a day» job) works too — then its home screen gets a line per network.",
+    "Пошагово: {guide}":
+        "Step by step: {guide}",
+    "Cloudflare — сколько раз ChatGPT, Claude, Perplexity и другие ассистенты открывали твои страницы":
+        "Cloudflare — how many times ChatGPT, Claude, Perplexity and other assistants opened your pages",
+    "Нужна, только если у тебя есть свой сайт — в Google Search Console, Яндекс.Вебмастере или Cloudflare. Без сайта этот раздел можно пропустить.":
+        "Only for a site of your own — in Google Search Console, Yandex Webmaster or Cloudflare. Without a site you can skip this section.",
+    "<b>⏏ Отключить сторожа?</b>\n\nЯ перестану отмечаться по ссылке из чата. Саму проверку на healthchecks.io поставь на паузу, иначе она напишет, что я пропал.":
+        "<b>⏏ Disconnect the watchdog?</b>\n\nI will stop checking in with the link from the chat. Pause the check itself on healthchecks.io, or it will write that I am gone.",
+    "Буду отмечаться по ссылке из настроек хостинга.":
+        "I will check in with the link from the hosting settings.",
+    " · сборка {commit}":
+        " · build {commit}",
+    "Версия {version}":
+        "Version {version}",
+    "<b>Автосбор</b>: нажми «🔑 Прислать cookie» и пришли cookie li_at — строку, по которой LinkedIn узнаёт, что ты вошёл. Я проверю её и сразу удалю сообщение.":
+        "<b>Automatic collection</b>: press «🔑 Send the cookie» and send the li_at cookie — the string by which LinkedIn knows you are signed in. I will check it and delete the message right away.",
+    "Нужно: профессиональный аккаунт (Автор или Бизнес) и около 15 минут в кабинете Meta для разработчиков. Пошагово: {guide}":
+        "You need a professional account (Creator or Business) and about 15 minutes in Meta's developer dashboard. Step by step: {guide}",
+    "✅ Число собирается само по токену из настроек хостинга.":
+        "✅ The number is collected by itself with the token from the hosting settings.",
+    "Когда токен готов, нажми «🔑 Прислать токен» и пришли его одним сообщением (то же — командой /igtoken). Я проверю его и сразу удалю сообщение.":
+        "When the token is ready, press «🔑 Send the token» and send it in one message (the /igtoken command does the same). I will check it and delete the message right away.",
+    "🔑 Ключ Google для Search Console, только на чтение: в Google Cloud заводится служебный аккаунт с файлом ключа, а в Search Console ему открывают доступ к сайту. Пошагово: {guide}\nПришли файл или его текст одним сообщением — я проверю ключ и сразу удалю сообщение.":
+        "🔑 A Google key for Search Console, read-only: Google Cloud gets a service account with a key file, and Search Console gives it access to your site. Step by step: {guide}\nSend the file or its text in one message — I will check the key and delete the message right away.",
+    "🔑 Токен Яндекс.Вебмастера, только на чтение: делается за пару минут на oauth.yandex.ru и живёт полгода — когда истечёт, отчёт скажет. Пошагово: {guide}\nПришли его одним сообщением — я проверю и сразу удалю.":
+        "🔑 A Yandex Webmaster token, read-only: made in a couple of minutes at oauth.yandex.ru, it lives half a year — the report says when it expires. Step by step: {guide}\nSend it in one message — I will check it and delete it right away.",
+    "🔑 Токен Cloudflare, только на чтение: dash.cloudflare.com → My Profile → API Tokens → Create Token, права «Zone Read» и «Analytics Read». Пошагово: {guide}\nПришли токен одним сообщением — я проверю его и сразу удалю сообщение.":
+        "🔑 A Cloudflare token, read-only: dash.cloudflare.com → My Profile → API Tokens → Create Token, permissions «Zone Read» and «Analytics Read». Step by step: {guide}\nSend the token in one message — I will check it and delete the message right away.",
+    "🔑 Шаг 2 из 2. Ключ YouTube бесплатный, делается за 5 минут в Google Cloud: {guide}\nПришли его одним сообщением — я проверю его на твоём канале и сразу удалю сообщение.":
+        "🔑 Step 2 of 2. A YouTube key is free and takes 5 minutes in Google Cloud: {guide}\nSend it in one message — I will check it on your channel and delete the message right away.",
+    "🔑 Пришли cookie li_at одним сообщением. Это длинная строка, по которой LinkedIn узнаёт, что ты вошёл. На компьютере в Chrome: linkedin.com → правый клик → «Просмотреть код» → Application → Cookies → linkedin.com → li_at → Value. Пошагово: {guide}\nЯ проверю его и сразу удалю сообщение.":
+        "🔑 Send the li_at cookie in one message. It is a long string by which LinkedIn knows you are signed in. On a computer, in Chrome: linkedin.com → right click → «Inspect» → Application → Cookies → linkedin.com → li_at → Value. Step by step: {guide}\nI will check it and delete the message right away.",
+    "🔑 Пришли токен Instagram одним сообщением: его выдаёт кабинет Meta для разработчиков, кнопка «Generate token». Пошагово: {guide}\nЯ проверю его и сразу удалю сообщение.":
+        "🔑 Send the Instagram token in one message: Meta's developer dashboard issues it, the «Generate token» button. Step by step: {guide}\nI will check it and delete the message right away.",
+    "🌍 Пришли город или название пояса одним сообщением: Ташкент, Berlin, Asia/Tashkent.":
+        "🌍 Send a city or a zone name in one message: Tashkent, Berlin, Asia/Tashkent.",
+    "🔗 Пришли ссылку сторожа одним сообщением: https://hc-ping.com/… из healthchecks.io или ссылку из TofsDevOps. Я сразу отмечусь по ней, скажу, дошло ли, и удалю сообщение.":
+        "🔗 Send the watchdog link in one message: https://hc-ping.com/… from healthchecks.io or a link from TofsDevOps. I will check in on it at once, tell you whether it got through and delete the message.",
+    "Не знаю такой пояс. Пришли город по-английски (Berlin) или название вида Europe/Berlin — или нажми «✖️ Отмена».":
+        "I do not know that zone. Send a city in English (Berlin) or a name like Europe/Berlin — or press «✖️ Cancel».",
+    "🔴 у меня — это: похоже на взлом (новый админ или владелец, ссылка в описании, пропавшие видео или публикации, новый вход, смена пароля, почты или 2FA), профиль не читается, проверка писем молчит, комментарий, за который блокируют группу. 🟠 — истёкший cookie, отклонённый токен, сбои сбора, падение подписчиков, смена названия или аватарки.":
+        "🔴 here means: looks like a hijack (a new admin or owner, a link in the description, vanished videos or posts, a new sign-in, a changed password, email or 2FA), an unreadable profile, a silent email check, a comment the group gets blocked for. 🟠 — an expired cookie, a rejected token, collection failures, a drop in followers, a new title or avatar.",
+    "• Письма безопасности, если они подключены: новый вход, смена пароля, почты или 2FA, код входа.":
+        "• Security emails, if they are connected: a new sign-in, a changed password, email or 2FA, a login code.",
 }
 
 # Russian singular → (English singular, English plural).

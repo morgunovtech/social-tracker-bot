@@ -407,7 +407,7 @@ async def test_monitors_screen_and_toggle(make_update, make_context, db):
     await handlers.cmd_modules(update, make_context())
     text = update.message.replies[0]
     assert "✅ Telegram — @test_channel" in text
-    assert "➖ Письма безопасности — нужно: SECURITY_MAIL_URL" in text
+    assert "➖ Письма безопасности — нужно: почтовый воркер" in text
     assert "mod:mail" not in buttons(update.message.markups[0])          # unavailable: no switch
 
     query = await press(make_update, make_context, "mod:profile")
@@ -584,7 +584,7 @@ async def test_settz(make_update, make_context, db, sched):
     for args in (("Mars/Olympus",), ("MSK",), ("Europe/Moscow", "extra")):
         update = make_update()
         await handlers.cmd_settz(update, make_context(*args, scheduler=sched))
-        assert update.message.replies[0].startswith("❌ Не знаю такой часовой пояс")
+        assert update.message.replies[0].startswith("❌ Не знаю такой пояс")
     assert await db.get_setting("report_tz") == "Europe/Berlin"
 
     update = make_update()
@@ -932,14 +932,15 @@ async def test_which_telegram_language_switches_the_bot(config, db, monkeypatch,
     monkeypatch.setenv("BOT_LANG", env)
     if stored:
         await db.set_setting(handlers.LANG_SETTING, stored)
-    assert await handlers.adopt_owner_language(code, config, db) == (expected == "en")
+    switched, _ = await handlers.adopt_owner_language(code, config, db)
+    assert switched == (expected == "en")
     assert config.lang == expected and i18n.language() == expected
 
 
 async def test_an_english_owner_keeps_a_zone_that_was_chosen(config, db, monkeypatch):
     monkeypatch.setenv("BOT_LANG", "")
     monkeypatch.setenv("TIMEZONE", "Asia/Almaty")
-    assert await handlers.adopt_owner_language("en", config, db)
+    assert await handlers.adopt_owner_language("en", config, db) == (True, False)
     assert await db.get_setting("report_tz") is None
 
 
@@ -950,3 +951,83 @@ async def test_the_language_button_switches_there_and_back(make_update, make_con
     assert bot.messages[-1] == "Language: English. The buttons under the input field are updated."
     query = await press(make_update, make_context, "set:lang")
     assert i18n.language() == "ru" and "🗣 Язык: русский" in query.edits[0]
+
+
+# ── The first five minutes (1.12.0) ─────────────────────────────────────────
+
+NO_NETWORKS = {"telegram_channel_id": None, "youtube_channel_id": None, "youtube_api_key": None,
+               "instagram_username": None, "linkedin_profile_url": None}
+
+
+async def test_a_fresh_bot_says_where_to_start_and_opens_connections(make_update, make_context, config, db):
+    fresh = dataclasses.replace(config, admin_chat_id=None, **NO_NETWORKS)
+    context = make_context()
+    context.bot_data["config"] = fresh
+    update = make_update(user_id=STRANGER_ID)
+    await handlers.cmd_start(update, context)
+
+    greeting, connections_screen = update.message.replies
+    assert greeting.startswith("✅ Теперь этот бот твой") and "С чего начать:" in greeting
+    assert "⏱ Сторож — после первой сети я предложу его сам" in greeting   # BOT_PRINCIPLES §6
+    assert connections_screen.startswith("Начнём: выбери сеть, которую подключить первой.")
+    assert "🔌 Подключения" in connections_screen and buttons(update.message.markups[1])["conn:tg"] == "➕ Telegram"
+
+
+async def test_a_bot_with_a_network_greets_with_the_home_screen(make_update, make_context):
+    update = make_update()
+    await handlers.cmd_start(update, make_context())
+    greeting, home = update.message.replies
+    assert "С чего начать" not in greeting and home.startswith("<b>📊 Подписчики")
+
+
+async def test_an_empty_home_points_to_a_network_and_has_a_button_per_item(make_update, make_context, config, db):
+    fresh = dataclasses.replace(config, **NO_NETWORKS)
+    screen = await ui.home(db, fresh)
+    assert "Данных пока нет: сначала подключи сеть — кнопка ниже." in screen.text
+    assert "• сеть — пока ни одна не подключена" in screen.text
+    keys = buttons(screen.keyboard)
+    assert "now" not in keys                                  # nothing to collect yet
+    assert keys["conn"] == "🔌 Подключить сеть"                 # one way to connections, not two
+    assert keys["set:tz"] == "🌍 Выбрать часовой пояс"
+
+
+async def test_every_setup_item_has_its_own_button(config, db):
+    with_instagram = dataclasses.replace(config, instagram_username="semyon")
+    todo = await ui.setup_todo(db, with_instagram)
+    assert [callback for callback, _, _ in todo] == ["set:tz", "ig", "li"]
+    home_buttons = buttons((await ui.home(db, with_instagram)).keyboard)
+    for callback, _, label in todo:
+        assert home_buttons[callback] == label
+
+
+@pytest.mark.parametrize(("code", "zone"), [
+    ("uz", "Asia/Tashkent"), ("kk", "Asia/Almaty"), ("ky", "Asia/Bishkek"), ("tg", "Asia/Dushanbe"), ("be-BY", "Europe/Minsk"),
+])
+async def test_neighbours_keep_russian_and_get_their_zone(config, db, monkeypatch, code, zone):
+    for name in ("BOT_LANG", "TIMEZONE", "REPORT_TZ"):
+        monkeypatch.delenv(name, raising=False)
+    assert await handlers.adopt_owner_language(code, config, db) == (False, True)
+    assert config.lang == "ru" and i18n.language() == "ru"
+    assert await db.get_setting("report_tz") == zone
+
+
+async def test_a_chosen_zone_beats_the_country_zone(config, db, monkeypatch):
+    monkeypatch.delenv("BOT_LANG", raising=False)
+    monkeypatch.setenv("TIMEZONE", "Europe/Berlin")
+    assert await handlers.adopt_owner_language("uz", config, db) == (False, False)
+    assert await db.get_setting("report_tz") is None
+
+
+async def test_settz_takes_a_city(make_update, make_context, db):
+    update = make_update()
+    await handlers.cmd_settz(update, make_context("new", "york"))
+    assert await db.get_setting("report_tz") == "America/New_York"
+    update = make_update()
+    await handlers.cmd_settz(update, make_context("Ташкент"))
+    assert await db.get_setting("report_tz") == "Asia/Tashkent"
+
+
+async def test_the_watchdog_off_question_names_the_fallback(config):
+    plain = ui.watchdog_off_confirm()
+    assert "healthchecks.io поставь на паузу" in plain.text and "настроек хостинга" not in plain.text
+    assert "Буду отмечаться по ссылке из настроек хостинга." in ui.watchdog_off_confirm(fallback=True).text

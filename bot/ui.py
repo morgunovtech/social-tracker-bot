@@ -11,15 +11,15 @@ the chat, so the handlers send an id they no longer know to the home screen.
 
 from __future__ import annotations
 
+import functools
 import html
-import platform as py_platform
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, available_timezones
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
-from bot import monitors, notifier, platforms, reputation, security_log, tofs_status, watchdog
+from bot import __version__, monitors, notifier, platforms, reputation, security_log, tofs_status, watchdog
 from bot.callbacks import (
     BACKUP,
     CHANNEL,
@@ -51,7 +51,7 @@ from bot.callbacks import (
     WATCHDOG,
     WD_URL,
 )
-from bot.config import DOW_ORDER, Config
+from bot.config import DOW_ORDER, Config, normalize_tz
 from bot.db import HELD_KEEP_DAYS, Database, parse_utc, utcnow
 from bot.i18n import language, plural, t
 from bot.monitors import channel, comments, hygiene, outgoing
@@ -119,18 +119,79 @@ COMMON_ZONES = (
     ("Asia/Vladivostok", "Владивосток"),
 )
 _ZONE_NAMES = dict(COMMON_ZONES)
+# Where two zones share a city, the one under a continent is the current
+# name; US/…, Canada/… and the bare names are older aliases of the same clock.
+_REGIONS = ("Europe", "Asia", "America", "Africa", "Australia", "Pacific", "Atlantic", "Indian", "Antarctica", "Arctic")
 
-def welcome(claimed: bool = False) -> str:
+
+@functools.cache
+def _cities() -> dict[str, str]:
+    """A city as the zone's last part spells it, lower case → the zone."""
+    found: dict[str, list[str]] = {}
+    for zone in available_timezones():
+        found.setdefault(zone.rsplit("/", 1)[-1].lower(), []).append(zone)
+    return {
+        city: min(zones, key=lambda z: (z.split("/", 1)[0] not in _REGIONS, len(z), z))
+        for city, zones in found.items()
+    }
+
+
+def zone_from_text(text: str) -> str | None:
+    """The zone the owner means by what they typed in the chat: a zone name
+    (Asia/Tashkent), a city of the picker as the chat shows it (Ташкент) or
+    any zone's city in English (tashkent, New York). None when nothing fits.
+    The strict normalize_tz stays for .env, where a typo should stop the bot."""
+    value = " ".join(text.split())
+    if not value:
+        return None
+    try:
+        return normalize_tz(value)
+    except ValueError:
+        pass
+    folded = value.casefold()
+    for key, name in COMMON_ZONES:
+        if folded in (name.casefold(), t(name).casefold()):
+            return key
+    return _cities().get(folded.replace(" ", "_"))
+
+
+# The step-by-step pages the screens point to, one per connection.
+DOCS_URL = "https://github.com/morgunovtech/social-tracker-bot/blob/main/docs"
+
+
+def guide(name: str) -> str:
+    """docs/connect/<name>.md, or its English twin <name>.en.md."""
+    return f"{DOCS_URL}/connect/{name}{'.en' if language() == 'en' else ''}.md"
+
+
+def welcome(claimed: bool = False, fresh: bool = False) -> str:
     """The /start greeting in the chat language; claimed — this /start just
-    made the sender the owner."""
+    made the sender the owner; fresh — no network is connected yet, so the
+    greeting says where to start. The watchdog is offered by itself after
+    the first collection (BOT_PRINCIPLES §6); step 3 only says so."""
     head = t("✅ Теперь этот бот твой: он отвечает только тебе.") + "\n\n" if claimed else ""
-    return head + t(
+    text = head + t(
         "👋 Привет! Я слежу за подписчиками и безопасностью твоих аккаунтов.\n\n"
         "Пока всё в порядке, я молчу. О падении подписчиков, накрутке, смене названия, ссылок "
         "или админов и о письмах про новые входы пишу сразу, а сводку присылаю по расписанию.\n\n"
         "Под полем ввода — три кнопки: «{home}» — главный экран, «{about}» — что я делаю и все команды, "
         "«{icons}» — что значат значки и что звонит."
     ).format(home=t(HOME_BUTTON_TEXT), about=t(ABOUT_BUTTON_TEXT), icons=t(ICONS_BUTTON_TEXT))
+    if fresh:
+        text += "\n\n" + t(
+            "С чего начать:\n"
+            "1. 🔌 Подключения → «➕» у своей сети.\n"
+            "2. 🌍 Часовой пояс — чтобы отчёт приходил в твоё утро.\n"
+            "3. ⏱ Сторож — после первой сети я предложу его сам: он скажет, если я остановлюсь."
+        )
+    return text
+
+
+# The first line of 🔌 Подключения after the first /start of a fresh bot.
+FIRST_NETWORK = (
+    "Начнём: выбери сеть, которую подключить первой. Проще всего — Telegram-канал: "
+    "достаточно сделать меня его админом."
+)
 
 
 LANG_NAMES = {"ru": "русский", "en": "английский"}
@@ -352,18 +413,28 @@ async def last_collected(db: Database, config: Config, tz: ZoneInfo) -> str | No
     return t("сегодня {time}").format(time=local.strftime("%H:%M")) if local.date() == today else local.strftime("%d.%m %H:%M")
 
 
-async def setup_todo(db: Database, config: Config) -> list[tuple[str, str]]:
-    """What a fresh install still needs, as (callback, line): the time zone
-    while none was ever chosen (the report would come at 08:00 UTC), the
-    Instagram token, the first LinkedIn number. Empty once everything is set."""
-    todo: list[tuple[str, str]] = []
+async def setup_todo(db: Database, config: Config) -> list[tuple[str, str, str]]:
+    """What a fresh install still needs, as (callback, line, button): a
+    network while none is connected, the time zone while none was ever chosen
+    (the report would come at the default zone's 08:00), the Instagram token,
+    the first LinkedIn number. Every line has its own button on the home
+    screen. Empty once everything is set."""
+    todo: list[tuple[str, str, str]] = []
+    if not platforms.enabled(config):
+        todo.append((CONNECTIONS, t("сеть — пока ни одна не подключена"), t("🔌 Подключить сеть")))
     if await db.get_setting("report_tz") is None:
         tz = await get_report_tz(db, config)
-        todo.append((f"{SETTINGS}:tz", t("часовой пояс — пока {tz}, выбери свой").format(tz=tz_name(tz))))
+        todo.append((
+            f"{SETTINGS}:tz",
+            t("часовой пояс — пока {tz}, выбери свой").format(tz=tz_name(tz)),
+            t("🌍 Выбрать часовой пояс"),
+        ))
     if BY_ID["instagram"].enabled(config) and not await ig.get_active_token(db, config):
-        todo.append((CONNECTIONS, t("токен Instagram — без него число не собирается")))
+        todo.append((INSTAGRAM, t("токен Instagram — без него число не собирается"), t("📸 Токен Instagram")))
     if BY_ID["linkedin"].enabled(config) and await db.get_latest("linkedin") is None:
-        todo.append((CONNECTIONS, t("LinkedIn — cookie для автосбора или первое число вручную")))
+        todo.append((
+            LINKEDIN, t("LinkedIn — cookie для автосбора или первое число вручную"), t("💼 Первое число LinkedIn")
+        ))
     return todo
 
 
@@ -385,16 +456,17 @@ async def home(db: Database, config: Config, report: str | None = None) -> Scree
         lines.append(esc(silence))
     todo = await setup_todo(db, config)
     if todo:
-        lines += ["", t("🧭 Осталось настроить:")] + [f"• {esc(line)}" for _, line in todo]
-    rows = [
-        [_button(t("🔄 Обновить данные"), NOW)],
-        [_button(t("📈 Динамика"), DYNAMICS), _button(t("🛡 Безопасность"), SECURITY)],
-    ]
+        lines += ["", t("🧭 Осталось настроить:")] + [f"• {esc(line)}" for _, line, _ in todo]
+    # Without a network a refresh has nothing to collect: the first row is
+    # then the way to connect one, from the list below.
+    rows = [[_button(t("🔄 Обновить данные"), NOW)]] if platforms.enabled(config) else []
+    rows.append([_button(t("📈 Динамика"), DYNAMICS), _button(t("🛡 Безопасность"), SECURITY)])
     middle = [_button(t("📣 Канал"), CHANNEL)] if BY_ID["telegram"].enabled(config) else []
-    middle.append(_button(t("🔌 Подключения"), CONNECTIONS))
-    rows.append(middle)
-    if any(callback == f"{SETTINGS}:tz" for callback, _ in todo):
-        rows.append([_button(t("🌍 Выбрать часовой пояс"), f"{SETTINGS}:tz")])
+    if not any(callback == CONNECTIONS for callback, _, _ in todo):   # else «🔌 Подключить сеть» below is the way
+        middle.append(_button(t("🔌 Подключения"), CONNECTIONS))
+    if middle:
+        rows.append(middle)
+    rows += [[_button(label, callback)] for callback, _, label in todo]
     if await linkedin_is_manual(db, config):
         rows.append([_button(t("✏️ Ввести число LinkedIn"), LI_ENTER)])
     # A refresh is the first row; silence and the settings the last — one tap
@@ -458,7 +530,7 @@ async def connections(db: Database, config: Config) -> Screen:
             rows.append([_button("💼 LinkedIn", LINKEDIN)])
     lines += ["", await watchdog_line(db, config)]
     rows.append([_button(t("⏱ Сторож"), WATCHDOG), _button(t("🔎 Репутация"), REPUTATION)])
-    lines += ["", t("«➕» подключает сеть прямо здесь, «✏️» меняет или убирает её; то, что задано в чате, сильнее .env.")]
+    lines += ["", t("«➕» подключает сеть прямо здесь, «✏️» меняет или убирает её.")]
     rows = [add[i:i + 2] for i in range(0, len(add), 2)] + rows + [change[i:i + 2] for i in range(0, len(change), 2)]
     rows.append(_home())
     return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
@@ -501,17 +573,21 @@ async def watchdog_screen(db: Database, config: Config) -> Screen:
     if where == "chat":
         lines.append(t("Ссылка задана здесь, в чате; адрес я не показываю — по нему можно отмечаться за меня."))
     elif where == "env":
-        lines.append(t("Ссылка — из HEALTHCHECK_URL в .env. Пришли другую — она заменит переменную."))
+        lines.append(t("Ссылка задана в настройках хостинга (HEALTHCHECK_URL). Пришли другую — она её заменит."))
     lines += [
         "",
         t("Если я остановлюсь — упадёт сервер, кончится место, отзовут токен бота — написать об этом я уже не смогу. "
           "Сторож — сервис, у которого я отмечаюсь после каждого ежедневного сбора; не отметился вовремя — он пишет тебе сам."),
         "",
         t("<b>Как подключить</b> (бесплатно, 2 минуты):"),
-        t("1. На healthchecks.io создай check: период — 1 день, grace — 3 часа."),
-        t("2. Скопируй его ссылку вида https://hc-ping.com/… и нажми «🔗 Прислать ссылку»."),
-        t("3. Я сразу отмечусь пробным пингом и прочитаю ответ: если check не найден, скажу."),
-        t("Адрес heartbeat из TofsDevOps тоже подходит — тогда на его главном экране появятся строки по сетям."),
+        t("1. Зарегистрируйся на healthchecks.io и нажми «Add Check»."),
+        t("2. В «Period» поставь 1 day, в «Grace Time» — 3 hours: сторож подождёт 3 часа после пропущенной "
+          "отметки и только потом напишет тебе."),
+        t("3. Скопируй ссылку вида https://hc-ping.com/… и нажми «🔗 Прислать ссылку» — я сразу отмечусь по ней "
+          "и скажу, дошло ли."),
+        t("Ссылка из TofsDevOps (задача «раз в сутки») тоже подходит — тогда на его главном экране появятся "
+          "строки по сетям."),
+        t("Пошагово: {guide}").format(guide=guide("watchdog")),
     ]
     rows = [[_button(t("🔗 Прислать ссылку"), WD_URL)]]
     if where:
@@ -526,7 +602,7 @@ async def watchdog_screen(db: Database, config: Config) -> Screen:
 _REP_FROM = {
     "rep_google": "Search Console — брендовые запросы",
     "rep_yandex": "Вебмастер — брендовые запросы",
-    "rep_ai": "Cloudflare — запросы ИИ-ассистентов (по user-agent: ChatGPT-User, Claude-User, Perplexity-User…)",
+    "rep_ai": "Cloudflare — сколько раз ChatGPT, Claude, Perplexity и другие ассистенты открывали твои страницы",
 }
 
 
@@ -535,6 +611,9 @@ async def reputation_screen(db: Database, config: Config) -> Screen:
     words = await reputation.words(db)
     lines = [
         t("<b>🔎 Репутация</b>"),
+        "",
+        t("Нужна, только если у тебя есть свой сайт — в Google Search Console, Яндекс.Вебмастере или Cloudflare. "
+          "Без сайта этот раздел можно пропустить."),
         "",
         t("Раз в неделю — один отчёт: сколько раз тебя и твои продукты искали и сколько раз ИИ-ассистенты "
           "открывали твои страницы, рядом — рост подписчиков. "
@@ -565,13 +644,16 @@ async def reputation_screen(db: Database, config: Config) -> Screen:
     return Screen("\n".join(lines), InlineKeyboardMarkup(rows))
 
 
-def watchdog_off_confirm() -> Screen:
-    """Removing is asked first (BOT_PRINCIPLES §5)."""
-    return Screen(
-        t("<b>⏏ Отключить сторожа?</b>\n\nЯ перестану отмечаться по ссылке из чата; если задан HEALTHCHECK_URL — "
-          "буду отмечаться по нему. Сам check на healthchecks.io поставь на паузу, иначе он напишет, что я пропал."),
-        InlineKeyboardMarkup([[_button(t("✅ Да, отключить"), f"{WATCHDOG}:off:yes"), _cancel(WATCHDOG)]]),
+def watchdog_off_confirm(fallback: bool = False) -> Screen:
+    """Removing is asked first (BOT_PRINCIPLES §5); fallback — HEALTHCHECK_URL
+    is set, and the pings go there once the chat's link is gone."""
+    text = t(
+        "<b>⏏ Отключить сторожа?</b>\n\nЯ перестану отмечаться по ссылке из чата. Саму проверку на "
+        "healthchecks.io поставь на паузу, иначе она напишет, что я пропал."
     )
+    if fallback:
+        text += " " + t("Буду отмечаться по ссылке из настроек хостинга.")
+    return Screen(text, InlineKeyboardMarkup([[_button(t("✅ Да, отключить"), f"{WATCHDOG}:off:yes"), _cancel(WATCHDOG)]]))
 
 
 def loading() -> Screen:
@@ -819,7 +901,7 @@ def language_note() -> Screen:
 async def settings(db: Database, config: Config) -> Screen:
     dow, hour, minute, tz = await _schedule(db, config)
     quiet = await is_quiet_mode(db, config)
-    build = t("сборка {commit} · ").format(commit=esc(config.app_commit[:7])) if config.app_commit else ""
+    build = t(" · сборка {commit}").format(commit=esc(config.app_commit[:7])) if config.app_commit else ""
     text = "\n".join([
         t("<b>⚙️ Настройки</b>"),
         "",
@@ -835,7 +917,7 @@ async def settings(db: Database, config: Config) -> Screen:
         t("🔔 Когда писать: {when}").format(when=esc(await _when_summary(db, config))),
         *await _outgoing_lines(db, config),
         "",
-        t("<i>Версия: {build}Python {python}</i>").format(build=build, python=py_platform.python_version()),
+        "<i>" + t("Версия {version}").format(version=__version__) + build + "</i>",
     ])
     rows = [
         [_button(t("📅 Дни отчёта"), f"{SETTINGS}:days"), _button(t("🕗 Время отчёта"), f"{SETTINGS}:time")],
@@ -1047,10 +1129,10 @@ async def linkedin(db: Database, config: Config) -> Screen:
     lines += [
         "",
         t(
-            "<b>Автосбор</b>: нажми «🔑 Прислать cookie» и пришли значение cookie li_at "
-            "(linkedin.com → DevTools → Application → Cookies); то же — командой /setcookie. "
-            "Я проверю его и сразу удалю сообщение."
+            "<b>Автосбор</b>: нажми «🔑 Прислать cookie» и пришли cookie li_at — строку, по которой LinkedIn "
+            "узнаёт, что ты вошёл. Я проверю её и сразу удалю сообщение."
         ),
+        t("Пошагово: {guide}").format(guide=guide("linkedin")),
         t("<i>LinkedIn запрещает автоматический доступ, так что автосбор — на твой риск.</i>"),
     ]
     rows = [
@@ -1064,6 +1146,9 @@ async def instagram(db: Database, config: Config) -> Screen:
     """How the Instagram number is collected and how long the token lives."""
     lines = [
         "<b>📸 Instagram</b>",
+        "",
+        t("Нужно: профессиональный аккаунт (Автор или Бизнес) и около 15 минут в кабинете Meta для разработчиков. "
+          "Пошагово: {guide}").format(guide=guide("instagram")),
         "",
         t("Аккаунт: {account}").format(account=esc(BY_ID["instagram"].target(config) or t("не задан"))),
     ]
@@ -1082,7 +1167,7 @@ async def instagram(db: Database, config: Config) -> Screen:
     elif await db.get_setting("instagram_token_alerted") == "1":
         lines.append(t("🟠 Instagram отклонил токен: отозван или истёк — пришли новый через /igtoken."))
     elif age is None:
-        lines.append(t("✅ Число собирается само по токену из переменных окружения."))
+        lines.append(t("✅ Число собирается само по токену из настроек хостинга."))
     else:
         lines.append(
             t(
@@ -1093,12 +1178,8 @@ async def instagram(db: Database, config: Config) -> Screen:
     lines += [
         "",
         t(
-            "<b>Как подключить</b>: аккаунт должен быть профессиональным (Автор или Бизнес). "
-            "На developers.facebook.com создай приложение с вариантом «Instagram API», открой "
-            "«API setup with Unified login», добавь свой аккаунт как Instagram Tester, прими приглашение "
-            "в Instagram (Настройки → Website permissions → Tester invitations) и нажми «Generate token». "
-            "Потом нажми «🔑 Прислать токен» и пришли его одним сообщением (то же — командой /igtoken) — "
-            "я проверю его и сразу удалю сообщение."
+            "Когда токен готов, нажми «🔑 Прислать токен» и пришли его одним сообщением (то же — командой /igtoken). "
+            "Я проверю его и сразу удалю сообщение."
         ),
         t("<i>Это официальный API: бот читает только публичные данные своего аккаунта.</i>"),
     ]
@@ -1125,26 +1206,19 @@ INPUT_PROMPTS = {
         "Регистр не важен; пробел внутри слова находит и слитное написание."
     ),
     "rep_google": (
-        "🔑 Ключ сервисного аккаунта Google, только на чтение:\n"
-        "1. console.cloud.google.com → новый проект → APIs & Services → включи «Google Search Console API».\n"
-        "2. IAM & Admin → Service Accounts → Create; роли не нужны. Keys → Add key → JSON — скачается файл.\n"
-        "3. В Search Console у каждого ресурса: Настройки → Пользователи и разрешения → Добавить пользователя → "
-        "e-mail сервисного аккаунта (client_email в файле), разрешение «Ограниченный»; если ключ не увидит "
-        "ресурс — «Полный».\n"
+        "🔑 Ключ Google для Search Console, только на чтение: в Google Cloud заводится служебный аккаунт с файлом "
+        "ключа, а в Search Console ему открывают доступ к сайту. Пошагово: {guide}\n"
         "Пришли файл или его текст одним сообщением — я проверю ключ и сразу удалю сообщение."
     ),
     "rep_yandex": (
-        "🔑 OAuth-токен Яндекс.Вебмастера, только на чтение:\n"
-        "1. oauth.yandex.ru/client/new → «Веб-сервисы», Redirect URI https://oauth.yandex.ru/verification_code, "
-        "доступ «Яндекс.Вебмастер: получение информации о сайтах» (webmaster:hostinfo).\n"
-        "2. Открой https://oauth.yandex.ru/authorize?response_type=token&client_id=<ClientID приложения> и скопируй токен.\n"
-        "Токен живёт полгода — когда истечёт, отчёт скажет. Пришли его одним сообщением — я проверю и сразу удалю."
+        "🔑 Токен Яндекс.Вебмастера, только на чтение: делается за пару минут на oauth.yandex.ru и живёт полгода — "
+        "когда истечёт, отчёт скажет. Пошагово: {guide}\n"
+        "Пришли его одним сообщением — я проверю и сразу удалю."
     ),
     "rep_ai": (
-        "🔑 API-токен Cloudflare, только на чтение:\n"
-        "dash.cloudflare.com → My Profile → API Tokens → Create Token → Custom token. Права: Zone → Zone → Read и "
-        "Zone → Analytics → Read; Zone Resources — твои зоны.\n"
-        "Пришли токен одним сообщением — я проверю его пробным запросом и сразу удалю сообщение."
+        "🔑 Токен Cloudflare, только на чтение: dash.cloudflare.com → My Profile → API Tokens → Create Token, "
+        "права «Zone Read» и «Analytics Read». Пошагово: {guide}\n"
+        "Пришли токен одним сообщением — я проверю его и сразу удалю сообщение."
     ),
     "conn_telegram": (
         "📣 Пришли @username канала, ссылку t.me/… или его id (-100…). Сначала добавь меня в администраторы канала: "
@@ -1156,9 +1230,8 @@ INPUT_PROMPTS = {
         "Убрать канал, заданный здесь, — пришли «-»."
     ),
     "conn_youtube_key": (
-        "🔑 Шаг 2 из 2. Ключ YouTube Data API: console.cloud.google.com → проект → APIs & Services → включи "
-        "«YouTube Data API v3» → Credentials → Create credentials → API key. "
-        "Пришли ключ одним сообщением — я проверю его на твоём канале и сразу удалю сообщение."
+        "🔑 Шаг 2 из 2. Ключ YouTube бесплатный, делается за 5 минут в Google Cloud: {guide}\n"
+        "Пришли его одним сообщением — я проверю его на твоём канале и сразу удалю сообщение."
     ),
     "conn_instagram": (
         "📸 Пришли @username Instagram (аккаунт должен быть профессиональным: Creator или Business). "
@@ -1169,26 +1242,38 @@ INPUT_PROMPTS = {
         "Убрать профиль, заданный здесь, — пришли «-»."
     ),
     "cookie": (
-        "🔑 Пришли значение cookie li_at одним сообщением "
-        "(linkedin.com → DevTools → Application → Cookies → li_at → Value). "
+        "🔑 Пришли cookie li_at одним сообщением. Это длинная строка, по которой LinkedIn узнаёт, что ты вошёл. "
+        "На компьютере в Chrome: linkedin.com → правый клик → «Просмотреть код» → Application → Cookies → "
+        "linkedin.com → li_at → Value. Пошагово: {guide}\n"
         "Я проверю его и сразу удалю сообщение."
     ),
     "token": (
-        "🔑 Пришли токен Instagram одним сообщением "
-        "(developers.facebook.com → приложение → API setup with Unified login → Generate token). "
+        "🔑 Пришли токен Instagram одним сообщением: его выдаёт кабинет Meta для разработчиков, кнопка "
+        "«Generate token». Пошагово: {guide}\n"
         "Я проверю его и сразу удалю сообщение."
     ),
-    "tz": "🌍 Пришли название часового пояса из базы IANA одним сообщением, например Asia/Kolkata или America/Chicago.",
+    "tz": "🌍 Пришли город или название пояса одним сообщением: Ташкент, Berlin, Asia/Tashkent.",
     "watchdog": (
-        "🔗 Пришли ссылку сторожа одним сообщением: https://hc-ping.com/… из healthchecks.io или адрес heartbeat "
-        "из TofsDevOps. Я отмечусь по ней пробным пингом и сразу удалю сообщение."
+        "🔗 Пришли ссылку сторожа одним сообщением: https://hc-ping.com/… из healthchecks.io или ссылку из "
+        "TofsDevOps. Я сразу отмечусь по ней, скажу, дошло ли, и удалю сообщение."
     ),
 }
+# The page of docs/connect/ a prompt points to as {guide}.
+_PROMPT_GUIDES = {
+    "cookie": "linkedin", "token": "instagram", "conn_youtube_key": "youtube",
+    "rep_google": "reputation", "rep_yandex": "reputation", "rep_ai": "reputation",
+}
+
+
+def prompt_text(kind: str) -> str:
+    """What a step asks for, in the chat language, with its guide's link."""
+    text = t(INPUT_PROMPTS[kind])
+    return text.format(guide=guide(_PROMPT_GUIDES[kind])) if kind in _PROMPT_GUIDES else text
 
 
 def input_prompt(kind: str) -> Screen:
     """«Send it in one message» with a cancel button; the answer is the next message."""
-    return Screen(esc(t(INPUT_PROMPTS[kind])), InlineKeyboardMarkup([[_cancel(INPUT_CANCEL)]]))
+    return Screen(esc(prompt_text(kind)), InlineKeyboardMarkup([[_cancel(INPUT_CANCEL)]]))
 
 
 def input_retry(note: str) -> Screen:
@@ -1198,7 +1283,8 @@ def input_retry(note: str) -> Screen:
 
 def input_retry_tz() -> Screen:
     return Screen(
-        t("Не знаю такой часовой пояс. Нужно название из базы IANA, например Europe/Moscow, или нажми «✖️ Отмена»."),
+        t("Не знаю такой пояс. Пришли город по-английски (Berlin) или название вида Europe/Berlin — "
+          "или нажми «✖️ Отмена»."),
         InlineKeyboardMarkup([[_cancel(INPUT_CANCEL)]]),
     )
 
@@ -1240,7 +1326,7 @@ def linkedin_confirm(prev: int, count: int) -> Screen:
 # legend says it in as many words, the README too.
 CRITICAL_HERE = (
     "🔴 у меня — это: похоже на взлом (новый админ или владелец, ссылка в описании, пропавшие видео "
-    "или публикации, новый вход, смена пароля, почты или 2FA), профиль не читается, почтовый воркер "
+    "или публикации, новый вход, смена пароля, почты или 2FA), профиль не читается, проверка писем "
     "молчит, комментарий, за который блокируют группу. 🟠 — истёкший cookie, отклонённый токен, сбои "
     "сбора, падение подписчиков, смена названия или аватарки."
 )
@@ -1306,7 +1392,7 @@ def about_screen() -> Screen:
         t("<b>Безопасность</b>"),
         t("• Каждые 30 минут сверяю профиль: название, описание и ссылки, аватарку, админов и владельца, "
           "число видео и публикаций."),
-        t("• Письма безопасности, если подключён почтовый воркер: новый вход, смена пароля, почты или 2FA, код входа."),
+        t("• Письма безопасности, если они подключены: новый вход, смена пароля, почты или 2FA, код входа."),
         t("• Комментарии канала, если есть ключ Claude: карточка с кнопками на то, за что блокируют группу. "
           "Сам ничего не удаляю."),
         t("• Чек-лист 2FA и паролей — балл в отчёте. Пароли не спрашиваю и не храню."),

@@ -285,7 +285,10 @@ async def build_report(
             total_month_ago = None
 
     if not has_any_data:
-        lines += ["", t("Данных пока нет — нажми «🔄 Обновить данные» или отправь /now.")]
+        if platforms is not None and not platforms:
+            lines += ["", t("Данных пока нет: сначала подключи сеть — кнопка ниже.")]
+        else:
+            lines += ["", t("Данных пока нет — нажми «🔄 Обновить данные» или отправь /now.")]
         return "\n".join(lines), False
 
     # Total: only the periods every platform with data can back.

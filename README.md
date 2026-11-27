@@ -4,7 +4,7 @@
 
 🇷🇺 [По-русски](README.ru.md) · [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/social-tracker-bot?referralCode=7hTMqE)
 
-The bot talks to you in English or Russian. It takes the language from your Telegram at the first `/start` — Russian stays Russian, any other becomes English — and «🗣 Language» in ⚙️ Settings switches it at any time; the setup is the same in both.
+The bot talks to you in English or Russian. It takes the language from your Telegram at the first `/start` — Russian stays Russian, and so do Uzbek, Kazakh, Kyrgyz, Tajik and Belarusian (with that country's time zone); any other becomes English — and «🗣 Language» in ⚙️ Settings switches it at any time; the setup is the same in both.
 
 <p align="center">
   <img src="docs/images/home.png" width="31%" alt="Home: the follower report, the security score, the next report">
@@ -66,7 +66,7 @@ Everything else stays with you: follower history, the channel's joins, leaves, p
 
 Every network is connected from the chat: 🔌 Connections → «➕ Telegram», «➕ YouTube», «➕ Instagram», «➕ LinkedIn». The bot asks for the value as the next message, checks it — with a live request where there is one — and starts collecting without a restart; «✏️» changes a network later and «-» removes it. The variables named below still work and are the starting values: what is set in the chat wins over `.env`.
 
-0. **Language.** Nothing to set: the first `/start` takes it from your Telegram (Russian stays Russian, any other becomes English). `BOT_LANG=en` or `ru` fixes it beforehand, and ⚙️ Settings → «🗣 Language» switches it later — the choice made in the chat wins over `BOT_LANG`. It covers every screen, report and alert, and the default time zone — UTC for English, Moscow for Russian (see [Schedule](#schedule)). Switching is safe: the recent events on 🛡 Security are stored before translation and read in the new language too. The examples below show the Russian bot.
+0. **Language.** Nothing to set: the first `/start` takes it from your Telegram (Russian stays Russian; Uzbek, Kazakh, Kyrgyz, Tajik and Belarusian stay Russian too and set the report to Tashkent, Almaty, Bishkek, Dushanbe or Minsk time unless a zone was chosen; any other becomes English). A bot without a network answers the first `/start` with where to start and opens 🔌 Connections. `BOT_LANG=en` or `ru` fixes it beforehand, and ⚙️ Settings → «🗣 Language» switches it later — the choice made in the chat wins over `BOT_LANG`. It covers every screen, report and alert, and the default time zone — UTC for English, Moscow for Russian (see [Schedule](#schedule)). Switching is safe: the recent events on 🛡 Security are stored before translation and read in the new language too. The examples below show the Russian bot.
 1. **Telegram (required).** Create a bot with [@BotFather](https://t.me/BotFather) → `BOT_TOKEN`, start it and send it `/start` right away: **the first person to do so becomes its owner**, and the bot answers nobody else. `ADMIN_CHAT_ID` (your user id, from [@userinfobot](https://t.me/userinfobot)) is optional: set it to pin the owner or to take the bot over; it wins over the stored one. To track a channel, make the bot an **admin** of it → `TELEGRAM_CHANNEL_ID`; as an admin it also sees who joins and leaves, every post and its reactions (the 📣 Channel screen).
 2. **YouTube (optional).** In [Google Cloud Console](https://console.cloud.google.com/) enable YouTube Data API v3 and create an API key → `YOUTUBE_API_KEY`; your channel id (`UC…`) → `YOUTUBE_CHANNEL_ID`.
 3. **Instagram (optional).** The account must be professional (Creator or Business: Settings → Account type in the app, free). On [developers.facebook.com](https://developers.facebook.com/) create an app with the **Instagram API** use case (Meta also asks for a business portfolio: free, no verification needed for your own account), open «API setup with Unified login», create the configuration from the template, add your account as an **Instagram Tester**, accept the invitation in Instagram (Settings → Website permissions → Tester invitations) and press **Generate token**. Your @username → `INSTAGRAM_USERNAME`, then send the bot `/igtoken <token>` — it checks that the token was granted for that account, deletes your message and keeps the token (or set `INSTAGRAM_ACCESS_TOKEN` in `.env`). The token does not expire; if Meta revokes it, the bot says so once and in every report until a new one arrives. This is the official Instagram API: the bot reads only its own account's public data (followers, name, bio, post count) and watches those for a hijack.
@@ -146,13 +146,13 @@ Everything is a button away. Three buttons live under the input field: «🏠 Ho
 │   └── 💼 LinkedIn — how the number is collected, the cookie's age, «🔑 Send the cookie», «✏️ Enter count by hand»
 ├── ✏️ Enter LinkedIn count — only while the number is typed in by hand
 ├── 🔕 Mute… — for an hour, four, eight or a day, and what still rings; 🔔 Unmute while a mute lasts
-├── ⚙️ Settings — report days (checkboxes), report hour (a grid) and minutes, time zone (presets or «✏️ Another zone…»), 🗣 Language, short when unchanged, 📦 Backup now; the last line names the running build (commit) and Python
+├── ⚙️ Settings — report days (checkboxes), report hour (a grid) and minutes, time zone (presets or «✏️ Another zone…»), 🗣 Language, short when unchanged, 📦 Backup now; the last line names the version and the running build (commit)
 │   ├── 🔔 When to write — quiet hours (presets), «🔕 Mute» for an hour, four, eight or a day
 │   └── 🧩 Monitors — switch each one on and off (📣 Channel and 💬 Comments have the switch on their own screens too)
 └── 📖 What I do · ❓ Icons — the two other buttons under the input field, as screens
 ```
 
-The home screen also says when the data was last collected and, on a fresh install, what is left to set up (the time zone, a token, a cookie) with a button for each. A tap answers right away with a short confirmation («Saved», «Short when unchanged: on»), a menu message is edited in place instead of piling up, and a button of an older version's menu opens the current one. A cookie, a token or a time zone that is not in the presets is asked for as the next message («🔑 Send the cookie» → paste it → the bot checks it and deletes the message), the same way the LinkedIn number is.
+The home screen also says when the data was last collected and, on a fresh install, what is left to set up — a first network, the time zone, the Instagram token, the first LinkedIn number — with a button for each; until a network is connected there is no «🔄 Refresh data», since there is nothing to collect. A tap answers right away with a short confirmation («Saved», «Short when unchanged: on»), a menu message is edited in place instead of piling up, and a button of an older version's menu opens the current one. A cookie, a token or a time zone that is not in the presets (a city — «Tashkent», «New York» — or a zone name) is asked for as the next message («🔑 Send the cookie» → paste it → the bot checks it and deletes the message), the same way the LinkedIn number is.
 
 ## Commands
 
@@ -175,7 +175,7 @@ No ☰ command list is published: the three buttons under the input field are th
 | `/history [platform] [days]` | Day-by-day table for one platform or `all`, up to 90 days (the combined table keeps the latest days that fit one message) |
 | `/linkedin <number>` | Enter the LinkedIn number by hand; also how you confirm the first number read by cookie, which the bot shows but does not store on its own |
 | `/settime HH:MM`, `/setday <days>` | Report time and day(s) in your time zone: `sat`, `mon,thu`, `mon-fri`, `daily`; without an argument, the picker |
-| `/settz <zone>` | Your time zone, an IANA name such as `Europe/Moscow`; without an argument, a list of common ones |
+| `/settz <zone>` | Your time zone: a city (`/settz Berlin`, `/settz New York`) or a zone name such as `Europe/Moscow`; without an argument, a list of common ones |
 | `/setquiet on\|off` | Short when unchanged: one line instead of the report when a week brought no change |
 | `/mute <time>`, `/unmute` | Pause everything but the critical for `1h`, `8h` (the default), `30m`, `1d`, up to 7 days; what was held arrives as one digest when it ends. Also «🔕 Mute…» on the home screen and «🔕 Quiet for 8 h» under any alert |
 | `/setcookie [li_at]`, `/cookieage` | Set the LinkedIn cookie, check its age; without the value the bot asks for it as the next message, with «✖️ Cancel» |
