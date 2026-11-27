@@ -16,6 +16,7 @@ from bot.db import utcnow
 from bot.i18n import plural, t
 from bot.monitors import channel, collection, comments, followers, hygiene, mail, profile
 from bot.platforms import BY_ID, PLATFORMS
+from bot.platforms import instagram as ig
 from bot.scheduler import CollectOutcome, _send_backup
 
 CYRILLIC = re.compile("[А-Яа-яЁё]")
@@ -203,6 +204,12 @@ async def test_every_screen(config, db, insert, monkeypatch):
     screen_english(await ui.home(db, config))
     screen_english(await ui.linkedin(db, config))
     screen_english(await ui.instagram(db, config))
+    # The token's term from debug_token: none, a far date, a date within the week.
+    for expiry in (ig.NEVER, (utcnow() + timedelta(days=40)).isoformat(), (utcnow() + timedelta(days=3)).isoformat()):
+        await db.set_setting(ig.EXPIRES_KEY, expiry)
+        screen_english(await ui.instagram(db, config))
+        screen_english(await ui.connections(db, config))
+    await db.set_setting(ig.EXPIRES_KEY, "")
     # Quiet hours and a mute: the when screen, the home chip, the mute note.
     # «0-23» is half-open (00:00–23:00): at 23:xx the real clock is outside it, so the
     # notifier reads a pinned noon — the mute deadline is counted from the same clock.
@@ -242,6 +249,8 @@ async def test_reports_and_tables(config, db, insert):
     english_only(text)
     text, _ = await reporter.build_report(db, errors={"linkedin_cookie_aging": 340, "instagram_token_expired": True})
     english_only(text)
+    text, _ = await reporter.build_report(db, errors={"instagram_token_expiring": 1})
+    english_only(text)
     english_only((await reporter.build_report(db, platforms=["tiktok"]))[0])
     english_only(await reporter.build_week_report(db))
     english_only(await reporter.build_month_report(db))
@@ -250,7 +259,8 @@ async def test_reports_and_tables(config, db, insert):
     english_only(await reporter.build_history_table(db, "telegram", 7))
     english_only(await reporter.build_history_table(db, "linkedin", 1))
     english_only(await hygiene.report_line(db, config))
-    for errs in ({}, errors, {"instagram_token_expired": True}, {"linkedin_cookie_aging": 340}):
+    for errs in ({}, errors, {"instagram_token_expired": True}, {"linkedin_cookie_aging": 340},
+                 {"instagram_token_expiring": 3}):
         payload = await tofs_status.build(db, config, errs)
         english_only(payload["title"])
         for item in payload["items"]:
@@ -273,6 +283,12 @@ async def test_alerts(config, db):
         english_only(line)
     missing = CollectOutcome(report="", has_change=False, errors={"instagram_token_missing": True})
     for line in await collection.alert_lines(db, missing):
+        english_only(line)
+    await db.set_setting(ig.EXPIRES_KEY, (utcnow() + timedelta(days=5)).isoformat())
+    expiring = CollectOutcome(report="", has_change=False, errors={"instagram_token_expiring": 5})
+    lines = await collection.alert_lines(db, expiring)
+    assert lines
+    for line in lines:
         english_only(line)
 
     old = {

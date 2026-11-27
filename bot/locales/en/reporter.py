@@ -86,6 +86,7 @@ STRINGS: dict[str, str] = {
     "{head} — свежие данные собрать не удаётся": "{head} — fresh data cannot be collected",
     "{head} — сегодня собрать не удалось": "{head} — today's collection failed",
     "{head} — cookie живёт {days} дн., пора обновить": "{head} — the cookie is {days} days old, time to renew it",
+    "{head} — токен истекает через {days} {d}": "{head} — the token expires in {days} {d}",
     # --- bot/behavior.py: what an update moved in how the bot behaves
     "ℹ️ После обновления я работаю иначе — это поменяла новая версия, а не ты:":
         "ℹ️ Since the update I work differently — the new version changed this, not you:",
