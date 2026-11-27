@@ -321,6 +321,18 @@ def test_updates_are_handled_concurrently_and_the_collect_lock_is_shared(config,
     assert handlers.collect_lock(app.bot_data) is handlers.collect_lock(app.bot_data)
 
 
+def test_an_old_command_name_still_answers(config, db):
+    """/setquiet became /setshort in 1.17.1; whoever typed the old name keeps it."""
+    from telegram.ext import CommandHandler
+
+    from bot import main
+
+    app = main.build_application(config, db)
+    by_name = {name: h.callback for group in app.handlers.values() for h in group
+               if isinstance(h, CommandHandler) for name in h.commands}
+    assert by_name["setquiet"] is by_name["setshort"]
+
+
 async def test_the_scheduled_run_waits_for_a_manual_collect(bot, config, db, monkeypatch):
     from bot import scheduler as sched
 
@@ -622,9 +634,12 @@ async def test_day_toggles_and_presets(make_update, make_context, db):
     assert query.edits == [] and await db.get_setting("report_dow") == "sat,sun"
 
 
-async def test_quiet_mode_command_and_toggle(make_update, make_context, db):
-    await handlers.cmd_setquiet(make_update(), make_context("on"))
+async def test_short_when_unchanged_command_and_toggle(make_update, make_context, db):
+    await handlers.cmd_setshort(make_update(), make_context("on"))
     assert await db.get_setting("quiet_if_no_change") == "1"
+    # The old name still answers, unlisted: /setquiet read like the quiet hours.
+    assert handlers.COMMANDS[handlers.ALIASES["setquiet"]] is handlers.cmd_setshort
+    assert "setquiet" not in handlers.COMMANDS
     query = await press(make_update, make_context, "set:quiet")
     assert await db.get_setting("quiet_if_no_change") == "0"
     assert "Настройки" in query.edits[0] and query.answers[0]["text"] == "Коротко без изменений: выключено"

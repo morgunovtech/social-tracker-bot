@@ -2,6 +2,26 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.17.1 — 2026-11-27
+
+The check of the feature list against the code turned up four places where the bot or its documents said more than they do.
+
+**Secrets sent in the chat, masked by value**
+- The log redactor masked by value only what came from `.env`. The Instagram token (`/igtoken`), the LinkedIn cookie (`/setcookie`) and the three reputation keys sent in the chat were caught only by the patterns (a key in a URL query, `li_at=…`), so a bare value in an error text would have reached the log. Every secret setting (`db._SECRET_SETTINGS`) now joins the redactor's list the moment it is stored or read, and the whole list is loaded from the DB at start. For the Search Console key, its private key and its id are masked too, line by line, so a traceback that prints them with escaped line breaks shows nothing.
+- `watchdog.known_url()` kept the same list for the watchdog address alone; it is gone, the DB's list covers it.
+
+**What 🔨 does, said precisely**
+- The code said `revoke_messages=True` drops everything the author wrote. In a supergroup, which every discussion group is, Telegram ignores it (tdlib bans and nothing more), so the author's other messages always stayed. The flag is gone, the comment says what happens, and `docs/connect/comments*.md` and `docs/FEATURES*.md` say that 🔨 deletes this comment and bans its author, while the author's other messages stay: only the Telegram app can delete all of one member's messages at once.
+
+**SECURITY.md**
+- It promised a Sunday report of known vulnerabilities (OSV). That report comes only while the «Для разработчика» monitor is on, and it is off on a new install. The text now says so. It also says that the secrets sent in the chat are masked in the logs by value.
+
+**`/setshort` instead of `/setquiet`**
+- `/setquiet on|off` switches «Коротко без изменений» (one line instead of the report when a week brought no change), not the quiet hours. It is now `/setshort` in «📖 Что я умею» and `docs/FEATURES*.md`. The old name still works and is no longer listed (`handlers.ALIASES`).
+
+**Tests**
+- `tests/test_redact.py`: a token and a service-account key stored as settings are masked by value in a log line, the key's escaped lines too, a plain setting is not, and after a restart the list is filled from the DB. `tests/test_handlers.py`: `/setshort` switches the setting, `/setquiet` is registered as the same handler and is not listed.
+
 ## 1.17.0 — 2026-11-27
 
 The 📸 Instagram screen called the token «бессрочный», and the guides said «may live 60 days». Per Meta's documentation, both are partly true. «API setup with Unified login» → «Generate token» issues a Business Integration System User access token. Its term is chosen in the app's login configuration: never by default, sometimes 60 days. The bot can't renew a 60-day one: Meta renews system-user tokens only with the app secret, which the bot never asks for. `graph.instagram.com/refresh_access_token` is for Instagram-login tokens, a path new apps no longer get. So the bot now reads the real term from Meta and says it, instead of promising one.

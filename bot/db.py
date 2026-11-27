@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sqlite3
@@ -180,6 +181,36 @@ _SECRET_KEYS: dict[str, tuple[str, ...]] = {
     "conn_security_mail_token": ("conn_security_mail_token",),
 }
 
+# Every secret value the bot has stored, read or loaded at start, for the log
+# redactor (bot/main.py): a key sent in the chat is masked by its value, like
+# one from .env, not only by the patterns. A removed value stays on the list —
+# masking it costs nothing.
+_known_secrets: set[str] = set()
+
+
+def known_secrets() -> list[str]:
+    return list(_known_secrets)
+
+
+def _remember_secret(key: str, value: str | None) -> None:
+    if key not in _SECRET_SETTINGS or not value:
+        return
+    _known_secrets.add(value)
+    if key == "rep_google_key":
+        # The service-account JSON: its private key can turn up on its own, with
+        # real or escaped line breaks, so each line of it is masked by itself.
+        try:
+            info = json.loads(value)
+        except ValueError:
+            return
+        if not isinstance(info, dict):
+            return
+        for field in ("private_key", "private_key_id"):
+            part = info.get(field)
+            if isinstance(part, str) and part:
+                _known_secrets.add(part)
+                _known_secrets.update(line.strip() for line in part.splitlines() if "-----" not in line)
+
 # Retention, applied once a day by the scheduler (prune). A join and a flagged
 # comment name a person, and the weekly backup carries every row to the chat,
 # so nothing stays longer than a screen reads it: /channel and /comments look
@@ -243,6 +274,11 @@ class Database:
             await db.execute(_CREATE_CHANNEL_POSTS)
             await db.execute(_CREATE_API_USAGE)
             await db.commit()
+            placeholders = ",".join("?" * len(_SECRET_SETTINGS))
+            for key, value in await (await db.execute(
+                f"SELECT key, value FROM settings WHERE key IN ({placeholders})", _SECRET_SETTINGS
+            )).fetchall():
+                _remember_secret(key, value)
         logger.info("Database initialized at %s", self._db_path)
 
     async def snapshot_without_secrets(self, dest_path: str) -> None:
@@ -354,9 +390,13 @@ class Database:
         async with aiosqlite.connect(self._db_path) as db:
             cursor = await db.execute("SELECT value FROM settings WHERE key = ?", (key,))
             row = await cursor.fetchone()
-            return row[0] if row else default
+        if row is None:
+            return default
+        _remember_secret(key, row[0])
+        return row[0]
 
     async def set_setting(self, key: str, value: str) -> None:
+        _remember_secret(key, value)
         async with aiosqlite.connect(self._db_path) as db:
             await db.execute(
                 "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
