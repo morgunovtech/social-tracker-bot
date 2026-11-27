@@ -265,9 +265,17 @@ WATCHDOG_OFFER = (
 
 
 async def offer_watchdog(bot: Bot, config: Config, db: Database, outcome: CollectOutcome) -> bool:
-    """After the first collection that read a network: the watchdog, once,
-    unless one is already set (in the chat or in HEALTHCHECK_URL)."""
-    if not outcome.collected or await db.get_setting(watchdog.OFFERED_KEY) == "1":
+    """After the first collection that read a network: the watchdog, once."""
+    if not outcome.collected:
+        return False
+    return await offer_watchdog_once(bot, config, db)
+
+
+async def offer_watchdog_once(bot: Bot, config: Config, db: Database) -> bool:
+    """The watchdog, once ever, unless one is already set (in the chat or in
+    HEALTHCHECK_URL): after the first collection, or as soon as a network is
+    connected from the chat — the greeting promises it after the first network."""
+    if await db.get_setting(watchdog.OFFERED_KEY) == "1":
         return False
     if await watchdog.url(db, config):
         return False
@@ -575,6 +583,13 @@ async def get_report_tz(db: Database, config: Config) -> ZoneInfo:
     if await db.get_setting("report_time") or await db.get_setting("report_dow"):
         return UTC  # saved by a version without the zone setting, which kept them in UTC
     return ZoneInfo(config.report_tz)
+
+
+async def zone_chosen(db: Database) -> bool:
+    """The owner chose the report's zone: TIMEZONE (REPORT_TZ, its name
+    before 1.5.0) on the host, or a zone picked in the chat. Otherwise the
+    zone is only the language's default, and the home screen asks for one."""
+    return bool((os.getenv("TIMEZONE") or os.getenv("REPORT_TZ") or "").strip() or await db.get_setting("report_tz"))
 
 
 async def save_schedule(

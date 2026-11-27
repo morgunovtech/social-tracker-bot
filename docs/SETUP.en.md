@@ -41,7 +41,7 @@ The bot takes its language from your Telegram: Russian stays Russian (so do Uzbe
 
 ## Step 4. The first network
 
-In its second message the bot opens 🔌 Connections. The easiest start is a Telegram channel: make the bot an admin of the channel — the bot writes by itself and offers to connect that channel with one button. Step by step: [connect/telegram.en.md](connect/telegram.en.md). Then pick your time zone (home → «🌍 Choose the time zone») so the report comes in your morning. After the first collection the bot offers the watchdog by itself.
+In its second message the bot opens 🔌 Connections. The easiest start is a Telegram channel: make the bot an admin of the channel — the bot writes by itself and offers to connect that channel with one button. Step by step: [connect/telegram.en.md](connect/telegram.en.md). Then pick your time zone (home → «🌍 Choose the time zone») so the report comes in your morning. As soon as the first network is connected, the bot offers the watchdog by itself.
 
 ## The other connections
 

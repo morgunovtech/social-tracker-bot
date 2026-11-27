@@ -1,6 +1,6 @@
 # ⏱ Watchdog
 
-Guide for people: https://github.com/morgunovtech/social-tracker-bot/blob/main/docs/connect/watchdog.en.md (Russian: watchdog.md). 2 minutes, free. The bot also offers it by itself after its first collection.
+Guide for people: https://github.com/morgunovtech/social-tracker-bot/blob/main/docs/connect/watchdog.en.md (Russian: watchdog.md). 2 minutes, free. The bot also offers it by itself as soon as the first network is connected.
 
 1. https://healthchecks.io — the user signs up / signs in.
 2. «Add Check»: «Period» 1 day, «Grace Time» 3 hours. Check «Integrations» — email to the account by default.

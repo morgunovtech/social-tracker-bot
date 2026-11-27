@@ -980,7 +980,9 @@ async def test_a_bot_with_a_network_greets_with_the_home_screen(make_update, mak
     assert "С чего начать" not in greeting and home.startswith("<b>📊 Подписчики")
 
 
-async def test_an_empty_home_points_to_a_network_and_has_a_button_per_item(make_update, make_context, config, db):
+async def test_an_empty_home_points_to_a_network_and_has_a_button_per_item(make_update, make_context, config, db,
+                                                                            monkeypatch):
+    monkeypatch.setenv("REPORT_TZ", "")                       # a fresh install: no zone on the host either
     fresh = dataclasses.replace(config, **NO_NETWORKS)
     screen = await ui.home(db, fresh)
     assert "Данных пока нет: сначала подключи сеть — кнопка ниже." in screen.text
@@ -991,7 +993,8 @@ async def test_an_empty_home_points_to_a_network_and_has_a_button_per_item(make_
     assert keys["set:tz"] == "🌍 Выбрать часовой пояс"
 
 
-async def test_every_setup_item_has_its_own_button(config, db):
+async def test_every_setup_item_has_its_own_button(config, db, monkeypatch):
+    monkeypatch.setenv("REPORT_TZ", "")
     with_instagram = dataclasses.replace(config, instagram_username="semyon")
     todo = await ui.setup_todo(db, with_instagram)
     assert [callback for callback, _, _ in todo] == ["set:tz", "ig", "li"]
@@ -1031,3 +1034,15 @@ async def test_the_watchdog_off_question_names_the_fallback(config):
     plain = ui.watchdog_off_confirm()
     assert "healthchecks.io поставь на паузу" in plain.text and "настроек хостинга" not in plain.text
     assert "Буду отмечаться по ссылке из настроек хостинга." in ui.watchdog_off_confirm(fallback=True).text
+
+
+async def test_a_zone_set_on_the_host_is_not_asked_for_again(config, db, monkeypatch):
+    """TIMEZONE (or REPORT_TZ, its old name) on the host is a chosen zone:
+    «Осталось настроить» doesn't ask for one, as the greeting doesn't."""
+    monkeypatch.setenv("REPORT_TZ", "")
+    assert "set:tz" in [callback for callback, _, _ in await ui.setup_todo(db, config)]
+    monkeypatch.setenv("TIMEZONE", "Asia/Tashkent")
+    assert "set:tz" not in [callback for callback, _, _ in await ui.setup_todo(db, config)]
+    monkeypatch.setenv("TIMEZONE", "")
+    await db.set_setting("report_tz", "Asia/Tashkent")                 # chosen in the chat
+    assert "set:tz" not in [callback for callback, _, _ in await ui.setup_todo(db, config)]
