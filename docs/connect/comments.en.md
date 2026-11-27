@@ -1,6 +1,6 @@
 # 💬 Channel comments
 
-🇷🇺 [По-русски](comments.md) · [All connections](../../README.md#setup)
+🇷🇺 [По-русски](comments.md) · [All connections](../SETUP.en.md#the-other-connections)
 
 Telegram blocks a whole discussion group for drug sales, pornography, sexualization of minors, extremism and fraud in its comments. The bot looks at every new comment with a Claude model and sends you a card for such content with the buttons 🗑 delete, 🔨 delete and ban, ✅ all fine. **It never deletes or bans anything by itself** — only when you tap.
 

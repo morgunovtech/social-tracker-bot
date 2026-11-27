@@ -1,6 +1,6 @@
 # ⏱ Watchdog
 
-🇷🇺 [По-русски](watchdog.md) · [All connections](../../README.md#setup)
+🇷🇺 [По-русски](watchdog.md) · [All connections](../SETUP.en.md#the-other-connections)
 
 If the bot stops — the server goes down, the hosting runs out of money, the token is revoked — it can no longer tell you. A watchdog is a free service the bot checks in with after every daily collection. If it doesn't check in on time, the watchdog writes to you itself.
 

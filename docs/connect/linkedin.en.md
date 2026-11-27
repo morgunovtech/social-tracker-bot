@@ -1,6 +1,6 @@
 # 💼 LinkedIn
 
-🇷🇺 [По-русски](linkedin.md) · [All connections](../../README.md#setup)
+🇷🇺 [По-русски](linkedin.md) · [All connections](../SETUP.en.md#the-other-connections)
 
 LinkedIn has no official API for a personal profile's follower count. So by default you type the number in — once a week or whenever it suits you — and automatic collection with a cookie is a separate path at your own risk.
 

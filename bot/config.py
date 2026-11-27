@@ -259,7 +259,7 @@ class Config:
             instagram_username=(os.getenv("INSTAGRAM_USERNAME") or "").strip().lstrip("@") or None,
             instagram_access_token=os.getenv("INSTAGRAM_ACCESS_TOKEN") or None,
             linkedin_profile_url=os.getenv("LINKEDIN_PROFILE_URL") or None,
-            linkedin_li_at=os.getenv("LINKEDIN_LI_AT"),
+            linkedin_li_at=(os.getenv("LINKEDIN_LI_AT") or "").strip() or None,
             linkedin_stale_days=_int("LINKEDIN_STALE_DAYS", 7, 1, 3650),
             # REPORT_HOUR_UTC is its name from before the zone setting.
             report_hour=_int("REPORT_HOUR", 8, 0, 23, legacy="REPORT_HOUR_UTC"),
@@ -270,7 +270,7 @@ class Config:
             lang=lang,
             db_path=os.getenv("DB_PATH", "data/followers.db"),
             site_ingest_url=os.getenv("SITE_INGEST_URL") or None,
-            site_ingest_token=os.getenv("SOCIALBOT_INGEST_TOKEN"),
+            site_ingest_token=(os.getenv("SOCIALBOT_INGEST_TOKEN") or "").strip() or None,
             healthcheck_url=_url("HEALTHCHECK_URL"),
             app_commit=(os.getenv("APP_COMMIT") or os.getenv("RAILWAY_GIT_COMMIT_SHA") or "").strip()[:12],
             repo_slug=_repo_slug(),

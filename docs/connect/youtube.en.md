@@ -1,6 +1,6 @@
 # ▶️ YouTube
 
-🇷🇺 [По-русски](youtube.md) · [All connections](../../README.md#setup)
+🇷🇺 [По-русски](youtube.md) · [All connections](../SETUP.en.md#the-other-connections)
 
 Once a day the bot reads your channel's subscriber count, and every half hour it compares the channel's title, description, avatar and video count — vanished videos and a stranger's link in the description are often the first signs of a hijack.
 

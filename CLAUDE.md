@@ -5,7 +5,7 @@ General rules for every project (branches and PRs, worktrees, no twins, repos in
 ## Commands
 
 - Run: `cp .env.example .env` (fill in `BOT_TOKEN`; `ADMIN_CHAT_ID` is optional, the first `/start` is the owner), then `docker compose up -d`, or `python -m bot.main` in a venv with `requirements.txt` installed (the dev tools: `pip install --require-hashes --no-deps -r requirements-dev.txt` first, then the same for `requirements.txt` — both are hashed locks compiled from their `.in` files, see CONTRIBUTING.md, «Dependencies»).
-- Test / lint (the same as CI): `ruff check .`, `pytest -q` (offline: a fake Telegram, local HTTP servers for every API), `pip-audit -r requirements.txt --strict`; the mail-worker: `cd mail-worker && npm test`.
+- Test / lint (the same as CI): `ruff check .`, `pytest -q` (offline: a fake Telegram, local HTTP servers for every API), `pip check`, `pip-audit -r requirements.txt --strict` and `pip-audit -r requirements-dev.txt --strict`; the mail-worker: `cd mail-worker && npm ci --ignore-scripts && npm test && npm audit --omit=dev`. CI also builds and runs the image (and builds arm64 on a PR).
 
 ## Deploy
 
