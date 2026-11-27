@@ -4,6 +4,7 @@ import json
 import logging
 
 from telegram import Bot, User
+from telegram.constants import ChatMemberStatus
 from telegram.error import BadRequest, Forbidden, TelegramError
 
 from bot.platforms.base import ADMINS, IMAGE, STATE, TEXT, Context, Platform, Snapshot
@@ -19,6 +20,23 @@ async def collect_telegram(bot: Bot, channel_id: str) -> int | None:
     except Exception:
         logger.exception("Failed to collect Telegram subscribers")
         return None
+
+
+async def channel_info(bot: Bot, channel_id: str) -> tuple[str, bool]:
+    """The channel's title ("" when Telegram doesn't say) and whether the bot
+    is one of its admins — what the bot says when a channel is connected."""
+    try:
+        title = (await bot.get_chat(chat_id=channel_id)).title or ""
+    except Exception:
+        logger.info("No title for Telegram channel %s", channel_id, exc_info=True)
+        title = ""
+    try:
+        me = await bot.get_chat_member(chat_id=channel_id, user_id=bot.id)
+        admin = me.status in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER)
+    except Exception:
+        logger.info("The bot's status in Telegram channel %s is unknown", channel_id, exc_info=True)
+        admin = False
+    return title, admin
 
 
 def _user_name(user: User) -> str:

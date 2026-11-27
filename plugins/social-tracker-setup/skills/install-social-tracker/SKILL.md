@@ -29,10 +29,10 @@ Do **not** use the Railway CLI or any command line: some sandboxes restrict netw
 ## The steps
 
 1. **A bot at @BotFather** — follow [references/botfather.md](references/botfather.md). Get the token. Ask: «Shall I paste the token into Railway for you? It will be visible to me in this session.» The default is that they paste it.
-2. **Railway** — follow [references/railway.md](references/railway.md): the template link with the author's referral code (say so: the price is the same for them; a link without the code is in that file), sign-in by them, Configure → `BOT_TOKEN` → Deploy → wait for active → `Bot ready` in the logs.
+2. **Railway** — follow [references/railway.md](references/railway.md): the template link with the author's referral code (say so: the price is the same for them; a link without the code is in that file), sign-in by them, Deploy Now → Configure → `BOT_TOKEN` → Save Config → Deploy → wait for Online → `Bot ready` in the logs.
 3. **/start** — follow the first part of [references/telegram-channel.md](references/telegram-channel.md): open the bot, press Start, see «✅ Теперь этот бот твой» / «✅ This bot is yours now».
 4. **Each network they chose**, through the bot's buttons (🔌 Подключения → «➕ …» / 🔌 Connections → «➕ …»), each by its reference:
-   - Telegram channel — [references/telegram-channel.md](references/telegram-channel.md) (make the bot an admin in the channel's settings in Telegram Web, then send the bot the @channel)
+   - Telegram channel — [references/telegram-channel.md](references/telegram-channel.md) (make the bot an admin in the channel's settings in Telegram Web; the bot then offers to connect that channel with one button)
    - YouTube — [references/youtube.md](references/youtube.md)
    - Instagram — [references/instagram.md](references/instagram.md) (warn: the longest path)
    - LinkedIn — [references/linkedin.md](references/linkedin.md)

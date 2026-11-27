@@ -35,6 +35,7 @@ from bot import connections as chat_connections
 from bot.callbacks import (
     BACKUP,
     CHANNEL,
+    CHANNEL_PICK,
     CHART,
     CLAUDE_KEY,
     COMMENTS,
@@ -525,6 +526,8 @@ async def connections(db: Database, config: Config) -> Screen:
             continue
         change.append(_button(f"✏️ {platform.label}", CONN_ADD[platform.id]))
         target = esc(platform.target(config))
+        if platform.id == "telegram" and (title := await chat_connections.telegram_title(db, config)):
+            target = f"«{esc(title)}»"
         latest = await db.get_latest(platform.id)
         state = ""
         if platform.id == "instagram":
@@ -762,6 +765,17 @@ def watchdog_off_confirm(fallback: bool = False) -> Screen:
     if fallback:
         text += " " + t("Буду отмечаться по ссылке из настроек хостинга.")
     return Screen(text, InlineKeyboardMarkup([[_button(t("✅ Да, отключить"), f"{WATCHDOG}:off:yes"), _cancel(WATCHDOG)]]))
+
+
+def channel_offer(title: str, chat_id: int) -> Screen:
+    """The owner has just made the bot an admin of a channel, and none is
+    connected: a private channel has no @username and its -100… id is shown
+    nowhere in Telegram's apps, so the bot offers the channel by its name."""
+    text = t(
+        "📣 Ты сделал меня администратором канала «{title}». Подключить его? Я буду считать подписчиков "
+        "и записывать вступления, посты и реакции."
+    ).format(title=esc(title))
+    return Screen(text, InlineKeyboardMarkup([[_button(t("✅ Подключить канал"), f"{CHANNEL_PICK}:{chat_id}")], _home()]))
 
 
 def loading() -> Screen:
@@ -1396,8 +1410,9 @@ INPUT_PROMPTS = {
         "Пришли токен одним сообщением — я проверю его и сразу удалю сообщение."
     ),
     "conn_telegram": (
-        "📣 Пришли @username канала, ссылку t.me/… или его id (-100…). Сначала добавь меня в администраторы канала: "
-        "так я увижу и подписчиков, и вступления с постами. Убрать канал, заданный здесь, — пришли «-»."
+        "📣 Пришли @username канала или ссылку t.me/…, а если канал закрытый — перешли сюда любой его пост. "
+        "Сначала добавь меня в администраторы канала: так я увижу и подписчиков, и вступления с постами. "
+        "Убрать канал, заданный здесь, — пришли «-»."
     ),
     "conn_youtube": (
         "▶️ Шаг 1 из 2. Пришли id канала YouTube — 24 знака, начинается с UC "

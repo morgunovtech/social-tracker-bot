@@ -10,9 +10,10 @@ Two minutes. You need a channel where you are the owner or an admin who can add 
 
 ## Steps
 
-1. Open the channel → its name at the top → «Edit» (the pencil) → «Administrators» → «Add Admin».
-2. Find your bot by its @username and add it. It needs no special rights — you can untick them all: the bot only reads.
-3. In the bot: 🔌 Connections → «➕ Telegram» and send the channel's @username, a `t.me/…` link or an id like `-100…` (for a private channel).
+1. Open the channel → its name at the top → «Edit» (the pencil) → «Administrators» → «Add Admin». In Telegram Web it is a round button with a person and a plus at the bottom right, with no label.
+2. Find your bot by its @username and add it. It needs no special rights — the bot only reads. You can untick the extra rights; if a switch won't turn off, leave it.
+3. The bot writes at once that it was made an admin of the channel and offers the button «✅ Connect the channel» — press it. A private channel connects this way too.
+   If there is no such message — say, the bot was added to the channel before the first `/start`: in the bot, 🔌 Connections → «➕ Telegram», and send the channel's @username or a `t.me/…` link. A private channel has neither — forward the bot any post from the channel. An invite link `t.me/+…` won't do: the bot can't tell from it which channel it is.
 4. The bot reads the subscriber count at once and says the channel is connected. The channel's report is the «📣 Channel» screen on the home screen.
 
 ## What the bot reads and where it goes

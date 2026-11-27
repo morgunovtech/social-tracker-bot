@@ -29,8 +29,8 @@ Railway's prices were checked against [docs.railway.com](https://docs.railway.co
 
 1. Press the button [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/social-tracker-bot?referralCode=7hTMqE). The link carries my Railway referral code: Railway shares with me a part of what an account created through it pays; your price is the same. The same template without the code: <https://railway.com/deploy/social-tracker-bot>.
 2. Sign in to Railway — preferably with GitHub (see «What it costs»).
-3. Press **Configure** — the Deploy button stays grey until you do — and paste the token into the `BOT_TOKEN` field. It is the only field.
-4. Press **Deploy** and wait a couple of minutes until the service is active.
+3. Press **Deploy Now**, then **Configure** — the Deploy button stays grey until you do. Paste the token into the `BOT_TOKEN` field (it is the only field) and press **Save Config**.
+4. Press **Deploy** and wait a couple of minutes until the service shows **Online**.
 5. To check that the bot started: in the project, open the service → **Deployments** → **View Logs** — there should be a line `Bot ready`.
 
 ## Step 3. The first /start
@@ -41,7 +41,7 @@ The bot takes its language from your Telegram: Russian stays Russian (so do Uzbe
 
 ## Step 4. The first network
 
-In its second message the bot opens 🔌 Connections. The easiest start is a Telegram channel: make the bot an admin of the channel and send its @username — step by step: [connect/telegram.en.md](connect/telegram.en.md). Then pick your time zone (home → «🌍 Choose the time zone») so the report comes in your morning. After the first collection the bot offers the watchdog by itself.
+In its second message the bot opens 🔌 Connections. The easiest start is a Telegram channel: make the bot an admin of the channel — the bot writes by itself and offers to connect that channel with one button. Step by step: [connect/telegram.en.md](connect/telegram.en.md). Then pick your time zone (home → «🌍 Choose the time zone») so the report comes in your morning. After the first collection the bot offers the watchdog by itself.
 
 ## The other connections
 

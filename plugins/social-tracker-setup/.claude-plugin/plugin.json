@@ -1,6 +1,6 @@
 {
   "name": "social-tracker-setup",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A skill that walks you through installing Social Tracker Bot in the browser: a bot at @BotFather, the Railway template, /start and the networks you choose.",
   "author": { "name": "morgunov.tech", "url": "https://github.com/morgunovtech" },
   "homepage": "https://github.com/morgunovtech/social-tracker-bot/blob/main/docs/SETUP.en.md",

@@ -12,9 +12,10 @@
 
 Needs: a channel where the user is the owner or an admin allowed to add admins.
 
-1. In Telegram Web open the channel → its name at the top → edit (pencil) → «Administrators» / «Администраторы» → «Add Admin» / «Добавить администратора».
-2. Search the bot's @username, add it. It needs no special rights — the user may untick them all; confirm with the user before saving.
-3. Back in the bot's chat: «🔌 Подключения» → «➕ Telegram» (English: «🔌 Connections» → «➕ Telegram»), then send the channel's @username, a `t.me/…` link, or the `-100…` id of a private channel.
-4. Expect a ✅ line saying the channel is connected, with its subscriber count. If the bot says it can't see the channel — the bot isn't an admin yet: repeat 1–2.
+1. In Telegram Web open the channel → its name at the top → edit (pencil) → «Administrators» / «Администраторы» → «Add Admin» / «Добавить администратора». In Telegram Web that is an unlabelled round button with a person and a plus at the bottom right of the Administrators panel.
+2. Search the bot's @username, add it. It needs no special rights — the user may untick the extra ones; some switches may not turn off, leave those. Confirm with the user before saving.
+3. Go back to the bot's chat. The bot has written that it was made an admin of the channel, with the button «✅ Подключить канал» / «✅ Connect the channel» — press it (a private channel connects this way too).
+   No such message (the bot was added before the first /start)? «🔌 Подключения» → «➕ Telegram» (English: «🔌 Connections» → «➕ Telegram»), then send the channel's @username or a `t.me/…` link; for a private channel, forward any post from the channel to the bot. An invite link `t.me/+…` doesn't work — the bot can't tell which channel it is.
+4. Expect a ✅ line saying the channel «title» is connected, with its subscriber count. If the bot says it can't see the channel — the bot isn't an admin yet: repeat 1–2.
 
 Then suggest the time zone: on the home screen «🌍 Выбрать часовой пояс» / «🌍 Choose the time zone», or send a city name after «✏️ Другой пояс…» / «✏️ Another zone…».
