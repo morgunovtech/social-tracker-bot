@@ -2,6 +2,20 @@
 
 The bot keeps itself updated (Dependabot, auto-merge, Railway); this file lists what changed for the person running it. Dates are merge dates.
 
+## 1.16.1 — 2026-11-27
+
+Two things a fresh install got slightly wrong, found in the second trial run.
+
+**The first value and the watchdog, right when a network is connected**
+- Connecting a Telegram channel or YouTube from the chat counts the subscribers to check the connection. That count is now today's value when the network has none yet. Before, 🔌 Подключения said «⏳ первый сбор ещё не был» right under «сейчас 2», and the home screen said «Данных пока нет» until the next daily collection. A count collected earlier is never overwritten.
+- The watchdog is offered right below, once ever, as the greeting promises («предложу сам после первой сети»). Before, it came only after the first collection, which could be the next morning. Not offered when a watchdog is already set.
+
+**The time zone set on the host**
+- «🧭 Осталось настроить» no longer asks for a time zone when `TIMEZONE` (or `REPORT_TZ`) is set on the host. The greeting already took it as chosen; the home screen and the greeting now read the same check (`scheduler.zone_chosen`).
+
+**Docs and the setup skill** (plugin 1.1.1)
+- SETUP, FEATURES, `connect/watchdog` and the skill's watchdog page: the watchdog comes as soon as the first network is connected.
+
 ## 1.16.0 — 2026-11-27
 
 What a trial install as a newcomer turned up: a private channel could not be connected without its `-100…` id, which no Telegram app shows. Now the bot offers the channel itself.

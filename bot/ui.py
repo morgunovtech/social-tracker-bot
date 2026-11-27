@@ -79,7 +79,7 @@ from bot.platforms import instagram as ig
 from bot.platforms.base import Platform
 from bot.platforms.linkedin import COOKIE_AGING_DAYS, get_active_cookie, get_cookie_age_days
 from bot.reporter import _decimal, _fmt, build_history_all, build_history_table, build_week_report
-from bot.scheduler import build_stats, get_report_schedule, get_report_tz, is_quiet_mode
+from bot.scheduler import build_stats, get_report_schedule, get_report_tz, is_quiet_mode, zone_chosen
 
 # Callback data of the screens and actions: bot/callbacks.py, re-exported here
 # for the handlers (ui.HOME …); the two monitors name theirs the same way.
@@ -434,14 +434,15 @@ async def last_collected(db: Database, config: Config, tz: ZoneInfo) -> str | No
 
 async def setup_todo(db: Database, config: Config) -> list[tuple[str, str, str]]:
     """What a fresh install still needs, as (callback, line, button): a
-    network while none is connected, the time zone while none was ever chosen
-    (the report would come at the default zone's 08:00), the Instagram token,
+    network while none is connected, the time zone while none was chosen —
+    in the chat or by TIMEZONE on the host (the report would come at the
+    default zone's 08:00), the Instagram token,
     the first LinkedIn number. Every line has its own button on the home
     screen. Empty once everything is set."""
     todo: list[tuple[str, str, str]] = []
     if not platforms.enabled(config):
         todo.append((CONNECTIONS, t("сеть — пока ни одна не подключена"), t("🔌 Подключить сеть")))
-    if await db.get_setting("report_tz") is None:
+    if not await zone_chosen(db):
         tz = await get_report_tz(db, config)
         todo.append((
             f"{SETTINGS}:tz",

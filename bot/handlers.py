@@ -45,9 +45,11 @@ from bot.scheduler import (
     get_report_schedule,
     get_report_tz,
     is_quiet_mode,
+    offer_watchdog_once,
     reschedule,
     save_schedule,
     send_alerts,
+    zone_chosen,
 )
 
 logger = logging.getLogger(__name__)
@@ -242,10 +244,6 @@ RUSSIAN_READERS = {
 }
 
 
-async def _zone_chosen(db: Database) -> bool:
-    return bool((os.getenv("TIMEZONE") or os.getenv("REPORT_TZ") or "").strip() or await db.get_setting("report_tz"))
-
-
 async def adopt_owner_language(code: str | None, config: Config, db: Database) -> tuple[bool, bool]:
     """The bot was just claimed and nobody chose a language — BOT_LANG is empty
     and the chat never set one: the owner's Telegram decides. Russian stays
@@ -259,12 +257,12 @@ async def adopt_owner_language(code: str | None, config: Config, db: Database) -
     if base == "ru":
         return False, False
     if base in RUSSIAN_READERS:
-        if await _zone_chosen(db):
+        if await zone_chosen(db):
             return False, False
         await db.set_setting("report_tz", RUSSIAN_READERS[base])
         return False, True
     await _switch_language(config, db, "en")
-    if await _zone_chosen(db):
+    if await zone_chosen(db):
         return True, False
     await db.set_setting("report_tz", DEFAULT_TZ["en"])
     return True, True
@@ -1383,6 +1381,8 @@ async def _cb_connections(press: _Press, context, args: list[str]) -> None:
             return
     screen = await ui.connections(db, config)
     await _show(press.query, screen.noted(note) if note else screen)
+    if note:
+        await _offer_watchdog_now(context)
 
 
 async def _cb_linkedin(press: _Press, context, args: list[str]) -> None:
@@ -1759,6 +1759,25 @@ _CONN_ATTRS = {
 }
 
 
+async def _keep_first_count(db: Database, platform: str, count: int) -> None:
+    """A network connected from the chat has just been counted: while it has
+    no value yet, that count is today's. Otherwise 🔌 Подключения said «первый
+    сбор ещё не был» right under «сейчас N», and the home screen had no data
+    until the next daily collection."""
+    if await db.get_latest(platform) is None:
+        await db.upsert(platform, count)
+
+
+async def _offer_watchdog_now(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """After a network is connected from the chat, below the screen that says
+    so: the watchdog, once ever (scheduler.offer_watchdog_once)."""
+    config, db = _deps(context)
+    try:
+        await offer_watchdog_once(context.bot, config, db)
+    except Exception:
+        logger.exception("Watchdog offer failed")
+
+
 async def _connect_channel(context: ContextTypes.DEFAULT_TYPE, channel: str) -> str | None:
     """Count the channel's subscribers and connect it: the line that says so,
     by the channel's title, or None when Telegram doesn't show the bot the channel."""
@@ -1769,6 +1788,7 @@ async def _connect_channel(context: ContextTypes.DEFAULT_TYPE, channel: str) -> 
     title, admin = await channel_info(context.bot, channel)
     await connections.save(config, db, telegram_channel_id=channel)
     await connections.remember_title(db, channel, title)
+    await _keep_first_count(db, "telegram", count)
     note = t("✅ Telegram-канал {channel} подключён: сейчас {count}.").format(
         channel=f"«{title}»" if title else channel, count=_fmt(count))
     if not admin:
@@ -1819,6 +1839,7 @@ async def _store_connection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 "потом пришли его ещё раз — или нажми «✖️ Отмена»."
             ).format(channel=channel))
         await done(note)
+        await _offer_watchdog_now(context)
     elif kind == "conn_youtube":
         channel = connections.youtube_channel(value)
         if channel is None:
@@ -1848,7 +1869,9 @@ async def _store_connection(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             ).format(channel=channel) + note)
         context.user_data.pop("conn_youtube_channel", None)
         await connections.save(config, db, youtube_channel_id=channel, youtube_api_key=key)
+        await _keep_first_count(db, "youtube", count)
         await done(t("✅ YouTube подключён: сейчас {count}.").format(count=_fmt(count)) + note)
+        await _offer_watchdog_now(context)
     elif kind == "conn_instagram":
         username = connections.instagram_username(value)
         if username is None:

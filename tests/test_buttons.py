@@ -225,7 +225,9 @@ async def test_the_buttons_of_the_old_keyboard_keep_working(make_update, make_co
 
 # --- the home screen ------------------------------------------------------------
 
-async def test_home_shows_the_last_collection_and_what_is_left_to_set_up(make_update, make_context, db, insert):
+async def test_home_shows_the_last_collection_and_what_is_left_to_set_up(make_update, make_context, db, insert,
+                                                                         monkeypatch):
+    monkeypatch.setenv("REPORT_TZ", "")            # a fresh install: no zone on the host either
     update = make_update()
     await handlers.cmd_home(update, make_context())
     text, markup = update.message.replies[0], update.message.markups[0]

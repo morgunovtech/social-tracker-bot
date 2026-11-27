@@ -6,7 +6,7 @@ If the bot stops — the server goes down, the hosting runs out of money, the to
 
 ## How long it takes and what you need
 
-2 minutes and a free account at [healthchecks.io](https://healthchecks.io). The bot offers the watchdog by itself after its first collection, but you can connect it any time.
+2 minutes and a free account at [healthchecks.io](https://healthchecks.io). The bot offers the watchdog by itself as soon as the first network is connected, but you can connect it any time.
 
 ## Steps
 

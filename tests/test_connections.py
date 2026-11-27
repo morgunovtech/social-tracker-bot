@@ -306,3 +306,42 @@ async def test_the_offer_and_the_answers_read_in_english(ctx, bot):
     cyrillic = __import__("re").compile("[А-Яа-яЁё]")
     screen = ui.channel_offer("My channel", PRIVATE.id)
     assert not cyrillic.search(screen.text + " ".join(buttons(screen.keyboard).values()))
+
+
+
+# --- the first value and the watchdog, right when a network is connected ------
+
+async def test_a_connected_channel_has_its_first_value_and_the_watchdog_is_offered(
+        make_update, ctx, bot, bare, db, monkeypatch):
+    """«сейчас 2» is today's value at once — 🔌 says «собирается», not «первый
+    сбор ещё не был» — and the watchdog the greeting promised after the first
+    network comes below, once."""
+    monkeypatch.setattr(handlers, "collect_telegram", _count_private)
+    bot.chats[str(PRIVATE.id)] = SimpleNamespace(title="Мой канал")
+    press = make_update(callback="conn:pick:-1006025849509")
+    await handlers.on_callback(press, ctx)
+    assert (await db.get_latest("telegram"))["count"] == 2
+    assert "Telegram — «Мой канал» · ✅ собирается" in press.callback_query.edits[0]
+    assert [m for m in bot.messages if m.startswith("⏱ Ещё один шаг — сторож")] != []
+    sent = len(bot.messages)
+    await handlers.on_callback(make_update(callback="conn:pick:-1006025849509"), ctx)
+    assert len(bot.messages) == sent                                   # offered once, ever
+
+
+async def test_a_reconnect_keeps_the_collected_history(make_update, ctx, bot, bare, db, monkeypatch):
+    monkeypatch.setattr(handlers, "collect_telegram", _count_private)
+    await db.upsert("telegram", 1500)                                  # collected before, today
+    await handlers.on_callback(make_update(callback="conn:pick:-1006025849509"), ctx)
+    assert (await db.get_latest("telegram"))["count"] == 1500          # the connect check doesn't overwrite it
+
+
+async def test_no_watchdog_offer_when_one_is_set(make_update, ctx, bot, bare, db, monkeypatch):
+    from bot import watchdog
+    monkeypatch.setattr(handlers, "collect_telegram", _count_private)
+    monkeypatch.setattr(watchdog, "url", lambda *a: _async("https://hc-ping.com/x"))
+    await handlers.on_callback(make_update(callback="conn:pick:-1006025849509"), ctx)
+    assert not [m for m in bot.messages if m.startswith("⏱")]
+
+
+async def _async(value):
+    return value
